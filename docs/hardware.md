@@ -46,7 +46,7 @@ Pin assignments here are mirrored in `firmware/include/pins.h`. Change both or n
 | Display CS | CS | 10 | SPI2 IOMUX pin |
 | Display DC | DC / RS | 9 | |
 | Display RESET | RESET | 14 | |
-| Display backlight | LED | 21 | LEDC PWM. Check if the module has a backlight transistor; if not, add an N-MOSFET or NPN driver. |
+| Display backlight | LED | 21 | LEDC PWM, active high. Module has its own transistor (Q1). |
 | Display MISO | SDO (MISO) | **not connected** | See hardware facts |
 | Touch pins | T_CLK, T_CS, T_DIN, T_DO, T_IRQ | **not connected** | No touch controller |
 | SD card SCK (optional, later) | SD_SCK | 39 | SPI3 (separate bus) |
@@ -69,7 +69,8 @@ Pin assignments here are mirrored in `firmware/include/pins.h`. Change both or n
 
 - Encoders `+`: **3.3 V**.
 - Sensor VCC: 3.3 V.
-- Display VCC: many 3.5" ILI9488 modules have an onboard 3.3 V regulator and accept 5 V on VCC (some have a `J1` jumper to bypass it for 3.3 V). **Check the module (see checklist below).** Logic levels are 3.3 V in all cases.
+- Display VCC: **5 V** (the board's 5V/VBUS pin). The module has an onboard 3.3 V regulator (U1) with bypass jumper J1 open. Logic levels are 3.3 V in all cases; the ESP32-S3 drives them directly.
+- Display LED: driven through the module's own transistor (Q1), so GPIO21 PWM connects straight to the LED pin.
 - The final device is powered from the **native USB** port.
 
 ## Open hardware checks (fill in when confirmed)
@@ -78,8 +79,8 @@ Pin assignments here are mirrored in `firmware/include/pins.h`. Change both or n
 |---|---|---|
 | Which USB-C port is native USB? | Identified by USB ID (2026-11-06): native USB enumerates as `303A:1001` (ESP32-S3 USB-Serial-JTAG before TinyUSB takes over); the bridge is a WCH CH343 (`1A86:55D3`). Physical connector labels not recorded yet. | Silkscreen usually says `USB` (native) vs `COM`/`UART` (bridge). The bridge port shows up as a CH340/CP210x COM port in Device Manager. |
 | Onboard RGB LED GPIO (38 or 48) | unknown | Board silkscreen or seller page. Or flash a blink on 48, then 38. |
-| Display VCC: regulator / J1 jumper? | unknown | Look for a 3-pin regulator (often `662K` or `AMS1117`) and a `J1` pad near the VCC pin. If present and J1 open: 5 V on VCC. If J1 shorted or no regulator: 3.3 V. |
-| Backlight LED pin has a transistor? | unknown | Look for a small SOT-23 transistor near the LED pin. If the LED pin is wired straight to the backlight, it may draw 40 to 80 mA: drive it through an N-MOSFET (e.g. AO3400) or NPN. Measure current at full brightness before connecting to a GPIO. |
+| Display VCC: regulator / J1 jumper? | From a photo of the back (2026-11-06, board marked "SPI 480X320 V1.0"): U1 is a SOT-23 3.3 V regulator on VCC, and J1 next to it appears open (two separate pads, no solder bridge). **Power VCC from 5 V.** Only short J1 if VCC ever has to come from 3.3 V. | Look for a 3-pin regulator (often `662K` or `AMS1117`) and a `J1` pad near the VCC pin. If present and J1 open: 5 V on VCC. If J1 shorted or no regulator: 3.3 V. |
+| Backlight LED pin has a transistor? | Yes (2026-11-06 photo): the LED pin goes through R6 to transistor Q1, which switches the backlight. GPIO21 can drive LED directly with PWM, active high (high = on). No external MOSFET needed. | Look for a small SOT-23 transistor near the LED pin. If the LED pin is wired straight to the backlight, it may draw 40 to 80 mA: drive it through an N-MOSFET (e.g. AO3400) or NPN. Measure current at full brightness before connecting to a GPIO. |
 | Encoder counts per detent (2 or 4) | unknown | Phase 2 debug view prints raw PCNT counts; turn one detent and read the delta. |
 | Physical buttons | undecided (0, 1 or 2) | Configurable in `inputs`. |
 | Enclosure / sensor placement | undecided | Affects self-heating offset and display orientation. |

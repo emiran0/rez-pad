@@ -21,7 +21,7 @@ constexpr int8_t kTftMosi = 11;
 constexpr int8_t kTftCs = 10;
 constexpr int8_t kTftDc = 9;
 constexpr int8_t kTftRst = 14;
-constexpr int8_t kTftBacklight = 21;  // LEDC PWM. Needs a transistor if the module has none.
+constexpr int8_t kTftBacklight = 21;  // LEDC PWM, active high. Module switches it via its own transistor (Q1).
 constexpr int8_t kTftMiso = -1;
 
 // SD card (optional, later): separate SPI3 bus.
