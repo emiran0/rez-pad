@@ -1,0 +1,22 @@
+# PlatformIO
+firmware/.pio/
+firmware/.vscode/
+.pio/
+
+# .NET
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+publish/
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+Thumbs.db
+.DS_Store
+
+# Claude local settings
+.claude/settings.local.json
