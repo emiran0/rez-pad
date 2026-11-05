@@ -1,6 +1,13 @@
 # DeskHub: USB Desk Companion (ESP32-S3 + Windows Host)
 
-This file is the main project brief. Read it fully before doing any work. It is the single source of truth for hardware, architecture, protocol and roadmap until the content is split into `docs/` (see Phase 0).
+This file is the project overview and the rules for working on it. Read it fully before doing any work. Detailed specs live in `docs/`:
+
+- `docs/hardware.md`: inventory, pin map, power, open hardware checks
+- `docs/protocol.md`: USB protocol v1 (+ `docs/protocol-test-vectors.json`)
+- `docs/config-schema.md`: config file, widget catalog, sources, actions, web editor, host API
+- `docs/measurements.md`: real measurements from the hardware
+
+See section 14 for decisions that changed or refined the original brief.
 
 "DeskHub" is a working name. It can be renamed later.
 
@@ -30,76 +37,20 @@ All pages are built from a **widget grid** and are customizable through a **brow
 
 ---
 
-## 2. Hardware inventory
+## 2. Hardware (details in `docs/hardware.md`)
 
-| Part | Notes |
-|---|---|
-| **ESP32-S3 N16R8** dev board, two USB-C ports | 16 MB flash, 8 MB octal PSRAM. One USB-C is native USB (GPIO19/20), the other goes through a USB-UART bridge. **Main MCU.** |
-| **3.5" SPI TFT, ILI9488, 320x480**, with SD slot | **Main display.** Used in landscape (480x320). Has touch pins but no touch controller: leave all `T_*` pins unconnected. |
-| **AHT20 + BMP280** combo module | I2C. AHT20 = temp/humidity (0x38). BMP280 = pressure/temp (0x76 or 0x77, detect at runtime). |
-| **2x rotary encoder modules** (KY-040 style) | Pins: CLK, DT, SW, +, GND. Clickable knob. |
-| Raspberry Pi Pico 2 W | Backup MCU. Not used in the main build. |
-| 2.0" ST7789V 240x320 TFT | Bench/test display, or a future "mini" variant. Not used in the main build. |
-| Raspberry Pi Zero 2 W | Not used. |
-| Optional: 1 to 2 tactile buttons | Not yet purchased. Firmware must work with zero, one or two buttons (configurable). |
+ESP32-S3 N16R8 (16 MB flash, 8 MB octal PSRAM, native USB + USB-UART bridge), 3.5" ILI9488 SPI TFT (480x320 landscape, no touch controller), AHT20 + BMP280 on I2C, 2x KY-040 encoders, 0 to 2 optional buttons.
 
-### Hardware facts that drive the design
-- **ILI9488 over SPI only accepts 18-bit color (RGB666, 3 bytes/pixel).** A full 480x320 frame is ~460 KB.
-  - 40 MHz SPI: ~90 ms per full-screen redraw.
-  - 80 MHz SPI: ~45 ms (only if the module is stable at that speed; must be measured).
-  - Therefore: no full-screen sliding animations. Page switches are instant redraws. Everything else is partial updates of small regions.
-- **ILI9488 modules often do not tri-state MISO (SDO).** Never connect the display's SDO/MISO. If the SD card is used, it goes on a separate SPI bus.
-- **KY-040 modules have pull-up resistors to the `+` pin.** Power them from **3.3 V only**, never 5 V.
-- **Sensor self-heating:** the sensor must be mounted away from the ESP32-S3 and the display backlight (short cable or vented corner). A user-configurable calibration offset is required.
+Facts that drive the design (full list, pin map, power and open hardware checks in `docs/hardware.md`):
+- ILI9488 over SPI is RGB666 only (3 bytes/pixel, ~460 KB per frame, ~90 ms full redraw at 40 MHz). No full-screen animations; page switches are instant redraws.
+- Never connect the display's SDO/MISO (it does not tri-state). SD card, if used, goes on SPI3.
+- KY-040 `+` goes to **3.3 V only**.
+- Sensor must be away from heat sources; a calibration offset exists in config.
 
----
+## 3. Pin map
 
-## 3. Pin map (ESP32-S3 N16R8)
+Lives in `firmware/include/pins.h`, mirrored in `docs/hardware.md`. Change both or neither. Status: proposed, not yet verified against the physical board.
 
-> **Status: proposed. Must be verified against the actual board silkscreen and module labels before wiring.** If any pin conflicts with the actual board (for example the onboard RGB LED), update `firmware/include/pins.h` AND this table together.
-
-### Pins that must NOT be used
-- GPIO26 to GPIO37: flash and octal PSRAM.
-- GPIO19, GPIO20: native USB D-/D+.
-- GPIO43, GPIO44: UART0 to the USB-UART bridge (debug logs).
-- GPIO0, GPIO3, GPIO45, GPIO46: strapping pins.
-- GPIO38 or GPIO48: onboard RGB LED on most DevKitC-1 style boards (depends on board revision). Treat both as reserved until confirmed.
-
-### Assignment
-
-| Function | Module pin | ESP32-S3 GPIO | Notes |
-|---|---|---|---|
-| Display SPI SCK | SCK | 12 | SPI2 (FSPI) IOMUX pin, allows high clock |
-| Display SPI MOSI | SDI (MOSI) | 11 | SPI2 IOMUX pin |
-| Display CS | CS | 10 | SPI2 IOMUX pin |
-| Display DC | DC / RS | 9 | |
-| Display RESET | RESET | 14 | |
-| Display backlight | LED | 21 | LEDC PWM. Check if the module has a backlight transistor; if not, add an N-MOSFET or NPN driver. |
-| Display MISO | SDO (MISO) | **not connected** | See hardware facts |
-| Touch pins | T_CLK, T_CS, T_DIN, T_DO, T_IRQ | **not connected** | No touch controller |
-| SD card SCK (optional, later) | SD_SCK | 39 | SPI3 (separate bus) |
-| SD card MOSI (optional, later) | SD_MOSI | 40 | |
-| SD card MISO (optional, later) | SD_MISO | 41 | |
-| SD card CS (optional, later) | SD_CS | 42 | |
-| I2C SDA (sensor) | SDA | 1 | 400 kHz. Module usually has pull-ups. |
-| I2C SCL (sensor) | SCL | 2 | |
-| Encoder 1 A | CLK | 4 | PCNT unit 0 |
-| Encoder 1 B | DT | 5 | |
-| Encoder 1 switch | SW | 6 | Internal pull-up (module may not populate one) |
-| Encoder 2 A | CLK | 7 | PCNT unit 1 |
-| Encoder 2 B | DT | 15 | |
-| Encoder 2 switch | SW | 16 | Internal pull-up |
-| Button 1 (optional) | | 17 | Active low, internal pull-up |
-| Button 2 (optional) | | 18 | Active low, internal pull-up |
-| Spare | | 8, 13, 47 | |
-
-### Power
-- Encoders `+`: **3.3 V**.
-- Sensor VCC: 3.3 V.
-- Display VCC: many 3.5" ILI9488 modules have an onboard 3.3 V regulator and accept 5 V on VCC (some have a `J1` jumper to bypass it for 3.3 V). **Check the module.** Logic levels are 3.3 V in all cases.
-- The final device is powered from the **native USB** port.
-
----
 
 ## 4. System architecture
 
@@ -144,7 +95,8 @@ All pages are built from a **widget grid** and are customizable through a **brow
 ## 5. Firmware
 
 ### Toolchain and libraries
-- PlatformIO, Arduino framework on top of ESP-IDF (Arduino-ESP32 core 3.x). Use whichever PlatformIO platform currently ships core 3.x for ESP32-S3 (verify; the community `pioarduino` platform has been the usual route). Pure ESP-IDF is acceptable if Arduino blocks something important; discuss before switching.
+- PlatformIO, Arduino framework on top of ESP-IDF. Platform: **pioarduino `platform-espressif32` 55.03.312-1** (Arduino-ESP32 core 3.3.12), pinned by release URL in `platformio.ini`. Pure ESP-IDF is acceptable if Arduino blocks something important; discuss before switching.
+- Run `pio` from **PowerShell or cmd, not Git Bash**: pioarduino's tool installer refuses MSYS/MinGW shells and the build then fails with "xtensa-esp32s3-elf-g++ is not recognized".
 - **LovyanGFX**: display driver (`Panel_ILI9488`, `Bus_SPI` on `SPI2_HOST`, DMA). Handles RGB565 to RGB666 conversion.
 - **LVGL v9**: UI. `LV_COLOR_DEPTH 16`.
 - **JPEGDEC** (bitbank2): album art decoding into PSRAM.
@@ -157,11 +109,11 @@ All pages are built from a **widget grid** and are customizable through a **brow
 **Always verify current stable versions of the platform and every library before pinning them in `platformio.ini`. Do not rely on memorized versions.**
 
 ### Board configuration (verify flags against the current core)
-- Board: `esp32-s3-devkitc-1` with overrides for N16R8: 16 MB flash, `qio_opi` memory type, PSRAM enabled (`BOARD_HAS_PSRAM`).
+- Board: **`esp32-s3-devkitc1-n16r8`** (ships with pioarduino: 16 MB QIO flash, `qio_opi`, `BOARD_HAS_PSRAM`), so no manual overrides are needed.
 - USB mode: **USB-OTG (TinyUSB)**, so the native port can be CDC + HID.
 - `Serial` = UART0 (the bridge USB-C port) for **debug logs only**. The protocol runs on the native USB CDC.
 - Custom USB descriptors: manufacturer "DeskHub", product "DeskHub", a stable serial string. Host discovers the port by VID/PID and product string.
-- Custom partition table: single large app partition (no OTA needed initially) plus a large LittleFS partition for config, fonts and icons.
+- Custom partition table (`firmware/partitions.csv`): 6 MB factory app (no OTA), ~9.9 MB LittleFS (label `spiffs`, the `LittleFS.begin()` default), 64 KB coredump.
 - Note: once TinyUSB takes over the native port, flashing through it may require holding BOOT. The UART port is always available for flashing.
 
 ### Task layout (FreeRTOS)
@@ -212,11 +164,11 @@ All pages are built from a **widget grid** and are customizable through a **brow
 ## 6. Windows host app
 
 ### Stack
-- **C# on the current .NET LTS** (verify version), target framework `netX.0-windows10.0.19041.0` or newer for WinRT APIs.
+- **C# on .NET 10 (current LTS)**, target framework `net10.0-windows10.0.19041.0` for WinRT APIs.
 - Tray app (WinForms `NotifyIcon` is enough) plus **ASP.NET Core Kestrel** bound to `127.0.0.1:47800` (port configurable).
 - `System.IO.Ports` for serial.
 - `Windows.Media.Control` (GSMTC) for media.
-- Core Audio for volume (NAudio or direct COM interop).
+- Core Audio for volume via a small direct COM interop wrapper (`IAudioEndpointVolume`), no NAudio dependency.
 - **LibreHardwareMonitorLib** for temps, fans, clocks, GPU. Check the current release notes for its kernel driver requirements (recent builds moved from the WinRing0 driver to PawnIO). Detect missing driver/admin and show guidance in the tray menu and web UI.
 - `Windows.Graphics.Imaging` (built-in WinRT) for decode/resize/JPEG encode of album art. Avoid image libraries with restrictive licenses.
 
@@ -251,198 +203,14 @@ host/
 
 ---
 
-## 7. USB protocol (v1)
+## 7. USB protocol
 
-### Framing
-- Transport: USB CDC (baud setting is ignored by native USB).
-- Each frame on the wire: `COBS(packet) + 0x00`.
-- `packet` = `[ver u8 = 1][type u8][seq u16 LE][body ...][crc16 u16 LE]`
-- CRC16-CCITT (0x1021, init 0xFFFF) over `ver..body`.
-- Max decoded packet size: 8192 bytes. Larger data (art, config) is chunked.
-- Body is either UTF-8 JSON (small structured messages) or a defined binary layout (bulk data). Each type below says which.
-- Any breaking change bumps `PROTOCOL_VERSION`. Both sides report their version in the handshake and refuse incompatible peers with a clear message.
-
-### Host -> Device
-
-| Type | Name | Body | Notes |
-|---|---|---|---|
-| 0x01 | HELLO | JSON `{proto, host_ver}` | On connect |
-| 0x02 | PING | empty | Every 1 s |
-| 0x03 | TIME_SYNC | JSON `{unix_ms, tz_offset_min}` | On connect, then every 60 s |
-| 0x10 | NOW_PLAYING | JSON, see below | On change, plus resync every 5 s |
-| 0x11 | ART_BEGIN | JSON `{id, w, h, fmt:"jpeg", size, crc32}` | New `id` aborts any transfer in progress |
-| 0x12 | ART_CHUNK | binary `[id u32][offset u32][data]` | |
-| 0x13 | ART_END | JSON `{id}` | Device verifies CRC32, decodes, swaps image |
-| 0x14 | ART_NONE | JSON `{id}` | Track has no art, show placeholder |
-| 0x15 | VOLUME | JSON `{level, muted}` | level 0 to 100 |
-| 0x20 | SYS_STATS | JSON `{t, v:{"<source_id>": number, ...}}` | Only referenced sources |
-| 0x30 | WEATHER | JSON, see below | Every 15 min and on connect |
-| 0x40 | CONFIG_BEGIN | JSON `{size, crc32}` | |
-| 0x41 | CONFIG_CHUNK | binary `[offset u32][data]` | |
-| 0x42 | CONFIG_END | empty | Device validates, saves, applies, replies CONFIG_ACK |
-| 0x43 | CONFIG_GET | empty | Device replies with its config (chunked, same scheme reversed) |
-| 0x50 | SPECTRUM | binary `[n u8][bins u8 * n]` | Stretch goal, ~30 Hz |
-| 0x60 | CMD | JSON `{cmd, args}` | Debug/maintenance: `set_spi_hz`, `reboot`, `factory_reset`, `bench_display`, `identify` |
-
-`NOW_PLAYING` body:
-```json
-{
-  "state": "playing",
-  "track_id": 2849123344,
-  "title": "Song Title",
-  "artist": "Artist",
-  "album": "Album",
-  "app": "Spotify",
-  "pos_ms": 81234,
-  "dur_ms": 215000,
-  "ts": 1793912345678,
-  "can_seek": true,
-  "can_next": true,
-  "can_prev": true
-}
-```
-`state` is one of `playing`, `paused`, `stopped`, `none`. `track_id` is a 32-bit hash of title + artist + album. `ts` is the host unix time in ms when `pos_ms` was sampled.
-
-`WEATHER` body:
-```json
-{
-  "loc": "Example City",
-  "units": "metric",
-  "updated": 1793912345,
-  "now": { "temp": 14.2, "feels": 12.9, "hum": 71, "wind": 12.0, "code": 3, "is_day": false },
-  "hourly": [ { "t": 1793913600, "temp": 13.8, "code": 3, "pop": 10 } ],
-  "daily":  [ { "d": "2026-11-06", "min": 9.1, "max": 16.4, "code": 61, "pop": 60 } ]
-}
-```
-`code` is the WMO weather code from Open-Meteo. Send 12 hourly and 5 daily entries.
-
-### Device -> Host
-
-| Type | Name | Body | Notes |
-|---|---|---|---|
-| 0x81 | HELLO_ACK | JSON `{proto, fw_ver, w, h, psram_free, cfg_crc, buttons}` | Reply to HELLO |
-| 0x82 | PONG | empty | Reply to PING |
-| 0x90 | ACTION | JSON `{action, value}` | Resolved from input map, see section 8 |
-| 0x91 | ART_REQUEST | JSON `{id}` | Device lost or never received art for current track |
-| 0xA0 | SENSOR | JSON `{temp_c, hum_pct, press_hpa, trend}` | Every 10 s |
-| 0xC0 | CONFIG_ACK | JSON `{ok, crc32, error}` | |
-| 0xC1..0xC3 | CONFIG_DATA_BEGIN / CHUNK / END | | Reply to CONFIG_GET |
-| 0xE0 | LOG | JSON `{lvl, msg}` | Mirrors important device logs to the host |
-| 0xE1 | ERROR | JSON `{code, msg}` | |
-| 0xE2 | CMD_RESULT | JSON `{cmd, ok, data}` | |
-
-### Connection rules
-- Host considers the device lost after 3 s without PONG. Device considers the host lost after 3 s without PING.
-- On (re)connect: HELLO -> HELLO_ACK -> TIME_SYNC -> config check (push if CRC differs) -> NOW_PLAYING -> art -> VOLUME -> WEATHER -> SYS_STATS stream.
-
----
+Specified in `docs/protocol.md` (v1). Summary: COBS-framed packets `[ver][type][seq u16][body][crc16]` over the native USB CDC port, JSON bodies for small messages, binary chunks for art and config. Shared test vectors in `docs/protocol-test-vectors.json` (generated by `tools/gen_protocol_vectors.py`) are used by both the C# and C++ unit tests.
 
 ## 8. Configuration
 
-### Config file (host master copy, device mirror)
-```json
-{
-  "schema": 1,
-  "display": {
-    "brightness": 80,
-    "night": { "enabled": true, "from": "23:00", "to": "07:30", "brightness": 15 },
-    "sleep_on_pc_sleep": true,
-    "spi_hz": 40000000
-  },
-  "grid": { "cols": 4, "rows": 3 },
-  "theme": { "name": "dark", "accent": "#4FC3F7" },
-  "units": { "temp": "c", "pressure": "hpa", "wind": "kmh" },
-  "weather": { "lat": 0.0, "lon": 0.0, "name": "Example City", "refresh_min": 15 },
-  "sensor": { "temp_offset_c": -1.5, "hum_offset_pct": 0, "trend_threshold_hpa": 1.0 },
-  "media": { "app_priority": ["Spotify", "*"], "art_size": 200, "volume_step": 2 },
-  "stats": { "rate_hz": 1 },
-  "inputs": {
-    "enc1": { "counts_per_detent": 4, "invert": false,
-              "rotate": "nav.page", "click": "nav.home", "double": "none", "long": "display.toggle" },
-    "enc2": { "counts_per_detent": 4, "invert": false,
-              "rotate": "media.volume", "click": "media.play_pause", "double": "media.next", "long": "media.mute" },
-    "btn1": { "click": "media.prev", "long": "none" },
-    "btn2": { "click": "media.next", "long": "none" }
-  },
-  "pages": [
-    {
-      "id": "now_playing",
-      "name": "Now Playing",
-      "inputs_override": { "enc1": { "rotate": "media.seek" } },
-      "widgets": [
-        { "type": "album_art",      "x": 0, "y": 0, "w": 2, "h": 2 },
-        { "type": "track_info",     "x": 2, "y": 0, "w": 2, "h": 2 },
-        { "type": "media_controls", "x": 0, "y": 2, "w": 3, "h": 1 },
-        { "type": "volume",         "x": 3, "y": 2, "w": 1, "h": 1 }
-      ]
-    },
-    {
-      "id": "system",
-      "name": "System",
-      "widgets": [
-        { "type": "metric_gauge", "x": 0, "y": 0, "w": 1, "h": 1, "source": "sys.cpu.load",  "label": "CPU" },
-        { "type": "metric_gauge", "x": 1, "y": 0, "w": 1, "h": 1, "source": "sys.cpu.temp",  "label": "CPU C" },
-        { "type": "metric_gauge", "x": 2, "y": 0, "w": 1, "h": 1, "source": "sys.gpu.load",  "label": "GPU" },
-        { "type": "metric_gauge", "x": 3, "y": 0, "w": 1, "h": 1, "source": "sys.gpu.temp",  "label": "GPU C" },
-        { "type": "metric_graph", "x": 0, "y": 1, "w": 2, "h": 1, "source": "sys.cpu.load",  "label": "CPU history" },
-        { "type": "metric_bar",   "x": 2, "y": 1, "w": 2, "h": 1, "source": "sys.ram.used_pct", "label": "RAM" },
-        { "type": "metric_value", "x": 0, "y": 2, "w": 2, "h": 1, "source": "sys.net.down_kbps", "label": "Down" },
-        { "type": "metric_value", "x": 2, "y": 2, "w": 2, "h": 1, "source": "sys.net.up_kbps",   "label": "Up" }
-      ]
-    },
-    {
-      "id": "weather_room",
-      "name": "Weather & Room",
-      "widgets": [
-        { "type": "weather_now",      "x": 0, "y": 0, "w": 2, "h": 2 },
-        { "type": "room_climate",     "x": 2, "y": 0, "w": 2, "h": 2 },
-        { "type": "weather_forecast", "x": 0, "y": 2, "w": 4, "h": 1, "mode": "daily" }
-      ]
-    }
-  ]
-}
-```
+Specified in `docs/config-schema.md` (schema 1): config file layout, widget catalog with allowed sizes, data source IDs, actions, web editor features and the localhost host API.
 
-### Widget catalog (firmware implements, web editor offers)
-
-| Type | Allowed sizes (w x h) | Data |
-|---|---|---|
-| `album_art` | 2x2 | media art |
-| `track_info` | 2x1, 2x2, 4x1 | title, artist, album, app; long text scrolls (marquee) |
-| `media_controls` | 2x1, 3x1, 4x1 | prev/play/next state, progress bar, elapsed/duration |
-| `progress` | 2x1, 4x1 | progress bar only |
-| `volume` | 1x1, 2x1 | volume level, mute |
-| `metric_value` | 1x1, 2x1 | any numeric source, label, unit |
-| `metric_bar` | 2x1, 4x1 | any numeric source with min/max |
-| `metric_gauge` | 1x1, 2x2 | arc gauge, min/max, warning/critical thresholds |
-| `metric_graph` | 2x1, 2x2, 4x1 | sparkline history (device keeps a ring buffer per source) |
-| `clock` | 1x1, 2x1 | time and date, 12/24 h |
-| `room_climate` | 2x1, 2x2 | temp, humidity, pressure, trend arrow |
-| `weather_now` | 2x1, 2x2 | icon, temp, feels like, humidity, wind |
-| `weather_forecast` | 4x1 | `hourly` or `daily` |
-| `label` | any | static text |
-| `spectrum` | 4x1 | stretch goal |
-
-Widgets may have optional style fields (`label`, `unit`, `min`, `max`, `warn`, `crit`, `decimals`). Validation must reject overlapping widgets, out-of-grid widgets and unsupported sizes, on both host and device.
-
-### Data source IDs
-Stable dotted IDs. Examples: `sys.cpu.load`, `sys.cpu.temp`, `sys.cpu.clock_mhz`, `sys.ram.used_pct`, `sys.ram.used_gb`, `sys.gpu.load`, `sys.gpu.temp`, `sys.gpu.vram_pct`, `sys.disk.C.used_pct`, `sys.net.down_kbps`, `sys.net.up_kbps`, `sys.fan.<n>.rpm`, `room.temp`, `room.hum`, `room.pressure`. The host publishes the full catalog of what exists on this PC; the web editor only offers sources from that catalog.
-
-### Actions
-`none`, `nav.page` (rotate), `nav.next_page`, `nav.prev_page`, `nav.home`, `media.play_pause`, `media.next`, `media.prev`, `media.seek` (rotate, seconds per detent configurable), `media.volume` (rotate), `media.mute`, `display.toggle`, `display.brightness` (rotate).
-
-### Web config editor
-- Location: `web/` in the repo, served by the host.
-- Plain HTML/CSS/JS (no build step required) with **gridstack.js** (verify license and version) for the grid.
-- Features: page list (add, remove, rename, reorder), grid editor with a widget palette restricted to allowed sizes, properties panel per widget (source dropdown from the host's catalog, labels, thresholds), input mapping form, display/night settings, weather location search (Open-Meteo geocoding), units, sensor offsets with live readings, device status (connected, firmware version, protocol version).
-- A 480x320 scaled preview that approximates the device look.
-- Save -> host validates -> writes master config -> pushes to the device -> shows result from CONFIG_ACK.
-
-### Host API (localhost only)
-- `GET /api/status`, `GET /api/config`, `PUT /api/config`, `GET /api/sources`, `GET /api/geocode?q=`, `GET /api/sensor`, `POST /api/device/cmd`, WebSocket `/ws` for live status and sensor updates.
-- Bind to `127.0.0.1` only. No remote access.
-
----
 
 ## 9. Performance targets
 
@@ -470,13 +238,14 @@ deskhub/
     protocol.md        protocol v1 (moved from this file)
     config-schema.md   config schema and widget catalog
     measurements.md    SPI speed tests, timings, sensor calibration
+    protocol-test-vectors.json  shared by C# and C++ protocol tests
   firmware/
     platformio.ini
     partitions.csv
     include/pins.h     single source of truth for pins (mirrors docs/hardware.md)
     src/
       main.cpp
-      link/            USB CDC, COBS, CRC, dispatch
+      link/            USB CDC transport, dispatch, heartbeat
       hid/             consumer control fallback
       display/         LovyanGFX setup, backlight
       ui/              LVGL setup, status bar, page manager
@@ -485,7 +254,10 @@ deskhub/
       sensors/         AHT20, BMP280, filtering, trend
       config/          load, validate, save, defaults
       fonts/           generated LVGL fonts
+    lib/protocol/      pure C++ COBS/CRC/framing (no Arduino deps, host-testable)
     test/              PlatformIO native tests (protocol, config validation)
+  tools/
+    gen_protocol_vectors.py   reference framing implementation, generates shared test vectors
   host/
     DeskHub.sln
     src/DeskHub.Host/
@@ -589,10 +361,19 @@ Work phase by phase. At the end of each phase, list what was done and what the u
 
 ---
 
-## 13. Open questions (ask the user when relevant)
+## 13. Open questions
 
-- Exact ESP32-S3 board model/revision: which USB-C port is native USB, and which GPIO is the onboard RGB LED (38 or 48)?
-- 3.5" module: does VCC go through an onboard regulator (is there a J1 jumper)? Does the LED pin have a transistor or need an external driver?
-- Encoder detent count (2 or 4 pulses per click) and preferred rotation direction.
-- Will physical buttons be added, and how many?
-- Enclosure plans (affects sensor placement and display orientation).
+Tracked in the "Open hardware checks" table in `docs/hardware.md` (native USB port, RGB LED pin, display VCC/J1, backlight transistor, encoder detent count, buttons, enclosure). Ask the user when a phase depends on one, and record the answer there.
+
+---
+
+## 14. Decisions log (changes to the original brief)
+
+- 2026-11-06: Protocol framing lives in a pure C++ library (`firmware/lib/protocol/`) instead of `src/link/`, so it can be unit-tested on the host. `src/link/` keeps only the USB transport and dispatch.
+- 2026-11-06: Shared protocol test vectors (`docs/protocol-test-vectors.json`, plus a generated C header for the firmware tests) produced by `tools/gen_protocol_vectors.py`. Both sides test against the same bytes, so they cannot drift.
+- 2026-11-06: Protocol details pinned down: CRC-16/CCITT-FALSE, CRC-32/ISO-HDLC (zlib), canonical COBS, per-side `seq` counters, `track_id` = CRC32 of `title
+artist
+album`. See `docs/protocol.md`.
+- 2026-11-06: Board definition `esp32-s3-devkitc1-n16r8` from pioarduino instead of overriding `esp32-s3-devkitc-1`.
+- 2026-11-06: Config `inputs.buttons` (0 to 2) added to schema 1 (not yet released, so no migration) to declare how many physical buttons are fitted. Default 0.
+- 2026-11-06: Volume control via direct Core Audio COM interop instead of NAudio (smaller, no extra dependency).
