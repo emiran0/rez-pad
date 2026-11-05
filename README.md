@@ -6,7 +6,7 @@ USB desk companion: ESP32-S3 + 3.5" ILI9488 display, driven by a Windows tray ap
 
 - PlatformIO Core (`python -m pip install --user platformio`). Run it from **PowerShell or cmd**, not Git Bash.
 - .NET 10 SDK.
-- Optional, for firmware unit tests on the PC: a host C++ compiler (gcc/g++ on PATH, for example WinLibs MinGW-w64).
+- Optional, for firmware unit tests on the PC: a host C++ compiler on PATH. Tested with WinLibs (`winget install BrechtSanders.WinLibs.POSIX.UCRT`). Winget does not create `gcc`/`g++` aliases for it, so add its `mingw64\bin` folder (under `%LOCALAPPDATA%\Microsoft\WinGet\Packages\BrechtSanders.WinLibs.POSIX.UCRT_*`) to your user PATH and open a new terminal.
 
 ## Firmware
 
