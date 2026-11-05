@@ -29,7 +29,7 @@ Chosen default: _TBD_ (Phase 1).
 
 | Date | Commit | PSRAM size | Flash size | Free heap | Notes |
 |---|---|---|---|---|---|
-| | | | | | |
+| 2026-11-06 | 7e70ad7 | 8192 KB (8188 KB free) | 16 MB | 347 KB internal | ESP32-S3 (QFN56) rev v0.2, 240 MHz, embedded PSRAM AP_3v3. Flashed over the CH343 bridge at 921600 baud (17.9 s). Protocol self-test ok. Phase 0 check passed. |
 
 ## Encoders
 

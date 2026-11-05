@@ -76,7 +76,7 @@ Pin assignments here are mirrored in `firmware/include/pins.h`. Change both or n
 
 | Question | Answer | How to check |
 |---|---|---|
-| Which USB-C port is native USB? | unknown | Silkscreen usually says `USB` (native) vs `COM`/`UART` (bridge). The bridge port shows up as a CH340/CP210x COM port in Device Manager. |
+| Which USB-C port is native USB? | Identified by USB ID (2026-11-06): native USB enumerates as `303A:1001` (ESP32-S3 USB-Serial-JTAG before TinyUSB takes over); the bridge is a WCH CH343 (`1A86:55D3`). Physical connector labels not recorded yet. | Silkscreen usually says `USB` (native) vs `COM`/`UART` (bridge). The bridge port shows up as a CH340/CP210x COM port in Device Manager. |
 | Onboard RGB LED GPIO (38 or 48) | unknown | Board silkscreen or seller page. Or flash a blink on 48, then 38. |
 | Display VCC: regulator / J1 jumper? | unknown | Look for a 3-pin regulator (often `662K` or `AMS1117`) and a `J1` pad near the VCC pin. If present and J1 open: 5 V on VCC. If J1 shorted or no regulator: 3.3 V. |
 | Backlight LED pin has a transistor? | unknown | Look for a small SOT-23 transistor near the LED pin. If the LED pin is wired straight to the backlight, it may draw 40 to 80 mA: drive it through an N-MOSFET (e.g. AO3400) or NPN. Measure current at full brightness before connecting to a GPIO. |
