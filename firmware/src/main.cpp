@@ -1,10 +1,10 @@
-// DeskHub firmware entry point.
+// rez-pad firmware entry point.
 // Phase 0: boot banner on UART0 (bridge USB-C port) with chip, flash and PSRAM info.
 #include <Arduino.h>
 #include <esp_chip_info.h>
 #include <esp_flash.h>
 
-#include "deskhub_protocol.h"
+#include "rezpad_protocol.h"
 #include "pins.h"
 
 #ifndef FW_VERSION
@@ -15,8 +15,8 @@ namespace {
 
 bool protocolSelfTest() {
   static const uint8_t kCheck[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
-  return dh::proto::crc16(kCheck, sizeof(kCheck)) == 0x29B1 &&
-         dh::proto::crc32(kCheck, sizeof(kCheck)) == 0xCBF43926u;
+  return rp::proto::crc16(kCheck, sizeof(kCheck)) == 0x29B1 &&
+         rp::proto::crc32(kCheck, sizeof(kCheck)) == 0xCBF43926u;
 }
 
 void printBanner() {
@@ -26,8 +26,8 @@ void printBanner() {
   esp_flash_get_size(nullptr, &flashSize);
 
   Serial.println();
-  Serial.println("hello from DeskHub");
-  Serial.printf("fw %s, protocol v%u, built %s %s\n", FW_VERSION, dh::proto::kVersion, __DATE__, __TIME__);
+  Serial.println("hello from rez-pad");
+  Serial.printf("fw %s, protocol v%u, built %s %s\n", FW_VERSION, rp::proto::kVersion, __DATE__, __TIME__);
   Serial.printf("chip ESP32-S3 rev %u.%u, %u cores, %lu MHz\n", static_cast<unsigned>(chip.revision / 100),
                 static_cast<unsigned>(chip.revision % 100), static_cast<unsigned>(chip.cores),
                 static_cast<unsigned long>(getCpuFrequencyMhz()));

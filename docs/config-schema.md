@@ -1,6 +1,6 @@
 # Configuration (schema 1)
 
-The host keeps the master copy at `%APPDATA%\DeskHub\config.json`. The device keeps a mirror in LittleFS (`/config.json`) so it boots into the user's layout without the host. On connect, if the CRC32 of the device copy differs, the host pushes its config.
+The host keeps the master copy at `%APPDATA%\rez-pad\config.json`. The device keeps a mirror in LittleFS (`/config.json`) so it boots into the user's layout without the host. On connect, if the CRC32 of the device copy differs, the host pushes its config.
 
 Schema changes bump `schema` and include a migration on the host.
 

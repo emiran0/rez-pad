@@ -1,4 +1,4 @@
-namespace DeskHub.Protocol;
+namespace RezPad.Protocol;
 
 /// <summary>Canonical Consistent Overhead Byte Stuffing (no trailing 0x01 after a final full block).</summary>
 public static class Cobs

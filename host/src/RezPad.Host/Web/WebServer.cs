@@ -1,13 +1,13 @@
 using System.Net;
 using System.Reflection;
-using DeskHub.Protocol;
+using RezPad.Protocol;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging;
 
-namespace DeskHub.Host.Web;
+namespace RezPad.Host.Web;
 
 /// <summary>Kestrel bound to 127.0.0.1 only. Serves web/ and the /api endpoints (docs/config-schema.md).</summary>
 internal sealed class WebServer(int port)

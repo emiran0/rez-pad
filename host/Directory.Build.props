@@ -5,6 +5,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Version>0.1.0</Version>
-    <Authors>DeskHub</Authors>
+    <Authors>rez-pad</Authors>
   </PropertyGroup>
 </Project>

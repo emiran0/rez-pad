@@ -2,7 +2,7 @@
 
 `PROTOCOL_VERSION = 1`. Implemented in:
 
-- Host: `host/src/DeskHub.Protocol/`
+- Host: `host/src/RezPad.Protocol/`
 - Firmware: `firmware/lib/protocol/` (pure C++, no Arduino deps, unit-tested on the `native` PlatformIO env)
 
 Both implementations are tested against the same vectors in [`protocol-test-vectors.json`](protocol-test-vectors.json). Any change to framing must update that file.

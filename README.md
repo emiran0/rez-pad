@@ -1,4 +1,4 @@
-# DeskHub
+# rez-pad
 
 USB desk companion: ESP32-S3 + 3.5" ILI9488 display, driven by a Windows tray app. See `CLAUDE.md` for the overview and `docs/` for specs.
 
@@ -23,8 +23,8 @@ pio test -e native           # protocol unit tests (needs gcc)
 ```powershell
 cd host
 dotnet build
-dotnet test --project tests/DeskHub.Protocol.Tests
-dotnet run --project src/DeskHub.Host   # tray app, config page at http://127.0.0.1:47800
+dotnet test --project tests/RezPad.Protocol.Tests
+dotnet run --project src/RezPad.Host   # tray app, config page at http://127.0.0.1:47800
 ```
 
 ## Protocol test vectors

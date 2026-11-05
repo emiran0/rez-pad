@@ -3,10 +3,10 @@
 #include <string.h>
 #include <unity.h>
 
-#include "deskhub_protocol.h"
+#include "rezpad_protocol.h"
 #include "vectors.h"
 
-using namespace dh::proto;
+using namespace rp::proto;
 
 #define COUNT(a) (sizeof(a) / sizeof((a)[0]))
 

@@ -1,4 +1,4 @@
-# DeskHub partition table, 16 MB flash, no OTA (single factory app).
+# rez-pad partition table, 16 MB flash, no OTA (single factory app).
 # 0xE000..0x10000 is left free: the Arduino uploader writes boot_app0.bin (otadata init) there.
 # The data partition keeps the name/subtype "spiffs" because LittleFS.begin() looks for that label by default.
 # Name,   Type, SubType,  Offset,   Size

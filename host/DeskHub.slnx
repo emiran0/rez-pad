@@ -1,9 +1,0 @@
-<Solution>
-  <Folder Name="/src/">
-    <Project Path="src/DeskHub.Host/DeskHub.Host.csproj" />
-    <Project Path="src/DeskHub.Protocol/DeskHub.Protocol.csproj" />
-  </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/DeskHub.Protocol.Tests/DeskHub.Protocol.Tests.csproj" />
-  </Folder>
-</Solution>

@@ -1,6 +1,6 @@
-#include "deskhub_protocol.h"
+#include "rezpad_protocol.h"
 
-namespace dh {
+namespace rp {
 namespace proto {
 
 uint16_t crc16(const uint8_t* data, size_t len, uint16_t crc) {
@@ -177,4 +177,4 @@ bool FrameDecoder::push(uint8_t byte) {
 }
 
 }  // namespace proto
-}  // namespace dh
+}  // namespace rp

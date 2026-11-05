@@ -1,6 +1,6 @@
 """Generate docs/protocol-test-vectors.json.
 
-Reference implementation of DeskHub protocol v1 framing (COBS, CRC16, CRC32,
+Reference implementation of rez-pad protocol v1 framing (COBS, CRC16, CRC32,
 packet layout). Host (C#) and firmware (C++) unit tests both load the output
 file, so the two sides cannot drift apart.
 

@@ -1,4 +1,4 @@
-// DeskHub pin map. Single source of truth for GPIO assignments.
+// rez-pad pin map. Single source of truth for GPIO assignments.
 // Mirrored in docs/hardware.md: change both or neither.
 //
 // Status: proposed, NOT yet verified against the physical board and modules.

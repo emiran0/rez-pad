@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RezPad.Host/RezPad.Host.csproj" />
+    <Project Path="src/RezPad.Protocol/RezPad.Protocol.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RezPad.Protocol.Tests/RezPad.Protocol.Tests.csproj" />
+  </Folder>
+</Solution>

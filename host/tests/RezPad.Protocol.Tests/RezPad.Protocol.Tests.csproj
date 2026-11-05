@@ -9,7 +9,7 @@
     <PackageReference Include="xunit.v3" Version="4.0.2" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\DeskHub.Protocol\DeskHub.Protocol.csproj" />
+    <ProjectReference Include="..\..\src\RezPad.Protocol\RezPad.Protocol.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- Shared with the firmware tests, see docs/protocol.md. -->

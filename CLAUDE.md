@@ -1,4 +1,4 @@
-# DeskHub: USB Desk Companion (ESP32-S3 + Windows Host)
+# rez-pad: USB Desk Companion (ESP32-S3 + Windows Host)
 
 This file is the project overview and the rules for working on it. Read it fully before doing any work. Detailed specs live in `docs/`:
 
@@ -9,7 +9,7 @@ This file is the project overview and the rules for working on it. Read it fully
 
 See section 14 for decisions that changed or refined the original brief.
 
-"DeskHub" is a working name. It can be renamed later.
+The project was renamed from the working name "DeskHub" to **rez-pad** on 2026-11-06. User-facing name: `rez-pad`. Code identifiers: `RezPad` (C#), `rezpad` / namespace `rp` (C++).
 
 ---
 
@@ -57,12 +57,12 @@ Lives in `firmware/include/pins.h`, mirrored in `docs/hardware.md`. Change both 
 ```
 +---------------------------- Windows PC -----------------------------+
 |                                                                     |
-|  DeskHub Host (C# / .NET, tray app, runs elevated at logon)         |
+|  rez-pad Host (C# / .NET, tray app, runs elevated at logon)         |
 |   - MediaService     (GSMTC: now playing, art, controls, seek)      |
 |   - AudioService     (Core Audio: master volume, mute)              |
 |   - SystemStats      (perf counters + LibreHardwareMonitorLib)      |
 |   - WeatherService   (Open-Meteo, no API key)                       |
-|   - ConfigService    (master config JSON in %APPDATA%\DeskHub)      |
+|   - ConfigService    (master config JSON in %APPDATA%\rez-pad)      |
 |   - WebServer        (Kestrel on 127.0.0.1, serves config editor)   |
 |   - SerialLink       (COBS framed protocol over USB CDC)            |
 |                                                                     |
@@ -112,7 +112,7 @@ Lives in `firmware/include/pins.h`, mirrored in `docs/hardware.md`. Change both 
 - Board: **`esp32-s3-devkitc1-n16r8`** (ships with pioarduino: 16 MB QIO flash, `qio_opi`, `BOARD_HAS_PSRAM`), so no manual overrides are needed.
 - USB mode: **USB-OTG (TinyUSB)**, so the native port can be CDC + HID.
 - `Serial` = UART0 (the bridge USB-C port) for **debug logs only**. The protocol runs on the native USB CDC.
-- Custom USB descriptors: manufacturer "DeskHub", product "DeskHub", a stable serial string. Host discovers the port by VID/PID and product string.
+- Custom USB descriptors: manufacturer "rez-pad", product "rez-pad", a stable serial string. Host discovers the port by VID/PID and product string.
 - Custom partition table (`firmware/partitions.csv`): 6 MB factory app (no OTA), ~9.9 MB LittleFS (label `spiffs`, the `LittleFS.begin()` default), 64 KB coredump.
 - Note: once TinyUSB takes over the native port, flashing through it may require holding BOOT. The UART port is always available for flashing.
 
@@ -177,10 +177,10 @@ Lives in `firmware/include/pins.h`, mirrored in `docs/hardware.md`. Change both 
 ### Solution layout
 ```
 host/
-  DeskHub.slnx
-  src/DeskHub.Host/          tray app, services, Kestrel, web assets
-  src/DeskHub.Protocol/      COBS, CRC, message types (no Windows deps, unit-testable)
-  tests/DeskHub.Protocol.Tests/
+  RezPad.slnx
+  src/RezPad.Host/          tray app, services, Kestrel, web assets
+  src/RezPad.Protocol/      COBS, CRC, message types (no Windows deps, unit-testable)
+  tests/RezPad.Protocol.Tests/
 ```
 
 ### Services
@@ -190,7 +190,7 @@ host/
 - **AudioService**: master endpoint volume and mute, event-driven change notifications, executes relative volume actions with configurable step.
 - **SystemStatsService**: CPU load, RAM, disk usage, network throughput via performance counters/PDH. Temps, fans, clocks, GPU via LibreHardwareMonitorLib. Exposes a **catalog of available data sources** (stable IDs plus display names) to the web UI. Sends only the sources referenced by the current config, at the configured rate (default 1 Hz, max 4 Hz).
 - **WeatherService**: Open-Meteo forecast API (no key) plus Open-Meteo geocoding for the city search in the web UI. Refresh every 15 min. Metric/imperial from config.
-- **ConfigService**: `%APPDATA%\DeskHub\config.json`, JSON schema validation, versioned, pushes to device on change or CRC mismatch.
+- **ConfigService**: `%APPDATA%\rez-pad\config.json`, JSON schema validation, versioned, pushes to device on change or CRC mismatch.
 - **WebServer**: serves `web/` static files plus a REST/WebSocket API (see section 8).
 
 ### Startup and elevation
@@ -231,7 +231,7 @@ Record real measurements in `docs/measurements.md`.
 ## 10. Repository layout
 
 ```
-deskhub/
+rez-pad/
   CLAUDE.md
   docs/
     hardware.md        pin map, wiring, power, photos
@@ -259,10 +259,10 @@ deskhub/
   tools/
     gen_protocol_vectors.py   reference framing implementation, generates shared test vectors
   host/
-    DeskHub.slnx
-    src/DeskHub.Host/
-    src/DeskHub.Protocol/
-    tests/DeskHub.Protocol.Tests/
+    RezPad.slnx
+    src/RezPad.Host/
+    src/RezPad.Protocol/
+    tests/RezPad.Protocol.Tests/
   web/
     index.html
     app.js
@@ -301,7 +301,7 @@ Work phase by phase. At the end of each phase, list what was done and what the u
 - Check: Windows shows a COM port and a HID device; encoder 2 click toggles media playback with no host app running.
 
 **Phase 5: Protocol and host skeleton**
-- `DeskHub.Protocol` with COBS, CRC16, CRC32, message types, unit tests.
+- `RezPad.Protocol` with COBS, CRC16, CRC32, message types, unit tests.
 - Firmware link task with the same framing.
 - Host tray app: device discovery, handshake, heartbeat, reconnect, time sync.
 - Check: unplug/replug and host restart both recover within 3 s; clock shows correct local time.
@@ -376,5 +376,6 @@ artist
 album`. See `docs/protocol.md`.
 - 2026-11-06: Board definition `esp32-s3-devkitc1-n16r8` from pioarduino instead of overriding `esp32-s3-devkitc-1`.
 - 2026-11-06: Config `inputs.buttons` (0 to 2) added to schema 1 (not yet released, so no migration) to declare how many physical buttons are fitted. Default 0.
-- 2026-11-06: Host uses the `.slnx` solution format (.NET 10 default) and xUnit v3 on Microsoft.Testing.Platform (`host/global.json` opts in; `dotnet test --project tests/DeskHub.Protocol.Tests`). The .NET 10 SDK no longer runs MTP-based tests through VSTest.
+- 2026-11-06: Host uses the `.slnx` solution format (.NET 10 default) and xUnit v3 on Microsoft.Testing.Platform (`host/global.json` opts in; `dotnet test --project tests/RezPad.Protocol.Tests`). The .NET 10 SDK no longer runs MTP-based tests through VSTest.
 - 2026-11-06: Volume control via direct Core Audio COM interop instead of NAudio (smaller, no extra dependency).
+- 2026-11-06: Project renamed from "DeskHub" to **rez-pad**. C# projects/namespaces `RezPad.*`, host exe `rez-pad.exe`, C++ library `rezpad_protocol` in namespace `rp::proto`, PlatformIO env `rezpad`, config folder `%APPDATA%\rez-pad`.

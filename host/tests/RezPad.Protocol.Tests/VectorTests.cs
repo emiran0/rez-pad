@@ -1,8 +1,8 @@
 using System.Text.Json;
-using DeskHub.Protocol;
+using RezPad.Protocol;
 using Xunit;
 
-namespace DeskHub.Protocol.Tests;
+namespace RezPad.Protocol.Tests;
 
 /// <summary>Tests against docs/protocol-test-vectors.json, shared with the firmware tests.</summary>
 public class VectorTests

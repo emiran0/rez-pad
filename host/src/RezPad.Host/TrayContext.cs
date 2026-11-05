@@ -1,7 +1,7 @@
 using System.Diagnostics;
-using DeskHub.Host.Web;
+using RezPad.Host.Web;
 
-namespace DeskHub.Host;
+namespace RezPad.Host;
 
 /// <summary>Tray icon and menu. The app has no main window; the config editor runs in the browser.</summary>
 internal sealed class TrayContext : ApplicationContext
@@ -20,7 +20,7 @@ internal sealed class TrayContext : ApplicationContext
         _icon = new NotifyIcon
         {
             Icon = SystemIcons.Application, // placeholder until the app icon exists (Phase 11)
-            Text = "DeskHub",
+            Text = "rez-pad",
             ContextMenuStrip = menu,
             Visible = true,
         };

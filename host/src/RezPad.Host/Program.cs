@@ -1,6 +1,6 @@
-using DeskHub.Host.Web;
+using RezPad.Host.Web;
 
-namespace DeskHub.Host;
+namespace RezPad.Host;
 
 internal static class Program
 {
@@ -10,7 +10,7 @@ internal static class Program
     private static int Main(string[] args)
     {
         // One instance per user session: a second copy would fight over the COM port and the HTTP port.
-        using var mutex = new Mutex(initiallyOwned: true, @"Local\DeskHub.Host", out var createdNew);
+        using var mutex = new Mutex(initiallyOwned: true, @"Local\RezPad.Host", out var createdNew);
         if (!createdNew)
         {
             return 1;

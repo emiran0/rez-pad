@@ -1,4 +1,4 @@
-namespace DeskHub.Protocol;
+namespace RezPad.Protocol;
 
 /// <summary>CRC-16/CCITT-FALSE: poly 0x1021, init 0xFFFF, no reflection, xorout 0.</summary>
 public static class Crc16

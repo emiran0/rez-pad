@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 
-namespace DeskHub.Protocol;
+namespace RezPad.Protocol;
 
 /// <summary>Message type codes, see docs/protocol.md.</summary>
 public enum MsgType : byte

@@ -1,4 +1,4 @@
-// DeskHub USB protocol v1: framing primitives.
+// rez-pad USB protocol v1: framing primitives.
 // Spec: docs/protocol.md. Shared test vectors: docs/protocol-test-vectors.json.
 //
 // Pure C++17, no Arduino or ESP-IDF dependencies, no heap allocation, so it
@@ -8,7 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-namespace dh {
+namespace rp {
 namespace proto {
 
 constexpr uint8_t kVersion = 1;
@@ -119,4 +119,4 @@ class FrameDecoder {
 };
 
 }  // namespace proto
-}  // namespace dh
+}  // namespace rp
