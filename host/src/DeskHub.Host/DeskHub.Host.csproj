@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>DeskHub</AssemblyName>
+    <RootNamespace>DeskHub.Host</RootNamespace>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Kestrel for the localhost config editor and API. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DeskHub.Protocol\DeskHub.Protocol.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The web editor lives in the repo's web/ folder and is copied next to the exe. -->
+    <Content Include="..\..\..\web\**\*" LinkBase="web" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

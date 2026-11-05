@@ -1,0 +1,47 @@
+:root {
+  --bg: #f5f6f8;
+  --fg: #1b1f24;
+  --muted: #5b6573;
+  --accent: #0b7fb3;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171b;
+    --fg: #e6e9ed;
+    --muted: #9aa4b1;
+    --accent: #4fc3f7;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 system-ui, "Segoe UI", sans-serif;
+}
+
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px 16px;
+}
+
+h1 {
+  color: var(--accent);
+  margin-top: 0;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+}
+
+dt {
+  color: var(--muted);
+}
+
+dd {
+  margin: 0;
+}

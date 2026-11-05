@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Verified on nuget.org 2026-11-06. Runs on Microsoft.Testing.Platform (see global.json). -->
+    <PackageReference Include="xunit.v3" Version="4.0.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DeskHub.Protocol\DeskHub.Protocol.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Shared with the firmware tests, see docs/protocol.md. -->
+    <None Include="..\..\..\docs\protocol-test-vectors.json" Link="protocol-test-vectors.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

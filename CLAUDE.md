@@ -177,7 +177,7 @@ Lives in `firmware/include/pins.h`, mirrored in `docs/hardware.md`. Change both 
 ### Solution layout
 ```
 host/
-  DeskHub.sln
+  DeskHub.slnx
   src/DeskHub.Host/          tray app, services, Kestrel, web assets
   src/DeskHub.Protocol/      COBS, CRC, message types (no Windows deps, unit-testable)
   tests/DeskHub.Protocol.Tests/
@@ -259,7 +259,7 @@ deskhub/
   tools/
     gen_protocol_vectors.py   reference framing implementation, generates shared test vectors
   host/
-    DeskHub.sln
+    DeskHub.slnx
     src/DeskHub.Host/
     src/DeskHub.Protocol/
     tests/DeskHub.Protocol.Tests/
@@ -376,4 +376,5 @@ artist
 album`. See `docs/protocol.md`.
 - 2026-11-06: Board definition `esp32-s3-devkitc1-n16r8` from pioarduino instead of overriding `esp32-s3-devkitc-1`.
 - 2026-11-06: Config `inputs.buttons` (0 to 2) added to schema 1 (not yet released, so no migration) to declare how many physical buttons are fitted. Default 0.
+- 2026-11-06: Host uses the `.slnx` solution format (.NET 10 default) and xUnit v3 on Microsoft.Testing.Platform (`host/global.json` opts in; `dotnet test --project tests/DeskHub.Protocol.Tests`). The .NET 10 SDK no longer runs MTP-based tests through VSTest.
 - 2026-11-06: Volume control via direct Core Audio COM interop instead of NAudio (smaller, no extra dependency).
