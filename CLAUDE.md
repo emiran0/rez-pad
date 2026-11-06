@@ -371,9 +371,7 @@ Tracked in the "Open hardware checks" table in `docs/hardware.md` (native USB po
 
 - 2026-11-06: Protocol framing lives in a pure C++ library (`firmware/lib/protocol/`) instead of `src/link/`, so it can be unit-tested on the host. `src/link/` keeps only the USB transport and dispatch.
 - 2026-11-06: Shared protocol test vectors (`docs/protocol-test-vectors.json`, plus a generated C header for the firmware tests) produced by `tools/gen_protocol_vectors.py`. Both sides test against the same bytes, so they cannot drift.
-- 2026-11-06: Protocol details pinned down: CRC-16/CCITT-FALSE, CRC-32/ISO-HDLC (zlib), canonical COBS, per-side `seq` counters, `track_id` = CRC32 of `title
-artist
-album`. See `docs/protocol.md`.
+- 2026-11-06: Protocol details pinned down: CRC-16/CCITT-FALSE, CRC-32/ISO-HDLC (zlib), canonical COBS, per-side `seq` counters, `track_id` = CRC32 of `title + "\n" + artist + "\n" + album`. See `docs/protocol.md`.
 - 2026-11-06: Board definition `esp32-s3-devkitc1-n16r8` from pioarduino instead of overriding `esp32-s3-devkitc-1`.
 - 2026-11-06: Config `inputs.buttons` (0 to 2) added to schema 1 (not yet released, so no migration) to declare how many physical buttons are fitted. Default 0.
 - 2026-11-06: Host uses the `.slnx` solution format (.NET 10 default) and xUnit v3 on Microsoft.Testing.Platform (`host/global.json` opts in; `dotnet test --project tests/RezPad.Protocol.Tests`). The .NET 10 SDK no longer runs MTP-based tests through VSTest.
