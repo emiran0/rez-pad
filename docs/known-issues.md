@@ -21,7 +21,7 @@ Quick check on a new PC: run the host, then save `http://127.0.0.1:47800/api/sou
 
 ## Display
 
-- **White/grey screen after a cold plug-in (2026-11-07, seen once).** Plugging in the native USB cable first (board unpowered before): the backlight came on but the screen stayed white with no image, while the firmware ran normally (host connected). Pressing RST fixed it. The display was on 3V3 (its U1 regulator starved, about 3.0 V out). Suspects: contact bounce while plugging in drops the display but not the ESP32, or panel init before the display supply is stable. Recheck after moving display VCC to 5 V; if it still happens, delay the panel init after a power-on reset and/or re-run it once (the ILI9488 cannot be read back, MISO is not connected).
+- **Resolved 2026-11-07: white/grey screen after a cold plug-in.** Seen once with the display on 3V3 (its U1 regulator starved, about 3.0 V out): native USB plugged in first, backlight on but no image while the firmware ran; RST fixed it. After moving display VCC to 5V (`IN-OUT` bridged), 5 of 5 cold plug-ins with the native cable first came up normally. If it ever comes back: delay the panel init after a power-on reset and/or re-run it once (the ILI9488 cannot be read back, MISO is not connected).
 
 ## USB and development setup
 

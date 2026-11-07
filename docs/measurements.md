@@ -153,3 +153,12 @@ Direct NVML calls (nvml.dll from the NVIDIA driver) cost about 2 us each for tem
 
 Not checked on the screen yet: icon placement and readability, the `clock` widget and the forecast `hourly` mode (neither is in the default layout; they become placeable with the config in Phase 9/10).
 
+## Display power (2026-11-07)
+
+| Item | Before | After |
+|---|---|---|
+| Display VCC | 3V3 pin (module regulator U1 starved, about 3.0 V out) | 5Vin, about 4.8 V (`IN-OUT` bridged) |
+| Brightness | Dim even at 100 % (gamma 2.2: the 80 % default is 61 % PWM duty) | Clearly brighter at the 80 % default |
+| Cold plug-in, native cable first | 1 of 1 white/grey screen until RST | 5 of 5 normal |
+| Device health after the change | | Host link, sensors (AHT20 + BMP280, 0 errors), PSRAM all normal |
+
