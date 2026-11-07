@@ -6,6 +6,7 @@ This file is the project overview and the rules for working on it. Read it fully
 - `docs/protocol.md`: USB protocol v1 (+ `docs/protocol-test-vectors.json`)
 - `docs/config-schema.md`: config file, widget catalog, sources, actions, web editor, host API
 - `docs/measurements.md`: real measurements from the hardware
+- `docs/known-issues.md`: known limitations deliberately left for later (review before release)
 
 See section 14 for decisions that changed or refined the original brief.
 
