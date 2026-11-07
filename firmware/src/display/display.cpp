@@ -109,6 +109,7 @@ void drawTestPattern() {
   const int w = d.width();
   const int h = d.height();
   d.startWrite();
+  d.setFont(&fonts::Font0);
   d.fillScreen(TFT_BLACK);
 
   // 1 px white border: every edge must be visible, none cut off or doubled.

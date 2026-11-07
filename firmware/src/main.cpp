@@ -1,17 +1,22 @@
 // rez-pad firmware entry point.
-// Phase 1: display bring-up (ILI9488 + backlight PWM), SPI benchmark and a wiring check,
-// driven from a debug console on UART0 (the USB-UART bridge port, 115200 baud).
+// Phase 2: encoders (PCNT), switch gestures, AHT20 + BMP280 with filtering and trend, shown on an
+// on-screen debug view. Phase 1 display tools (test pattern, SPI benchmark) stay available on the
+// debug console on UART0 (the USB-UART bridge port, 115200 baud).
 #include <Arduino.h>
 #include <esp_chip_info.h>
 #include <esp_flash.h>
 #include <string.h>
 
+#include "config/defaults.h"
 #include "debug/console.h"
 #include "debug/wiring_check.h"
 #include "display/backlight.h"
 #include "display/display.h"
+#include "input/input.h"
 #include "pins.h"
 #include "rezpad_protocol.h"
+#include "sensors/sensors.h"
+#include "ui/debug_view.h"
 
 #ifndef FW_VERSION
 #define FW_VERSION "dev"
@@ -19,7 +24,7 @@
 
 namespace {
 
-constexpr uint8_t kDefaultBrightness = 80;
+constexpr uint32_t kViewRefreshMs = 50;
 
 bool protocolSelfTest() {
   static const uint8_t kCheck[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
@@ -51,6 +56,14 @@ void printInfo(Print& out) {
              rp::backlight::get());
 }
 
+bool parseFloat(const char* s, float lo, float hi, float& out) {
+  char* end = nullptr;
+  const float v = strtof(s, &end);
+  if (end == s || *end != '\0' || v < lo || v > hi) return false;
+  out = v;
+  return true;
+}
+
 bool parseUint(const char* s, long lo, long hi, long& out) {
   char* end = nullptr;
   const long v = strtol(s, &end, 10);
@@ -78,6 +91,7 @@ void cmdSpi(int argc, char** argv, Print& out) {
   long mhz = 0;
   if (argc == 2 && parseUint(argv[1], 1, 80, mhz)) {
     rp::display::setSpiHz(static_cast<uint32_t>(mhz) * 1000000u);
+    rp::debug_view::hide();
     rp::display::drawTestPattern();
   } else if (argc != 1) {
     out.println("usage: spi <1-80>  (MHz, redraws the test pattern)");
@@ -87,6 +101,7 @@ void cmdSpi(int argc, char** argv, Print& out) {
 }
 
 void cmdPattern(int, char**, Print& out) {
+  rp::debug_view::hide();
   const uint32_t t0 = micros();
   rp::display::drawTestPattern();
   out.printf("test pattern drawn in %.1f ms\n", (micros() - t0) / 1000.0f);
@@ -102,6 +117,7 @@ void cmdFill(int argc, char** argv, Print& out) {
   if (argc == 2) {
     for (const auto& c : kColors) {
       if (strcmp(argv[1], c.name) == 0) {
+        rp::debug_view::hide();
         rp::display::lcd().fillScreen(c.color);
         return;
       }
@@ -114,6 +130,7 @@ void cmdRotation(int argc, char** argv, Print& out) {
   long r = 0;
   if (argc == 2 && parseUint(argv[1], 0, 3, r)) {
     rp::display::setRotation(static_cast<uint8_t>(r));
+    rp::debug_view::hide();
     rp::display::drawTestPattern();
   } else {
     out.println("usage: rot <0-3>  (1 and 3 are landscape)");
@@ -123,7 +140,7 @@ void cmdRotation(int argc, char** argv, Print& out) {
 void cmdInvert(int argc, char** argv, Print& out) {
   long v = 0;
   if (argc == 2 && parseUint(argv[1], 0, 1, v)) rp::display::setInvert(v != 0);
-  else out.println("usage: invert <0|1>");
+  else out.println("usage: lcdinv <0|1>");
 }
 
 void cmdBench(int argc, char** argv, Print& out) {
@@ -138,8 +155,91 @@ void cmdBench(int argc, char** argv, Print& out) {
     }
     list[n++] = static_cast<uint32_t>(mhz) * 1000000u;
   }
+  rp::debug_view::hide();
   if (n == 0) rp::display::runBenchmark(kDefault, 4, out);
   else rp::display::runBenchmark(list, n, out);
+}
+
+void cmdView(int argc, char** argv, Print& out) {
+  if (argc == 2 && strcmp(argv[1], "debug") == 0) rp::debug_view::show();
+  else if (argc == 2 && strcmp(argv[1], "pattern") == 0) cmdPattern(1, argv, out);
+  else out.println("usage: view <debug|pattern>");
+}
+
+void cmdSensor(int, char**, Print& out) {
+  const auto r = rp::sensors::latest();
+  if (r.updatedMs == 0) {
+    out.println("sensor: no reading yet");
+    return;
+  }
+  out.printf("room temp %.2f C, hum %.1f %%, press %.2f hPa, trend %s (%+.2f hPa/3h)\n", r.tempC, r.humPct,
+             r.pressHpa, rp::sensor::trendName(r.trend), r.trendDelta3h);
+  out.printf("raw: aht20 %.2f C %.1f %%, bmp280 %.2f C %.2f hPa (0x%02X)\n", r.rawTempC, r.rawHumPct, r.bmpTempC,
+             r.rawPressHpa, r.bmpAddr);
+  out.printf("ok aht %d bmp %d, samples %lu, errors aht %lu bmp %lu, age %lus\n", r.ahtOk, r.bmpOk,
+             static_cast<unsigned long>(r.samples), static_cast<unsigned long>(r.ahtErrors),
+             static_cast<unsigned long>(r.bmpErrors), static_cast<unsigned long>((millis() - r.updatedMs) / 1000));
+}
+
+void cmdOffset(int argc, char** argv, Print& out) {
+  auto c = rp::sensors::config();
+  float t = 0, h = 0;
+  if (argc == 3 && parseFloat(argv[1], -10, 10, t) && parseFloat(argv[2], -20, 20, h)) {
+    c.tempOffsetC = t;
+    c.humOffsetPct = h;
+    rp::sensors::setConfig(c);
+    out.println("applied from the next reading (within 5 s)");
+  } else if (argc != 1) {
+    out.println("usage: offset <temp C> <hum %>");
+  }
+  out.printf("offsets: temp %+.2f C, hum %+.2f %%\n", c.tempOffsetC, c.humOffsetPct);
+}
+
+void cmdEnc(int, char**, Print& out) {
+  const auto s = rp::input::snapshot();
+  const auto& c = rp::input::config();
+  for (int i = 0; i < 2; ++i) {
+    out.printf("enc%d: count %ld, detents %ld, %d counts/click, invert %d, switch %s\n", i + 1,
+               static_cast<long>(s.rawCount[i]), static_cast<long>(s.detents[i]), c.enc[i].countsPerDetent,
+               c.enc[i].invert, s.switchDown[i] ? "down" : "up");
+  }
+  out.printf("buttons fitted %u, queue drops %lu\n", c.buttons, static_cast<unsigned long>(s.dropped));
+}
+
+void cmdCpd(int argc, char** argv, Print& out) {
+  long e = 0, n = 0;
+  if (argc == 3 && parseUint(argv[1], 1, 2, e) && parseUint(argv[2], 1, 8, n)) {
+    auto c = rp::input::config();
+    c.enc[e - 1].countsPerDetent = static_cast<int>(n);
+    rp::input::setConfig(c);
+  } else {
+    out.println("usage: cpd <1|2> <counts per click>");
+  }
+  cmdEnc(1, argv, out);
+}
+
+void cmdEncInv(int argc, char** argv, Print& out) {
+  long e = 0, v = 0;
+  if (argc == 3 && parseUint(argv[1], 1, 2, e) && parseUint(argv[2], 0, 1, v)) {
+    auto c = rp::input::config();
+    c.enc[e - 1].invert = v != 0;
+    rp::input::setConfig(c);
+  } else {
+    out.println("usage: encinv <1|2> <0|1>");
+  }
+  cmdEnc(1, argv, out);
+}
+
+void cmdButtons(int argc, char** argv, Print& out) {
+  long n = 0;
+  if (argc == 2 && parseUint(argv[1], 0, 2, n)) {
+    auto c = rp::input::config();
+    c.buttons = static_cast<uint8_t>(n);
+    rp::input::setConfig(c);
+  } else {
+    out.println("usage: buttons <0-2>");
+  }
+  cmdEnc(1, argv, out);
 }
 
 const rp::console::Command kCommands[] = {
@@ -151,8 +251,15 @@ const rp::console::Command kCommands[] = {
     {"pattern", "", cmdPattern},
     {"fill", "<color>", cmdFill},
     {"rot", "<0-3>", cmdRotation},
-    {"invert", "<0|1>", cmdInvert},
+    {"lcdinv", "<0|1>", cmdInvert},
     {"bench", "[MHz ...]", cmdBench},
+    {"view", "<debug|pattern>", cmdView},
+    {"enc", "", cmdEnc},
+    {"cpd", "<1|2> <counts per click>", cmdCpd},
+    {"encinv", "<1|2> <0|1>", cmdEncInv},
+    {"buttons", "<0-2>", cmdButtons},
+    {"sensor", "", cmdSensor},
+    {"offset", "[<temp C> <hum %>]", cmdOffset},
 };
 
 }  // namespace
@@ -165,13 +272,29 @@ void setup() {
 
   rp::backlight::begin();  // off while the panel initializes, avoids a white flash
   const bool lcdOk = rp::display::begin();
-  rp::display::drawTestPattern();
-  rp::backlight::set(kDefaultBrightness);
+
+  rp::input::Config inCfg;
+  for (auto& e : inCfg.enc) {
+    e.countsPerDetent = rp::defaults::kCountsPerDetent;
+    e.invert = rp::defaults::kEncInvert;
+  }
+  inCfg.buttons = rp::defaults::kButtons;
+  const bool inputOk = rp::input::begin(inCfg);
+
+  rp::sensors::Config sCfg;
+  sCfg.tempOffsetC = rp::defaults::kTempOffsetC;
+  sCfg.humOffsetPct = rp::defaults::kHumOffsetPct;
+  sCfg.trendThresholdHpa = rp::defaults::kTrendThresholdHpa;
 
   printInfo(Serial);
   if (!lcdOk) Serial.println("display init FAILED");
-  rp::wiring::scanI2c(Serial);
+  if (!inputOk) Serial.println("input init FAILED");
+  rp::wiring::scanI2c(Serial);  // before the sensor task starts using the bus
   rp::wiring::printInputLevels(Serial);
+  if (!rp::sensors::begin(sCfg)) Serial.println("sensor task FAILED");
+
+  rp::debug_view::show();
+  rp::backlight::set(rp::defaults::kBrightness);
 
   rp::console::begin(kCommands, sizeof(kCommands) / sizeof(kCommands[0]));
   Serial.println("ready, type help");
@@ -179,5 +302,22 @@ void setup() {
 
 void loop() {
   rp::console::poll();
-  delay(5);
+
+  rp::input::Event e;
+  while (rp::input::poll(e)) {
+    if (e.kind == rp::input::Kind::kRotate) {
+      Serial.printf("[input] %s rotate %+d\n", rp::input::sourceName(e.source), e.value);
+    } else {
+      Serial.printf("[input] %s %s\n", rp::input::sourceName(e.source), rp::input::kindName(e.kind));
+    }
+    rp::debug_view::addEvent(e);
+  }
+
+  static uint32_t lastView = 0;
+  const uint32_t now = millis();
+  if (now - lastView >= kViewRefreshMs) {
+    lastView = now;
+    rp::debug_view::update(rp::input::snapshot(), rp::sensors::latest());
+  }
+  delay(2);
 }

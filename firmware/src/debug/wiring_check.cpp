@@ -1,7 +1,9 @@
 #include "wiring_check.h"
 
 #include <Wire.h>
+#include <driver/gpio.h>
 
+#include "i2c_bus.h"
 #include "pins.h"
 
 namespace rp {
@@ -18,15 +20,10 @@ const char* knownDevice(uint8_t addr) {
   }
 }
 
-bool gWireStarted = false;
-
 }  // namespace
 
 int scanI2c(Print& out) {
-  if (!gWireStarted) {
-    Wire.begin(pins::kI2cSda, pins::kI2cScl, 400000);
-    gWireStarted = true;
-  }
+  I2cLock lock;
   out.printf("I2C scan (SDA=%d, SCL=%d, 400 kHz):\n", pins::kI2cSda, pins::kI2cScl);
   int found = 0;
   bool aht = false;
@@ -55,13 +52,10 @@ void printInputLevels(Print& out) {
       {"enc2 CLK", pins::kEnc2A}, {"enc2 DT", pins::kEnc2B}, {"enc2 SW", pins::kEnc2Sw},
       {"btn1", pins::kBtn1},      {"btn2", pins::kBtn2},
   };
+  // Pins are configured (pull-ups, PCNT routing) by input::begin(); only read them here.
   out.println("input levels (pull-up on, idle should be HIGH):");
   for (const auto& in : kInputs) {
-    pinMode(in.pin, INPUT_PULLUP);
-  }
-  delay(2);
-  for (const auto& in : kInputs) {
-    out.printf("  %-9s GPIO%-2d %s\n", in.name, in.pin, digitalRead(in.pin) ? "HIGH" : "LOW");
+    out.printf("  %-9s GPIO%-2d %s\n", in.name, in.pin, gpio_get_level(static_cast<gpio_num_t>(in.pin)) ? "HIGH" : "LOW");
   }
   out.println("  (unconnected pins also read HIGH because of the pull-up)");
 }

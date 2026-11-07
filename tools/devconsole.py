@@ -36,6 +36,7 @@ def main() -> int:
     ap.add_argument("--reset", action="store_true", help="reset the board and print the boot log")
     ap.add_argument("--quiet", type=float, default=1.5, help="seconds of silence that end a reply")
     ap.add_argument("--limit", type=float, default=60.0, help="max seconds to wait per step")
+    ap.add_argument("--listen", type=float, default=0, help="after the commands, print output for N seconds")
     ap.add_argument("commands", nargs="*")
     args = ap.parse_args()
 
@@ -58,6 +59,13 @@ def main() -> int:
             s.write((cmd + "\n").encode())
             s.flush()
             sys.stdout.write(read_until_quiet(s, args.quiet, args.limit))
+        if args.listen > 0:
+            end = time.time() + args.listen
+            while time.time() < end:
+                chunk = s.read(4096)
+                if chunk:
+                    sys.stdout.write(chunk.decode("utf-8", "replace"))
+                    sys.stdout.flush()
     finally:
         s.close()
     return 0

@@ -380,4 +380,9 @@ Tracked in the "Open hardware checks" table in `docs/hardware.md` (native USB po
 - 2026-11-07: SPI display clock steps are 80 MHz / n on the ESP32-S3 (80, 40, 26.7, 20 MHz). "60 MHz" in the Phase 1 plan is not reachable; it runs at 40 MHz. The benchmark reports requested and effective clocks.
 - 2026-11-07: LovyanGFX pinned to 1.2.36. 1.3.0 was released 2026-11-06 with breaking DMA/sprite changes; revisit when integrating LVGL (Phase 3).
 - 2026-11-07: Debug console on UART0 (`firmware/src/debug/`) with `tools/devconsole.py` to drive it. Used for bring-up and measurements until the protocol CMD message exists (Phase 5).
-- 2026-11-07: Default `counts_per_detent` is 2 (measured on the fitted KY-040), not 4.
+- 2026-11-07: Default `counts_per_detent` stays 4, confirmed by a 10-click test on the fitted KY-040 (an earlier pin-level reading suggested 2; that was wrong).
+- 2026-11-07: Humidity is corrected for the temperature offset instead of only adding `hum_offset_pct`: the sensor runs warm (self-heating), so its RH reads low. RH is converted from the measured to the corrected temperature with the Magnus formula (same absolute humidity), then `hum_offset_pct` is added.
+- 2026-11-07: BMP280 runs in forced mode (one conversion per 5 s read, no IIR), so it sleeps between reads and adds no heat. Filtering is done in firmware (median of 3, then EMA).
+- 2026-11-07: Input, gesture and sensor maths live in pure C++ libraries (`firmware/lib/input_logic`, `firmware/lib/sensor_logic`) with native tests, including the BMP280 datasheet compensation example.
+- 2026-11-07: Pressure trend needs 1 h of history before reporting, and extrapolates to 3 h until 3 h of data exist.
+

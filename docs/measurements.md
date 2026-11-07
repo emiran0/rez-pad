@@ -42,11 +42,11 @@ Chosen default: **40 MHz** (2026-11-07). Full frame 92.7 ms, within the < 120 ms
 
 | Encoder | Counts per detent | Direction OK? | Notes |
 |---|---|---|---|
-| enc1 | | | |
-| enc2 | | | |
+| enc1 | 4 | yes (clockwise = +) | 2026-11-07, breadboard. 10 slow clicks each way = exactly 10 steps each way. Fast back-and-forth spin: +116 / -116 steps, net 0, no queue drops. Click, double and long each detected once. |
+| enc2 | | | Not fitted yet |
 
 ## Sensor calibration
 
 | Date | Reference temp | AHT20 temp | Offset applied | Reference RH | AHT20 RH | Notes |
 |---|---|---|---|---|---|---|
-| | | | | | | |
+| 2026-11-07 | none | 28.3 C raw at boot, 29.2 C after ~5 min (BMP280 29.4 C) | -1.5 C default | none | 33.1 % raw, about 35 % after the temperature correction | Breadboard, sensor near the ESP32 and display: it warms up after boot (self-heating). Pressure 1018.2 hPa, 0 read errors in 22 samples. Calibrate once the sensor sits in its final position. |
