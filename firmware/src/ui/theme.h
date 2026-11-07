@@ -6,6 +6,9 @@
 namespace rp {
 namespace ui {
 
+// theme.accent from the config; set before the pages are built (ui.cpp).
+extern uint32_t gAccentRgb;
+
 namespace color {
 inline lv_color_t bg() { return lv_color_hex(0x0E1013); }
 inline lv_color_t card() { return lv_color_hex(0x1B1F25); }
@@ -13,7 +16,7 @@ inline lv_color_t cardBorder() { return lv_color_hex(0x2A3038); }
 inline lv_color_t text() { return lv_color_hex(0xE8EAED); }
 inline lv_color_t dim() { return lv_color_hex(0x8A939E); }
 inline lv_color_t faint() { return lv_color_hex(0x3A414A); }
-inline lv_color_t accent() { return lv_color_hex(0x4FC3F7); }
+inline lv_color_t accent() { return lv_color_hex(gAccentRgb); }
 inline lv_color_t ok() { return lv_color_hex(0x66BB6A); }
 inline lv_color_t warn() { return lv_color_hex(0xFFB300); }
 inline lv_color_t crit() { return lv_color_hex(0xEF5350); }

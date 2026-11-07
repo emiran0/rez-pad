@@ -6,26 +6,19 @@
 #include <math.h>
 #include <stdint.h>
 
+#include "config_logic.h"
 #include "ui/model.h"
 
 namespace rp {
 namespace widgets {
 
-// One widget on a page (mirrors a "widgets" entry in the config JSON).
-struct Spec {
-  const char* type;
-  uint8_t x, y, w, h;          // grid cell position and size
-  const char* source = nullptr;  // data source id for metric_* widgets
-  const char* label = nullptr;
-  const char* unit = nullptr;
-  float min = 0, max = 100;
-  float warn = NAN, crit = NAN;  // thresholds for color changes (NAN = not set)
-  int8_t decimals = -1;          // -1 = automatic
-  const char* mode = nullptr;    // weather_forecast: "daily" or "hourly"
-};
+// One widget on a page: a "widgets" entry of the config, parsed and validated by lib/config_logic
+// (strings are empty when not set; unit, range and thresholds already have source defaults).
+using Spec = cfg::WidgetSpec;
 
 class Widget {
  public:
+  // `spec` lives in the active config, which outlives the widget (pages are rebuilt first).
   explicit Widget(const Spec& spec) : spec_(spec) {}
   virtual ~Widget() = default;
 
@@ -41,14 +34,12 @@ class Widget {
   const Spec& spec() const { return spec_; }
 
  protected:
-  Spec spec_;
+  const Spec& spec_;
 };
 
 // Returns nullptr for an unknown type.
 Widget* create(const Spec& spec);
 
-// Allowed sizes per type (docs/config-schema.md). Unknown types return false.
-bool sizeAllowed(const char* type, int w, int h);
 
 }  // namespace widgets
 }  // namespace rp

@@ -136,7 +136,7 @@ void WeatherNow::refresh(const ui::Model& m, uint32_t, uint32_t) {
 
 void WeatherForecast::build(lv_obj_t* card, int w, int h) {
   (void)h;
-  hourly_ = spec_.mode && strcmp(spec_.mode, "hourly") == 0;
+  hourly_ = strcmp(spec_.mode, "hourly") == 0;
   const int colW = w / kCols;
   for (int i = 0; i < kCols; ++i) {
     lv_obj_t* col = lv_obj_create(card);

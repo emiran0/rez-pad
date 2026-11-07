@@ -16,7 +16,7 @@ internal sealed class MediaBridge : IDisposable
     private readonly SerialLink _link;
     private readonly MediaService _media;
     private readonly AudioService _audio;
-    private readonly MediaOptions _options;
+    private readonly Func<MediaOptions> _options;
     private readonly SemaphoreSlim _artGate = new(1, 1);
     private readonly System.Threading.Timer _resync;
     private (uint Id, uint Crc)? _deviceArt;  // what the device has; Crc 0 = ART_NONE
@@ -24,13 +24,13 @@ internal sealed class MediaBridge : IDisposable
     private long _trackChangedAt;
     private uint _lastTrack;  // Stopwatch timestamp of the last track change, for the art latency log
 
-    public MediaBridge(SerialLink link, MediaService media, AudioService audio, MediaOptions options)
+    public MediaBridge(SerialLink link, MediaService media, AudioService audio, Func<MediaOptions> options)
     {
         _link = link;
         _media = media;
         _audio = audio;
         _options = options;
-        _artSize = options.ArtSize;
+        _artSize = options().ArtSize;
         _resync = new System.Threading.Timer(_ => SendNowPlaying(), null, Resync, Resync);
 
         _link.Connected += ack => Task.Run(() => OnConnectedAsync(ack));
@@ -69,7 +69,7 @@ internal sealed class MediaBridge : IDisposable
             case "media.next": _media.Next(); break;
             case "media.prev": _media.Previous(); break;
             case "media.seek": _media.Seek(value); break;
-            case "media.volume": _audio.Step(value * _options.VolumeStep); break;
+            case "media.volume": _audio.Step(value * _options().VolumeStep); break;
             case "media.mute": _audio.ToggleMute(); break;
             default:
                 Log.Info($"action {action} {value} not handled by the host");
@@ -80,12 +80,25 @@ internal sealed class MediaBridge : IDisposable
 
     private async Task OnConnectedAsync(HelloAckMsg ack)
     {
-        // The device may have lost its art (reset, reflash); start over.
+        // The device may have lost its art (reset, reflash); start over. Not forced: with _deviceArt
+        // cleared it is sent anyway, and a send already queued by a media change is not repeated.
         _deviceArt = null;
-        _artSize = Math.Clamp(ack.Art ?? _options.ArtSize, 32, 480);
+        _artSize = Math.Clamp(ack.Art ?? _options().ArtSize, 32, 480);
         SendNowPlaying();
-        await SendArtAsync(force: true);
+        await SendArtAsync(force: false);
         SendVolume();
+    }
+
+    /// <summary>A new config is on the device; its layout may want another album art size.</summary>
+    public void OnConfigApplied(ConfigAckMsg ack)
+    {
+        if (ack.Art is not { } art || art <= 0 || art == _artSize)
+        {
+            return;
+        }
+        _artSize = Math.Clamp(art, 32, 480);
+        Log.Info($"album art size now {_artSize}px");
+        _ = Task.Run(() => SendArtAsync(force: true));
     }
 
     private void OnMediaChanged(MediaState state)

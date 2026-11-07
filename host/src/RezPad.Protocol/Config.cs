@@ -1,0 +1,638 @@
+using System.Buffers.Binary;
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
+namespace RezPad.Protocol;
+
+/// <summary>
+/// Widget catalog, actions and data source defaults of config schema 1 (docs/config-schema.md).
+/// Mirrors firmware/lib/config_logic; both are tested against docs/config-test-vectors.json.
+/// </summary>
+public static class ConfigCatalog
+{
+    public const int Schema = 1;
+    public const int MaxPages = 8;
+    public const int MaxWidgets = 16;
+    public const int MaxGrid = 8;
+    public const int MaxConfigBytes = 32768;
+
+    /// <summary>Different data sources over all pages (the device keeps 16 SYS_STATS values).</summary>
+    public const int MaxSources = 16;
+
+    /// <summary>Allowed (w, h) per widget type; an empty list means any size.</summary>
+    public static readonly IReadOnlyDictionary<string, (int W, int H)[]> WidgetSizes = new Dictionary<string, (int, int)[]>
+    {
+        ["album_art"] = [(2, 2)],
+        ["track_info"] = [(2, 1), (2, 2), (4, 1)],
+        ["media_controls"] = [(2, 1), (3, 1), (4, 1)],
+        ["progress"] = [(2, 1), (4, 1)],
+        ["volume"] = [(1, 1), (2, 1)],
+        ["metric_value"] = [(1, 1), (2, 1)],
+        ["metric_bar"] = [(2, 1), (4, 1)],
+        ["metric_gauge"] = [(1, 1), (2, 2)],
+        ["metric_graph"] = [(2, 1), (2, 2), (4, 1)],
+        ["clock"] = [(1, 1), (2, 1)],
+        ["room_climate"] = [(2, 1), (2, 2)],
+        ["weather_now"] = [(2, 1), (2, 2)],
+        ["weather_forecast"] = [(4, 1)],
+        ["label"] = [],
+    };
+
+    public static readonly IReadOnlyList<string> Actions =
+    [
+        "none", "nav.page", "nav.next_page", "nav.prev_page", "nav.home", "media.play_pause", "media.next",
+        "media.prev", "media.seek", "media.volume", "media.mute", "display.toggle", "display.brightness",
+    ];
+
+    /// <summary>Actions that take a detent count: allowed on rotate gestures only, the others on presses only.</summary>
+    public static readonly IReadOnlySet<string> RotateActions =
+        new HashSet<string> { "nav.page", "media.seek", "media.volume", "display.brightness" };
+
+    public static bool SizeAllowed(string type, int w, int h) =>
+        WidgetSizes.TryGetValue(type, out var sizes) && (sizes.Length == 0 ? w > 0 && h > 0 : sizes.Contains((w, h)));
+
+    public static bool IsMetric(string type) => type.StartsWith("metric_", StringComparison.Ordinal);
+
+    public sealed record SourceStyle(string Unit, double Min, double Max, double? Warn, double? Crit);
+
+    /// <summary>Unit, range and thresholds a widget gets when it does not set them (same table as the firmware).</summary>
+    public static SourceStyle SourceDefaults(string? s)
+    {
+        if (string.IsNullOrEmpty(s))
+        {
+            return new("", 0, 100, null, null);
+        }
+        if (s.Contains(".temp", StringComparison.Ordinal) || s.Contains("_temp", StringComparison.Ordinal))
+        {
+            return new("°C", 20, 100, 75, 90);
+        }
+        if (s.EndsWith(".load", StringComparison.Ordinal) || s.EndsWith("_load", StringComparison.Ordinal))
+        {
+            return new("%", 0, 100, 80, 95);
+        }
+        if (s.EndsWith("used_pct", StringComparison.Ordinal) || s.EndsWith("vram_pct", StringComparison.Ordinal))
+        {
+            return s.StartsWith("sys.disk.", StringComparison.Ordinal) ? new("%", 0, 100, 90, 97) : new("%", 0, 100, 85, 95);
+        }
+        if (s.EndsWith("_pct", StringComparison.Ordinal) || s == "room.hum")
+        {
+            return new("%", 0, 100, null, null);
+        }
+        if (s.EndsWith("_kbps", StringComparison.Ordinal))
+        {
+            return new("kB/s", 0, 10000, null, null);
+        }
+        if (s.EndsWith("_mhz", StringComparison.Ordinal))
+        {
+            return new("MHz", 0, 6000, null, null);
+        }
+        if (s.EndsWith("_w", StringComparison.Ordinal))
+        {
+            return new("W", 0, 300, null, null);
+        }
+        if (s.EndsWith("_gb", StringComparison.Ordinal))
+        {
+            return new("GB", 0, 64, null, null);
+        }
+        if (s.EndsWith(".rpm", StringComparison.Ordinal) || s.EndsWith("_rpm", StringComparison.Ordinal))
+        {
+            return new("rpm", 0, 3000, null, null);
+        }
+        return s == "room.pressure" ? new("hPa", 950, 1050, null, null) : new("", 0, 100, null, null);
+    }
+
+    /// <summary>Data source ids the config's pages show (metric widgets), in page order, no duplicates.</summary>
+    public static IReadOnlyList<string> ReferencedSources(JsonNode? root)
+    {
+        var list = new List<string>();
+        foreach (var page in (root?["pages"] as JsonArray) ?? [])
+        {
+            foreach (var w in (page?["widgets"] as JsonArray) ?? [])
+            {
+                if (w?["type"] is JsonValue t && t.TryGetValue<string>(out var type) && IsMetric(type) &&
+                    w["source"] is JsonValue s && s.TryGetValue<string>(out var id) && id.Length > 0 && !list.Contains(id))
+                {
+                    list.Add(id);
+                }
+            }
+        }
+        return list;
+    }
+}
+
+/// <summary>
+/// Validates a config (schema 1). Returns the first error as "path: reason" (path like
+/// "pages[1].widgets[2].source"), the same paths the firmware reports, or null when valid. Host-only
+/// sections (weather, stats, media.app_priority, media.art_size) are checked too; the device ignores them.
+/// </summary>
+public static class ConfigValidator
+{
+    private sealed class Invalid(string message) : Exception(message);
+
+    public static string? Validate(JsonNode? root, bool hostSections = true)
+    {
+        try
+        {
+            Check(root, hostSections);
+            return null;
+        }
+        catch (Invalid e)
+        {
+            return e.Message;
+        }
+    }
+
+    public static string? Validate(ReadOnlySpan<byte> utf8, bool hostSections = true)
+    {
+        if (utf8.Length > ConfigCatalog.MaxConfigBytes)
+        {
+            return $"config: too large (max {ConfigCatalog.MaxConfigBytes} bytes)";
+        }
+        JsonNode? root;
+        try
+        {
+            root = JsonNode.Parse(utf8);
+        }
+        catch (JsonException e)
+        {
+            return $"config: invalid JSON ({e.Message})";
+        }
+        return Validate(root, hostSections);
+    }
+
+    private static Invalid Fail(string path, string reason) => new($"{path}: {reason}");
+
+    private static string P(string parent, string key) => parent.Length == 0 ? key : $"{parent}.{key}";
+
+    private static void Check(JsonNode? root, bool host)
+    {
+        if (root is not JsonObject o)
+        {
+            throw Fail("config", "must be a JSON object");
+        }
+        if (Int(o, "schema", "", 0, int.MaxValue) != ConfigCatalog.Schema)
+        {
+            throw Fail("schema", $"must be {ConfigCatalog.Schema}");
+        }
+
+        if (Obj(o, "display", "") is { } d)
+        {
+            Int(d, "brightness", "display", 0, 100);
+            if (Obj(d, "night", "display") is { } n)
+            {
+                Bool(n, "enabled", "display.night");
+                Time(n, "from", "display.night");
+                Time(n, "to", "display.night");
+                Int(n, "brightness", "display.night", 0, 100);
+            }
+            Bool(d, "sleep_on_pc_sleep", "display");
+            Int(d, "spi_hz", "display", 1_000_000, 80_000_000);
+        }
+
+        var cols = 4;
+        var rows = 3;
+        if (Obj(o, "grid", "") is { } g)
+        {
+            cols = Int(g, "cols", "grid", 1, ConfigCatalog.MaxGrid) ?? cols;
+            rows = Int(g, "rows", "grid", 1, ConfigCatalog.MaxGrid) ?? rows;
+        }
+
+        if (Obj(o, "theme", "") is { } t)
+        {
+            Str(t, "name", "theme", 16);
+            if (t["accent"] is not null)
+            {
+                var a = t["accent"] is JsonValue av && av.TryGetValue<string>(out var s) ? s : "";
+                if (a.Length != 7 || a[0] != '#' || !a[1..].All(Uri.IsHexDigit))
+                {
+                    throw Fail("theme.accent", "must be a color \"#RRGGBB\"");
+                }
+            }
+        }
+
+        if (Obj(o, "units", "") is { } u)
+        {
+            Choice(u, "temp", "units", "c", "f");
+            Choice(u, "wind", "units", "kmh", "ms", "mph");
+            Choice(u, "pressure", "units", "hpa", "inhg");
+        }
+
+        if (host && Obj(o, "weather", "") is { } w)
+        {
+            var lat = Num(w, "lat", "weather");
+            var lon = Num(w, "lon", "weather");
+            if (lat is < -90 or > 90)
+            {
+                throw Fail("weather.lat", "must be a number from -90 to 90");
+            }
+            if (lon is < -180 or > 180)
+            {
+                throw Fail("weather.lon", "must be a number from -180 to 180");
+            }
+            if ((lat is null) != (lon is null))
+            {
+                throw Fail("weather", "lat and lon must both be set or both be null");
+            }
+            Str(w, "name", "weather", 101);
+            Int(w, "refresh_min", "weather", 5, 180);
+        }
+
+        if (Obj(o, "sensor", "") is { } se)
+        {
+            Range(se, "temp_offset_c", "sensor", -10, 10);
+            Range(se, "hum_offset_pct", "sensor", -20, 20);
+            Range(se, "trend_threshold_hpa", "sensor", 0.1, 10);
+        }
+
+        if (Obj(o, "media", "") is { } m)
+        {
+            Int(m, "volume_step", "media", 1, 20);
+            Int(m, "seek_step_s", "media", 1, 60);
+            if (host)
+            {
+                Int(m, "art_size", "media", 32, 480);
+                if (m["app_priority"] is { } ap)
+                {
+                    if (ap is not JsonArray arr || arr.Count > 16 ||
+                        arr.Any(x => x is not JsonValue v || !v.TryGetValue<string>(out var s) || s.Length is 0 or > 64))
+                    {
+                        throw Fail("media.app_priority", "must be a list of up to 16 app names");
+                    }
+                }
+            }
+        }
+
+        if (host && Obj(o, "stats", "") is { } st)
+        {
+            Range(st, "rate_hz", "stats", 0.2, 4);
+        }
+
+        if (Obj(o, "inputs", "") is { } inputs)
+        {
+            Int(inputs, "buttons", "inputs", 0, 2);
+            foreach (var enc in new[] { "enc1", "enc2" })
+            {
+                if (Obj(inputs, enc, "inputs") is { } e)
+                {
+                    Int(e, "counts_per_detent", P("inputs", enc), 1, 8);
+                    Bool(e, "invert", P("inputs", enc));
+                }
+            }
+            Gestures(inputs, "inputs");
+        }
+
+        if (o["pages"] is not JsonArray pages)
+        {
+            throw Fail("pages", "required, must be an array");
+        }
+        if (pages.Count is < 1 or > ConfigCatalog.MaxPages)
+        {
+            throw Fail("pages", $"must have 1 to {ConfigCatalog.MaxPages} pages");
+        }
+        var ids = new List<string>();
+        for (var i = 0; i < pages.Count; i++)
+        {
+            Page(pages[i], $"pages[{i}]", cols, rows, ids);
+        }
+        if (ConfigCatalog.ReferencedSources(o).Count > ConfigCatalog.MaxSources)
+        {
+            throw Fail("pages", $"at most {ConfigCatalog.MaxSources} different data sources");
+        }
+    }
+
+    private static void Page(JsonNode? node, string path, int cols, int rows, List<string> ids)
+    {
+        if (node is not JsonObject p)
+        {
+            throw Fail(path, "must be an object");
+        }
+        var id = Str(p, "id", path, 24) ?? "";
+        if (id.Length == 0)
+        {
+            throw Fail(P(path, "id"), "required, must not be empty");
+        }
+        if (ids.Contains(id))
+        {
+            throw Fail(P(path, "id"), $"duplicate page id \"{id}\"");
+        }
+        ids.Add(id);
+        Str(p, "name", path, 32);
+
+        if (p["widgets"] is { } wn)
+        {
+            if (wn is not JsonArray widgets)
+            {
+                throw Fail(P(path, "widgets"), "must be an array");
+            }
+            if (widgets.Count > ConfigCatalog.MaxWidgets)
+            {
+                throw Fail(P(path, "widgets"), $"at most {ConfigCatalog.MaxWidgets} widgets per page");
+            }
+            var used = new bool[ConfigCatalog.MaxGrid, ConfigCatalog.MaxGrid];
+            for (var i = 0; i < widgets.Count; i++)
+            {
+                Widget(widgets[i], $"{path}.widgets[{i}]", cols, rows, used);
+            }
+        }
+
+        if (Obj(p, "inputs_override", path) is { } ov)
+        {
+            Gestures(ov, P(path, "inputs_override"));
+        }
+    }
+
+    private static void Widget(JsonNode? node, string path, int cols, int rows, bool[,] used)
+    {
+        if (node is not JsonObject w)
+        {
+            throw Fail(path, "must be an object");
+        }
+        var type = Str(w, "type", path, 20);
+        if (type is null || !ConfigCatalog.WidgetSizes.ContainsKey(type))
+        {
+            throw Fail(path, $"unknown widget type \"{type}\"");
+        }
+        var x = Int(w, "x", path, 0, ConfigCatalog.MaxGrid - 1);
+        var y = Int(w, "y", path, 0, ConfigCatalog.MaxGrid - 1);
+        var ww = Int(w, "w", path, 1, ConfigCatalog.MaxGrid);
+        var hh = Int(w, "h", path, 1, ConfigCatalog.MaxGrid);
+        if (x is not { } cx0 || y is not { } cy0 || ww is not { } wv || hh is not { } hv)
+        {
+            throw Fail(path, "x, y, w and h are required");
+        }
+        if (cx0 + wv > cols || cy0 + hv > rows)
+        {
+            throw Fail(path, $"outside the {cols}x{rows} grid");
+        }
+        if (!ConfigCatalog.SizeAllowed(type, wv, hv))
+        {
+            throw Fail(path, $"size {wv}x{hv} not allowed for {type}");
+        }
+        for (var cy = cy0; cy < cy0 + hv; cy++)
+        {
+            for (var cx = cx0; cx < cx0 + wv; cx++)
+            {
+                if (used[cy, cx])
+                {
+                    throw Fail(path, "overlaps another widget");
+                }
+            }
+        }
+        for (var cy = cy0; cy < cy0 + hv; cy++)
+        {
+            for (var cx = cx0; cx < cx0 + wv; cx++)
+            {
+                used[cy, cx] = true;
+            }
+        }
+
+        var source = Str(w, "source", path, 40) ?? "";
+        if (ConfigCatalog.IsMetric(type) && source.Length == 0)
+        {
+            throw Fail(P(path, "source"), $"required for {type}");
+        }
+        Str(w, "label", path, 32);
+        Str(w, "unit", path, 12);
+        if (type == "weather_forecast")
+        {
+            Choice(w, "mode", path, "daily", "hourly");
+        }
+        var text = Str(w, "text", path, 64) ?? "";
+        if (type == "label" && text.Length == 0)
+        {
+            throw Fail(P(path, "text"), "required for label");
+        }
+        var def = ConfigCatalog.SourceDefaults(source);
+        var min = Num(w, "min", path) ?? def.Min;
+        var max = Num(w, "max", path) ?? def.Max;
+        Num(w, "warn", path);
+        Num(w, "crit", path);
+        Int(w, "decimals", path, 0, 3);
+        if (!(min < max))
+        {
+            throw Fail(path, "min must be below max");
+        }
+    }
+
+    private static void Gestures(JsonObject inputs, string path)
+    {
+        foreach (var enc in new[] { "enc1", "enc2" })
+        {
+            if (Obj(inputs, enc, path) is { } e)
+            {
+                var p = P(path, enc);
+                Action(e, "rotate", p, rotate: true);
+                Action(e, "rotate_pressed", p, rotate: true);
+                Action(e, "click", p, rotate: false);
+                Action(e, "double", p, rotate: false);
+                Action(e, "long", p, rotate: false);
+            }
+        }
+        foreach (var btn in new[] { "btn1", "btn2" })
+        {
+            if (Obj(inputs, btn, path) is { } b)
+            {
+                var p = P(path, btn);
+                Action(b, "click", p, rotate: false);
+                Action(b, "long", p, rotate: false);
+            }
+        }
+    }
+
+    // ---- typed getters: a missing or null key is fine and returns null ----
+
+    private static JsonObject? Obj(JsonObject o, string key, string path) => o[key] switch
+    {
+        null => null,
+        JsonObject x => x,
+        _ => throw Fail(P(path, key), "must be an object"),
+    };
+
+    private static int? Int(JsonObject o, string key, string path, long lo, long hi)
+    {
+        var n = o[key];
+        if (n is null)
+        {
+            return null;
+        }
+        if (n is not JsonValue v || v.GetValueKind() != JsonValueKind.Number || !v.TryGetValue<long>(out var l) ||
+            l < lo || l > hi)
+        {
+            throw Fail(P(path, key), string.Create(CultureInfo.InvariantCulture, $"must be a whole number from {lo} to {hi}"));
+        }
+        return (int)Math.Clamp(l, int.MinValue, int.MaxValue);
+    }
+
+    private static double? Num(JsonObject o, string key, string path)
+    {
+        var n = o[key];
+        if (n is null)
+        {
+            return null;
+        }
+        if (n is not JsonValue v || v.GetValueKind() != JsonValueKind.Number || !v.TryGetValue<double>(out var d))
+        {
+            throw Fail(P(path, key), "must be a number");
+        }
+        return d;
+    }
+
+    private static void Range(JsonObject o, string key, string path, double lo, double hi)
+    {
+        if (Num(o, key, path) is { } d && (d < lo || d > hi))
+        {
+            throw Fail(P(path, key), string.Create(CultureInfo.InvariantCulture, $"must be a number from {lo} to {hi}"));
+        }
+    }
+
+    private static void Bool(JsonObject o, string key, string path)
+    {
+        var n = o[key];
+        if (n is not null && (n is not JsonValue v || v.GetValueKind() is not (JsonValueKind.True or JsonValueKind.False)))
+        {
+            throw Fail(P(path, key), "must be true or false");
+        }
+    }
+
+    /// <summary>String limited to cap - 1 UTF-8 bytes, like the firmware's buffers.</summary>
+    private static string? Str(JsonObject o, string key, string path, int cap)
+    {
+        var n = o[key];
+        if (n is null)
+        {
+            return null;
+        }
+        if (n is not JsonValue v || !v.TryGetValue<string>(out var s))
+        {
+            throw Fail(P(path, key), "must be a string");
+        }
+        if (Encoding.UTF8.GetByteCount(s) >= cap)
+        {
+            throw Fail(P(path, key), $"too long (max {cap - 1} bytes)");
+        }
+        return s;
+    }
+
+    private static void Choice(JsonObject o, string key, string path, params string[] options)
+    {
+        var n = o[key];
+        if (n is null)
+        {
+            return;
+        }
+        if (n is not JsonValue v || !v.TryGetValue<string>(out var s) || !options.Contains(s))
+        {
+            throw Fail(P(path, key), $"must be one of {string.Join(", ", options)}");
+        }
+    }
+
+    private static void Time(JsonObject o, string key, string path)
+    {
+        var n = o[key];
+        if (n is null)
+        {
+            return;
+        }
+        var s = n is JsonValue v && v.TryGetValue<string>(out var str) ? str : "";
+        var ok = s.Length == 5 && char.IsAsciiDigit(s[0]) && char.IsAsciiDigit(s[1]) && s[2] == ':' &&
+                 char.IsAsciiDigit(s[3]) && char.IsAsciiDigit(s[4]) &&
+                 (s[0] - '0') * 10 + (s[1] - '0') <= 23 && (s[3] - '0') * 10 + (s[4] - '0') <= 59;
+        if (!ok)
+        {
+            throw Fail(P(path, key), "must be a time \"HH:MM\"");
+        }
+    }
+
+    private static void Action(JsonObject o, string key, string path, bool rotate)
+    {
+        var n = o[key];
+        if (n is null)
+        {
+            return;
+        }
+        if (n is not JsonValue v || !v.TryGetValue<string>(out var a) || !ConfigCatalog.Actions.Contains(a))
+        {
+            throw Fail(P(path, key), "unknown action");
+        }
+        if (a != "none" && ConfigCatalog.RotateActions.Contains(a) != rotate)
+        {
+            throw Fail(P(path, key), rotate ? $"{a} needs a press, not a rotation" : $"{a} needs a rotation, not a press");
+        }
+    }
+}
+
+/// <summary>CONFIG_BEGIN body.</summary>
+public sealed record ConfigBeginMsg(int Size, uint Crc32);
+
+/// <summary>CONFIG_ACK body. <c>Art</c>: album art edge the new layout wants (0 = none), added within v1.</summary>
+public sealed record ConfigAckMsg(bool Ok, uint Crc32, string? Error, int? Art = null);
+
+/// <summary>CONFIG_DATA_BEGIN body (reply to CONFIG_GET).</summary>
+public sealed record ConfigDataBeginMsg(int Size, uint Crc32);
+
+public static class ConfigTransfer
+{
+    /// <summary>The bytes the device stores and CRCs: compact UTF-8 JSON, raw non-ASCII.</summary>
+    public static byte[] ToBytes(JsonNode root) =>
+        Encoding.UTF8.GetBytes(root.ToJsonString(new JsonSerializerOptions
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        }));
+
+    /// <summary>CONFIG_BEGIN, CONFIG_CHUNKs of up to <see cref="Frame.ChunkSize"/> bytes, CONFIG_END.</summary>
+    public static IEnumerable<(MsgType Type, byte[] Body)> Packets(byte[] config)
+    {
+        yield return (MsgType.ConfigBegin, ProtocolJson.Serialize(new ConfigBeginMsg(config.Length, Crc32.Compute(config))));
+        for (var offset = 0; offset < config.Length; offset += Frame.ChunkSize)
+        {
+            var n = Math.Min(Frame.ChunkSize, config.Length - offset);
+            var body = new byte[4 + n];
+            BinaryPrimitives.WriteUInt32LittleEndian(body, (uint)offset);
+            config.AsSpan(offset, n).CopyTo(body.AsSpan(4));
+            yield return (MsgType.ConfigChunk, body);
+        }
+        yield return (MsgType.ConfigEnd, []);
+    }
+
+    /// <summary>Reassembles CONFIG_DATA_* from the device (reply to CONFIG_GET). Chunks in order.</summary>
+    public sealed class Receiver
+    {
+        private byte[]? _buf;
+        private int _received;
+        private uint _crc;
+
+        public void Begin(ConfigDataBeginMsg msg)
+        {
+            _buf = msg.Size is >= 0 and <= ConfigCatalog.MaxConfigBytes ? new byte[msg.Size] : null;
+            _received = 0;
+            _crc = msg.Crc32;
+        }
+
+        public void Chunk(ReadOnlySpan<byte> body)
+        {
+            if (_buf is null || body.Length < 4)
+            {
+                return;
+            }
+            var offset = BinaryPrimitives.ReadUInt32LittleEndian(body);
+            var data = body[4..];
+            if (offset != _received || _received + data.Length > _buf.Length)
+            {
+                _buf = null;
+                return;
+            }
+            data.CopyTo(_buf.AsSpan(_received));
+            _received += data.Length;
+        }
+
+        /// <summary>The complete data with a matching CRC, or null.</summary>
+        public byte[]? End()
+        {
+            var buf = _buf;
+            _buf = null;
+            return buf is not null && _received == buf.Length && Crc32.Compute(buf) == _crc ? buf : null;
+        }
+    }
+}

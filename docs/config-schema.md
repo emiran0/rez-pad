@@ -4,72 +4,29 @@ The host keeps the master copy at `%APPDATA%\rez-pad\config.json`. The device ke
 
 Schema changes bump `schema` and include a migration on the host.
 
-## Example (the default config)
+## The default config
 
-```json
-{
-  "schema": 1,
-  "display": {
-    "brightness": 80,
-    "night": { "enabled": true, "from": "23:00", "to": "07:30", "brightness": 15 },
-    "sleep_on_pc_sleep": true,
-    "spi_hz": 40000000
-  },
-  "grid": { "cols": 4, "rows": 3 },
-  "theme": { "name": "dark", "accent": "#4FC3F7" },
-  "units": { "temp": "c", "pressure": "hpa", "wind": "kmh" },
-  "weather": { "lat": null, "lon": null, "name": "", "refresh_min": 15 },
-  "sensor": { "temp_offset_c": -1.5, "hum_offset_pct": 0, "trend_threshold_hpa": 1.0 },
-  "media": { "app_priority": ["Spotify", "*"], "art_size": 200, "volume_step": 2, "seek_step_s": 5 },
-  "stats": { "rate_hz": 1 },
-  "inputs": {
-    "buttons": 0,
-    "enc1": { "counts_per_detent": 4, "invert": false,
-              "rotate": "nav.page", "rotate_pressed": "media.seek",
-              "click": "nav.home", "double": "none", "long": "display.toggle" },
-    "enc2": { "counts_per_detent": 4, "invert": false,
-              "rotate": "media.volume", "rotate_pressed": "display.brightness",
-              "click": "media.play_pause", "double": "media.next", "long": "media.mute" },
-    "btn1": { "click": "media.prev", "long": "none" },
-    "btn2": { "click": "media.next", "long": "none" }
-  },
-  "pages": [
-    {
-      "id": "now_playing",
-      "name": "Now Playing",
-      "widgets": [
-        { "type": "album_art",      "x": 0, "y": 0, "w": 2, "h": 2 },
-        { "type": "track_info",     "x": 2, "y": 0, "w": 2, "h": 2 },
-        { "type": "media_controls", "x": 0, "y": 2, "w": 3, "h": 1 },
-        { "type": "volume",         "x": 3, "y": 2, "w": 1, "h": 1 }
-      ]
-    },
-    {
-      "id": "system",
-      "name": "System",
-      "widgets": [
-        { "type": "metric_gauge", "x": 0, "y": 0, "w": 1, "h": 1, "source": "sys.cpu.load",  "label": "CPU" },
-        { "type": "metric_gauge", "x": 1, "y": 0, "w": 1, "h": 1, "source": "sys.cpu.temp",  "label": "CPU C" },
-        { "type": "metric_gauge", "x": 2, "y": 0, "w": 1, "h": 1, "source": "sys.gpu.load",  "label": "GPU" },
-        { "type": "metric_gauge", "x": 3, "y": 0, "w": 1, "h": 1, "source": "sys.gpu.temp",  "label": "GPU C" },
-        { "type": "metric_graph", "x": 0, "y": 1, "w": 2, "h": 1, "source": "sys.cpu.load",  "label": "CPU history" },
-        { "type": "metric_bar",   "x": 2, "y": 1, "w": 2, "h": 1, "source": "sys.ram.used_pct", "label": "RAM" },
-        { "type": "metric_value", "x": 0, "y": 2, "w": 2, "h": 1, "source": "sys.net.down_kbps", "label": "Down" },
-        { "type": "metric_value", "x": 2, "y": 2, "w": 2, "h": 1, "source": "sys.net.up_kbps",   "label": "Up" }
-      ]
-    },
-    {
-      "id": "weather_room",
-      "name": "Weather & Room",
-      "widgets": [
-        { "type": "weather_now",      "x": 0, "y": 0, "w": 2, "h": 2 },
-        { "type": "room_climate",     "x": 2, "y": 0, "w": 2, "h": 2 },
-        { "type": "weather_forecast", "x": 0, "y": 2, "w": 4, "h": 1, "mode": "daily" }
-      ]
-    }
-  ]
-}
-```
+[`default-config.json`](default-config.json) is the built-in default and the reference example. The host embeds that file; `tools/gen_config_headers.py` turns it into `firmware/lib/config_logic/src/default_config.h`, so both sides start from the same bytes. Top-level sections: `schema`, `display`, `grid`, `theme`, `units`, `weather`, `sensor`, `media`, `stats`, `inputs`, `pages`.
+
+## Validation
+
+Implemented twice, tested against the same cases ([`config-test-vectors.json`](config-test-vectors.json)): `host/src/RezPad.Protocol/Config.cs` (`ConfigValidator`) and `firmware/lib/config_logic` (`cfg::parse`). Both report the first problem as `"<path>: <reason>"`, e.g. `pages[0].widgets[1]: overlaps another widget`.
+
+- `schema` must be 1 and `pages` must exist; every other section may be missing (struct defaults). Unknown keys are ignored. A JSON `null` counts as missing.
+- Numbers are range-checked (see below), whole numbers where the schema says so; strings have byte limits (UTF-8): page `id` 23, page `name` 31, widget `type` 19, `source` 39, `label` 31, `unit` 11, `text` 63.
+- 1 to 8 pages, page ids unique and not empty (`name` defaults to the id), up to 16 widgets per page, at most 16 different data sources over all pages (the device keeps 16 SYS_STATS values).
+- Widgets: known type, `x`/`y`/`w`/`h` inside the grid, an allowed size, no overlap. `metric_*` need a `source`, `label` needs `text`, `weather_forecast` `mode` is `daily` (default) or `hourly`, `decimals` 0 to 3, and `min` must be below `max` after source defaults.
+- Actions: known names; `nav.page`, `media.seek`, `media.volume`, `display.brightness` take a rotation and are only allowed on `rotate`/`rotate_pressed`; all others only on presses (`click`, `double`, `long`).
+- Ranges: `display.brightness` and `night.brightness` 0 to 100, `night.from`/`to` `"HH:MM"`, `spi_hz` 1 to 80 MHz, `grid` 1 to 8, `theme.accent` `"#RRGGBB"`, `sensor.temp_offset_c` -10 to 10, `hum_offset_pct` -20 to 20, `trend_threshold_hpa` 0.1 to 10, `media.volume_step` 1 to 20, `seek_step_s` 1 to 60, `inputs.buttons` 0 to 2, `counts_per_detent` 1 to 8.
+- Host only (the device ignores these sections): `weather.lat` -90 to 90 and `lon` -180 to 180 (both or neither), `refresh_min` 5 to 180, `media.art_size` 32 to 480, `media.app_priority` up to 16 names, `stats.rate_hz` 0.2 to 4.
+
+Style fields a metric widget leaves out come from its source: temperatures `°C` 20 to 100 (warn 75, crit 90), loads `%` (80/95), `used_pct`/`vram_pct` `%` (85/95, disks 90/97), other `_pct` `%`, `_kbps` `kB/s` 0 to 10000, `_mhz` `MHz`, `_w` `W`, `_gb` `GB`, `rpm`. `"unit": ""` means no unit.
+
+## Host and device copies
+
+- Host: `Config/ConfigService.cs` loads `%APPDATA%\rez-pad\config.json`, migrates it (a missing section or section key is filled in from the default; files from before Phase 9 only had `weather` and `units`), validates it (an invalid file is kept as `config.json.bad` and the default is used) and writes atomically. The device gets the compact UTF-8 bytes; their CRC32 is the config's identity.
+- `Device/ConfigSync.cs` pushes those bytes when HELLO_ACK `cfg_crc` differs and after every saved change, and waits for CONFIG_ACK (docs/protocol.md, "Config transfer").
+- Device: `src/config/store.cpp` keeps the file in LittleFS (`/config.json`, written as `/config.tmp`, read back, renamed). At boot it loads and validates it; when it is missing it uses the built-in default, when it is invalid it uses the default and shows a warning in the status bar (the stored CRC stays, so the host pushes a good one). A pushed config is validated and saved on the link task, then the UI task rebuilds every page and applies inputs, sensor offsets, brightness, units, accent color and SPI clock.
 
 Encoder gestures: `rotate`, `rotate_pressed` (turned while the knob is held down; that press then produces no click/double/long), `click`, `double` (when `none`, clicks fire on release without waiting for a second click), `long`. Buttons: `click`, `long`.
 
@@ -78,8 +35,6 @@ Pages may still carry `inputs_override` (same shape as `inputs`, only the keys t
 `inputs.buttons` (0 to 2) is the number of physical buttons fitted. `btn1`/`btn2` mappings are kept but ignored when the button is not fitted. Default is 0 until the hardware is decided.
 
 `weather`: no location by default (`lat`/`lon` null): the user picks a city on the web page (Open-Meteo geocoding), and the host fetches nothing until then. `refresh_min` 5 to 180. `units`: `temp` `c`/`f`, `wind` `kmh`/`ms`/`mph`, `pressure` `hpa`/`inhg`; weather values are converted by Open-Meteo (pressure by the host), and the device shows its room sensor in the same units.
-
-The host reads and writes `config.json` through `Config/ConfigStore.cs`, which so far only owns `weather` and `units` and keeps every other key untouched (the full schema with validation and device push comes in Phase 9).
 
 `media`: `app_priority` orders media sessions by app (matched case-insensitively against the app name or its AppUserModelId, `*` matches any); a playing session always wins over paused ones, then the list decides. `art_size` is the album art edge in px when the device does not ask for one in HELLO_ACK. `volume_step` is percent per detent, `seek_step_s` seconds per detent.
 
@@ -100,10 +55,10 @@ The host reads and writes `config.json` through `Config/ConfigStore.cs`, which s
 | `room_climate` | 2x1, 2x2 | temp, humidity, pressure, trend arrow |
 | `weather_now` | 2x1, 2x2 | icon, temp, feels like, humidity, wind |
 | `weather_forecast` | 4x1 | `hourly` or `daily` |
-| `label` | any | static text |
-| `spectrum` | 4x1 | stretch goal |
+| `label` | any | static `text`, optional small `label` above it |
+| `spectrum` | 4x1 | stretch goal, not in the validators yet |
 
-Widgets may have optional style fields (`label`, `unit`, `min`, `max`, `warn`, `crit`, `decimals`). Validation must reject overlapping widgets, out-of-grid widgets and unsupported sizes, on both host and device.
+Widgets may have optional style fields (`label`, `unit`, `min`, `max`, `warn`, `crit`, `decimals`); see "Validation" for the rules and defaults.
 
 ## Data source IDs
 
@@ -139,5 +94,5 @@ Stable dotted IDs. The host publishes the catalog of what exists on this PC (`GE
 
 ## Host API (localhost only)
 
-- `GET /api/status`, `GET /api/config`, `PUT /api/config`, `GET /api/sources`, `GET /api/geocode?q=`, `GET /api/sensor`, `POST /api/device/cmd`, WebSocket `/ws` for live status and sensor updates.
+- `GET /api/status` (includes `config`: host CRC, device CRC, in sync, last push result), `GET /api/config`, `PUT /api/config` (validates, saves, pushes; `400 {error}` with the validator's message, otherwise `{saved, crc, device}` where `device` is the push result or null when no device is connected), `GET /api/config/default`, `GET /api/device/config` (the device's stored copy via CONFIG_GET), `GET /api/sources`, `GET /api/geocode?q=`, `GET /api/sensor`, `POST /api/device/cmd`, WebSocket `/ws` for live status and sensor updates (Phase 10).
 - Bind to `127.0.0.1` only. No remote access.

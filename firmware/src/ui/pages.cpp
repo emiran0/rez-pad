@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 
+#include "media/media.h"
 #include "theme.h"
 #include "widgets/common.h"
 
@@ -11,10 +12,10 @@ namespace pages {
 
 namespace {
 
-constexpr int kMaxWidgets = 16;
+constexpr int kMaxWidgets = cfg::kMaxWidgets;
 
 struct Page {
-  const PageSpec* spec = nullptr;
+  const cfg::Page* spec = nullptr;
   lv_obj_t* root = nullptr;
   widgets::Widget* widgets[kMaxWidgets] = {};
   int widgetCount = 0;
@@ -51,16 +52,15 @@ void errorCard(lv_obj_t* card, const char* type, const char* why) {
 
 }  // namespace
 
-void build(lv_obj_t* parent, const PageSpec* specs, int count, int cols, int rows) {
-  gCount = count > kMaxPages ? kMaxPages : count;
-  if (cols < 1 || cols > 8) cols = 4;  // the occupancy map below is 8x8
-  if (rows < 1 || rows > 8) rows = 3;
-  const int cellW = kScreenW / cols;
-  const int cellH = kGridH / rows;
+void build(lv_obj_t* parent, const cfg::Config& cfg) {
+  gCount = cfg.pageCount > kMaxPages ? kMaxPages : cfg.pageCount;
+  const int cellW = kScreenW / cfg.cols;
+  const int cellH = kGridH / cfg.rows;
 
   for (int p = 0; p < gCount; ++p) {
     Page& page = gPages[p];
-    page.spec = &specs[p];
+    page.spec = &cfg.pages[p];
+    page.widgetCount = 0;
     page.root = lv_obj_create(parent);
     lv_obj_remove_style_all(page.root);
     lv_obj_set_size(page.root, kScreenW, kGridH);
@@ -68,42 +68,39 @@ void build(lv_obj_t* parent, const PageSpec* specs, int count, int cols, int row
     lv_obj_set_scrollable(page.root, false);
     lv_obj_set_hidden(page.root, true);
 
-    bool used[8][8] = {};
-    for (int i = 0; i < specs[p].count && page.widgetCount < kMaxWidgets; ++i) {
-      const widgets::Spec& ws = specs[p].widgets[i];
+    // Position, size and overlap were checked by the config validator (lib/config_logic).
+    for (int i = 0; i < page.spec->widgetCount && i < kMaxWidgets; ++i) {
+      const widgets::Spec& ws = page.spec->widgets[i];
       const int x = ws.x * cellW + kCellGap / 2;
       const int y = ws.y * cellH + kCellGap / 2;
       const int w = ws.w * cellW - kCellGap;
       const int h = ws.h * cellH - kCellGap;
       lv_obj_t* card = makeCard(page.root, x, y, w, h);
-
-      if (ws.x + ws.w > cols || ws.y + ws.h > rows || ws.w == 0 || ws.h == 0) {
-        errorCard(card, ws.type, "outside grid");
-        continue;
-      }
-      bool overlap = false;
-      for (int cy = ws.y; cy < ws.y + ws.h; ++cy)
-        for (int cx = ws.x; cx < ws.x + ws.w; ++cx) overlap = overlap || used[cy][cx];
-      if (overlap) {
-        errorCard(card, ws.type, "overlaps");
-        continue;
-      }
-      for (int cy = ws.y; cy < ws.y + ws.h; ++cy)
-        for (int cx = ws.x; cx < ws.x + ws.w; ++cx) used[cy][cx] = true;
-      if (!widgets::sizeAllowed(ws.type, ws.w, ws.h)) {
-        errorCard(card, ws.type, "size not allowed");
-        continue;
-      }
       widgets::Widget* widget = widgets::create(ws);
       if (!widget) {
-        errorCard(card, ws.type, "not implemented yet");
+        errorCard(card, ws.type, "not supported");
         continue;
       }
       widget->build(card, w - 14, h - 14);  // content area inside the 7 px padding
       page.widgets[page.widgetCount++] = widget;
     }
   }
-  if (gCount > 0) show(0);
+  gCurrent = 0;
+  if (gCount > 0) lv_obj_set_hidden(gPages[0].root, false);
+}
+
+void clear() {
+  for (int p = 0; p < gCount; ++p) {
+    Page& page = gPages[p];
+    for (int i = 0; i < page.widgetCount; ++i) delete page.widgets[i];
+    page.widgetCount = 0;
+    if (page.root) lv_obj_delete(page.root);
+    page.root = nullptr;
+    page.spec = nullptr;
+  }
+  gCount = 0;
+  gCurrent = 0;
+  media::setArtSize(0);  // album_art sets it again if the new layout has one
 }
 
 int count() { return gCount; }

@@ -57,7 +57,7 @@ internal sealed record ArtState(uint TrackId, byte[]? Source, uint SourceCrc);
 /// arrive on arbitrary threads; they only poke a worker loop that re-reads the state, so bursts
 /// of events (track changes fire several) collapse into one update.
 /// </summary>
-internal sealed class MediaService(MediaOptions options) : IDisposable
+internal sealed class MediaService(Func<MediaOptions> options) : IDisposable
 {
     // Thumbnails often lag the title on a track change (Spotify sends the old image first).
     private static readonly TimeSpan ArtDebounce = TimeSpan.FromMilliseconds(200);
@@ -138,7 +138,7 @@ internal sealed class MediaService(MediaOptions options) : IDisposable
             var basePos = _seek is { } s && now - s.At < SeekSettle
                 ? s.Pos + (cur.State == "playing" ? (long)(now - s.At).TotalMilliseconds : 0)
                 : cur.PositionAt(now);
-            target = Math.Clamp(basePos + detents * options.SeekStepS * 1000L, 0, Math.Max(0, cur.DurationMs - 1000));
+            target = Math.Clamp(basePos + detents * options().SeekStepS * 1000L, 0, Math.Max(0, cur.DurationMs - 1000));
             _seek = (target, now);
             // Show the new position right away; the app confirms through a timeline event.
             _current = cur with { PositionMs = target, SampledAt = now };
@@ -466,16 +466,17 @@ internal sealed class MediaService(MediaOptions options) : IDisposable
     private int Priority(string appId)
     {
         var name = AppName(appId);
-        for (var i = 0; i < options.AppPriority.Count; i++)
+        var priority = options().AppPriority;
+        for (var i = 0; i < priority.Count; i++)
         {
-            var p = options.AppPriority[i];
+            var p = priority[i];
             if (p == "*" || name.Contains(p, StringComparison.OrdinalIgnoreCase) ||
                 appId.Contains(p, StringComparison.OrdinalIgnoreCase))
             {
                 return i;
             }
         }
-        return options.AppPriority.Count;
+        return priority.Count;
     }
 
     /// <summary>Friendly app name for a GSMTC source app id, e.g. "Spotify.exe" to "Spotify".</summary>

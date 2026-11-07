@@ -18,6 +18,10 @@
     <ProjectReference Include="..\RezPad.Protocol\RezPad.Protocol.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Built-in default config, the same file the firmware's default is generated from. -->
+    <EmbeddedResource Include="..\..\..\docs\default-config.json" LogicalName="RezPad.Host.default-config.json" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- The web editor lives in the repo's web/ folder and is copied next to the exe. -->
     <Content Include="..\..\..\web\**\*" LinkBase="web" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

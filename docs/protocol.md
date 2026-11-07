@@ -125,6 +125,13 @@ The host opens the port with DTR and RTS on (TinyUSB only sends while DTR is set
 - `pop` is the precipitation probability in %.
 - The host sends WEATHER after every fetch (default every 15 min), when the location changes, and on connect.
 
+### Config transfer
+
+- The config is compact UTF-8 JSON (`docs/config-schema.md`), at most 32768 bytes. CONFIG_BEGIN carries its size and CRC32; CONFIG_CHUNK `[offset u32][data]` (up to 4096 data bytes) must be contiguous from 0; CONFIG_END ends it. A new CONFIG_BEGIN drops a transfer in progress.
+- The device answers every transfer with one CONFIG_ACK. Errors (`ok: false`) come right away: bad size, a chunk out of order, CRC mismatch, or a validation error as `"<path>: <reason>"` (the same text the host's validator gives). On success the device saves the bytes (atomic write), rebuilds its pages, applies the settings and then replies `ok: true` with the CRC32 of the stored file.
+- `cfg_crc` in HELLO_ACK is the CRC32 of the stored file, 0 when none is stored (the device then runs on its built-in default). The host pushes its config when that differs from the CRC32 of its own compact bytes, and after every saved change.
+- CONFIG_GET: the device replies CONFIG_DATA_BEGIN `{size, crc32}`, CONFIG_DATA_CHUNKs `[offset u32][data]` of up to 1024 bytes, CONFIG_DATA_END. Without a stored file it sends the built-in default.
+
 ## Device -> Host
 
 | Type | Name | Body | Notes |
@@ -134,7 +141,7 @@ The host opens the port with DTR and RTS on (TinyUSB only sends while DTR is set
 | 0x90 | ACTION | JSON `{action, value}` | Resolved from input map, see `config-schema.md` |
 | 0x91 | ART_REQUEST | JSON `{id}` | Device lost or never received art for current track |
 | 0xA0 | SENSOR | JSON `{temp_c, hum_pct, press_hpa, trend, delta_3h}` | Every 10 s while connected. Values after offsets and filtering, always metric; a missing reading is `null`. `trend` is `rising`, `falling`, `steady` or `unknown` |
-| 0xC0 | CONFIG_ACK | JSON `{ok, crc32, error}` | |
+| 0xC0 | CONFIG_ACK | JSON `{ok, crc32, error, art}` | See "Config transfer". `art` (album art edge of the new layout, 0 = none) added within v1, optional for readers |
 | 0xC1 | CONFIG_DATA_BEGIN | JSON `{size, crc32}` | Reply to CONFIG_GET |
 | 0xC2 | CONFIG_DATA_CHUNK | binary `[offset u32][data]` | |
 | 0xC3 | CONFIG_DATA_END | empty | |
@@ -149,5 +156,5 @@ The host opens the port with DTR and RTS on (TinyUSB only sends while DTR is set
 - The device replies to every PING with PONG, but only counts the host as connected after a HELLO. If it keeps getting PINGs without a HELLO for 1 s it sends ERROR `need_hello` once.
 - Before HELLO_ACK arrives, the host repeats HELLO every 500 ms (the device may still be booting).
 - TIME_SYNC sets the device's system clock (UTC) and keeps `tz_offset_min` for local time; the host re-sends it every 60 s, which also covers DST changes.
-- CMD implemented so far: `reboot` (replies CMD_RESULT ok, then restarts). Others reply `ok: false`.
+- CMD implemented so far: `reboot` (replies CMD_RESULT ok, then restarts) and `factory_reset` (deletes the stored config, replies, restarts on the built-in default; the host pushes its config again on reconnect). Others reply `ok: false`.
 - If HELLO_ACK reports a different `proto`, the host shows "Firmware protocol vN, host expects v1: update firmware/host" in the tray and web UI and stops sending anything except HELLO.

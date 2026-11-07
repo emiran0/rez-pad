@@ -16,7 +16,7 @@ namespace RezPad.Host.Web;
 
 /// <summary>Kestrel bound to 127.0.0.1 only. Serves web/ and the /api endpoints (docs/config-schema.md).</summary>
 internal sealed record WebServices(SerialLink Link, MediaService Media, AudioService Audio, SystemStatsService Stats,
-    ConfigStore Config, WeatherService Weather, RoomSensor Room);
+    ConfigService Config, WeatherService Weather, RoomSensor Room, ConfigSync ConfigSync);
 
 internal sealed class WebServer(int port, WebServices services)
 {
@@ -24,7 +24,8 @@ internal sealed class WebServer(int port, WebServices services)
     private readonly MediaService media = services.Media;
     private readonly AudioService audio = services.Audio;
     private readonly SystemStatsService stats = services.Stats;
-    private readonly ConfigStore config = services.Config;
+    private readonly ConfigService config = services.Config;
+    private readonly ConfigSync configSync = services.ConfigSync;
     private readonly WeatherService weather = services.Weather;
     private readonly RoomSensor room = services.Room;
 
@@ -65,6 +66,7 @@ internal sealed class WebServer(int port, WebServices services)
                 Elevated: StartupTask.IsElevated(),
                 LogFileError: Log.FileError,
                 Sensors: stats.Access,
+                Config: new ConfigStatusDto(config.Crc, configSync.DeviceCrc, configSync.InSync, configSync.Last),
                 BadFrames: decoder is null ? 0 : decoder.BadCobs + decoder.BadCrc + decoder.TooShort + decoder.TooLarge + decoder.BadVersion));
         });
         app.MapGet("/api/log", () => Results.Json(Log.Recent()));
@@ -137,7 +139,7 @@ internal sealed class WebServer(int port, WebServices services)
         app.MapGet("/api/sources", () =>
         {
             stats.WantCatalog();  // values for every source, not only the layout's, for the next few seconds
-            var used = StatsBridge.DefaultLayoutSources;
+            var used = config.ReferencedSources;
             return Results.Json(new
             {
                 sensors = stats.Access,
@@ -167,6 +169,42 @@ internal sealed class WebServer(int port, WebServices services)
                 art = new { track_id = art.TrackId, source_bytes = art.Source?.Length ?? 0 },
                 volume = new { level = vol.Level, muted = vol.Muted, available = vol.Available },
             }, ProtocolJson.Options);
+        });
+        // The master config (docs/config-schema.md). PUT validates, saves and pushes it to the device;
+        // the answer says whether the device applied it.
+        app.MapGet("/api/config", () => Results.Text(config.Snapshot().ToJsonString(), "application/json"));
+        app.MapGet("/api/config/default", () => Results.Text(ConfigService.Default().ToJsonString(), "application/json"));
+        app.MapPut("/api/config", async (HttpRequest req) =>
+        {
+            System.Text.Json.Nodes.JsonNode? body;
+            try
+            {
+                body = await System.Text.Json.Nodes.JsonNode.ParseAsync(req.Body);
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                return Results.BadRequest(new { error = $"config: invalid JSON ({ex.Message})" });
+            }
+            if (config.Replace(body) is { } error)
+            {
+                return Results.BadRequest(new { error });
+            }
+            // Saving raised ConfigService.Changed, which started the push to a connected device.
+            var push = link.IsConnected ? configSync.ChangePush : null;
+            var result = push is null ? null : await push;
+            return Results.Json(new { saved = true, device = result, crc = config.Crc }, ProtocolJson.Options);
+        });
+        // The device's stored copy (CONFIG_GET), for diagnostics.
+        app.MapGet("/api/device/config", async () =>
+        {
+            if (!link.IsConnected)
+            {
+                return Results.Conflict(new { error = "device not connected" });
+            }
+            var bytes = await configSync.ReadDeviceAsync();
+            return bytes is null
+                ? Results.Problem("no complete CONFIG_DATA reply from the device", statusCode: 504)
+                : Results.Text(System.Text.Encoding.UTF8.GetString(bytes), "application/json");
         });
         // Debug/maintenance commands for the device (docs/protocol.md, CMD 0x60), e.g. {"cmd":"reboot"}.
         app.MapPost("/api/device/cmd", async (HttpRequest req) =>
@@ -217,5 +255,8 @@ internal sealed class WebServer(int port, WebServices services)
         bool Elevated,
         string? LogFileError,
         SensorAccess Sensors,
+        ConfigStatusDto Config,
         uint BadFrames);
+
+    private sealed record ConfigStatusDto(uint Crc, uint? DeviceCrc, bool InSync, ConfigSync.PushResult? LastPush);
 }

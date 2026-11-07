@@ -1,32 +1,36 @@
+using RezPad.Host.Config;
 using RezPad.Host.Device;
 using RezPad.Protocol;
 
 namespace RezPad.Host.Stats;
 
-/// <summary>Sends SYS_STATS to the device after every sample, with only the sources the layout shows.</summary>
+/// <summary>
+/// Sends SYS_STATS to the device after every sample, with only the sources the config's layout shows,
+/// at the config's "stats.rate_hz".
+/// </summary>
 internal sealed class StatsBridge
 {
-    /// <summary>
-    /// Sources used by the default layout (firmware/src/ui/default_layout.cpp, docs/config-schema.md).
-    /// Phase 9 takes them from the config instead.
-    /// </summary>
-    public static readonly IReadOnlyList<string> DefaultLayoutSources =
-    [
-        "sys.cpu.load", "sys.cpu.temp", "sys.gpu.load", "sys.gpu.temp", "sys.ram.used_pct",
-        "sys.net.down_kbps", "sys.net.up_kbps",
-    ];
-
     private readonly SerialLink _link;
     private readonly SystemStatsService _stats;
-    private readonly IReadOnlyList<string> _sources;
+    private readonly ConfigService _config;
+    private IReadOnlyList<string> _sources = [];
 
-    public StatsBridge(SerialLink link, SystemStatsService stats, IReadOnlyList<string> sources)
+    public StatsBridge(SerialLink link, SystemStatsService stats, ConfigService config)
     {
         _link = link;
         _stats = stats;
+        _config = config;
+        Reload();
+        _config.Changed += Reload;
+        _stats.Sampled += Send;
+    }
+
+    private void Reload()
+    {
+        var sources = _config.ReferencedSources;
         _sources = sources;
         _stats.Referenced = sources.ToHashSet();
-        _stats.Sampled += Send;
+        _stats.RateHz = _config.StatsRateHz;
     }
 
     private void Send()
@@ -35,8 +39,9 @@ internal sealed class StatsBridge
         {
             return;
         }
-        var values = new Dictionary<string, double?>(_sources.Count);
-        foreach (var id in _sources)
+        var sources = _sources;
+        var values = new Dictionary<string, double?>(sources.Count);
+        foreach (var id in sources)
         {
             // One decimal is all the widgets show; keeps the message small.
             values[id] = _stats.Value(id) is { } v ? Math.Round(v, 1) : null;

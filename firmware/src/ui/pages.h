@@ -4,25 +4,22 @@
 
 #include <stdint.h>
 
+#include "config_logic.h"
 #include "widgets/widget.h"
 
 namespace rp {
 namespace ui {
-
-struct PageSpec {
-  const char* id;
-  const char* name;
-  const widgets::Spec* widgets;
-  uint8_t count;
-};
-
 namespace pages {
 
-constexpr int kMaxPages = 8;
+constexpr int kMaxPages = cfg::kMaxPages;
 
-// Builds the pages under `parent` (the grid area). Invalid widgets (unknown type, bad size,
-// out of grid, overlapping) are replaced by a small error card and logged, never fatal.
-void build(lv_obj_t* parent, const PageSpec* specs, int count, int cols, int rows);
+// Builds the config's pages under `parent` (the grid area). The config is already validated; a
+// widget the firmware cannot create gets a small error card instead, never a crash. `cfg` must
+// stay alive until clear() (widgets keep references to their specs).
+void build(lv_obj_t* parent, const cfg::Config& cfg);
+
+// Deletes all pages and widgets (before building a new config).
+void clear();
 
 int count();
 int current();

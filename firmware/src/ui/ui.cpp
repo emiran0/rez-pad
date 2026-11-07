@@ -2,7 +2,8 @@
 
 #include <Arduino.h>
 
-#include "default_layout.h"
+#include "app/settings.h"
+#include "config/store.h"
 #include "link/link.h"
 #include "lvgl_port.h"
 #include "media/media.h"
@@ -17,14 +18,15 @@
 namespace rp {
 namespace ui {
 
+uint32_t gAccentRgb = 0x4FC3F7;
+
 namespace {
 
 constexpr uint32_t kTickMs = 250;    // progress bar interpolation
-constexpr int kVolumeStep = 2;       // media.volume_step default (the host applies the real one)
-constexpr int kSeekStepS = 5;        // media.seek_step_s default (the host applies the real one)
 constexpr uint32_t kArtRequestMs = 2500;  // no art this long after a track change: ask for it
 constexpr uint32_t kSensorSendMs = 10000;  // SENSOR to the host (docs/protocol.md)
 
+lv_obj_t* gGrid = nullptr;
 uint32_t gPending = 0;
 uint32_t gArtRequested = 0;  // track id we already sent ART_REQUEST for
 uint32_t gLastSensorSend = 0;
@@ -142,22 +144,58 @@ void sendSensor() {
   link::send(proto::kSensor, body);
 }
 
+void setUnits(const cfg::Config& c) {
+  Units& u = model().units;
+  u.fahrenheit = c.fahrenheit;
+  u.wind = c.wind;
+  u.inHg = c.inHg;
+}
+
+// Builds the pages of the active config (the grid must be empty).
+void buildPages() {
+  const cfg::Config& c = config::active();
+  gAccentRgb = c.accent;
+  pages::build(gGrid, c);
+  status_bar::setWarning(config::warning());
+}
+
+// A new config from the host (validated and saved by the link task): rebuild everything, apply
+// the settings, then confirm with CONFIG_ACK (docs/protocol.md).
+void applyConfig(cfg::Config* next) {
+  const uint32_t t0 = millis();
+  const int page = pages::current();
+  pages::clear();  // widgets reference the old config's specs: delete them before releasing it
+  config::setActive(next);
+  buildPages();
+  settings::apply(*next);
+  setUnits(*next);
+  pages::show(page < pages::count() ? page : 0);
+  updatePageIndicator();
+  gPending |= kChangedAll;
+  Serial.printf("[ui] config applied: %u pages, rebuilt in %lu ms\n", next->pageCount,
+                static_cast<unsigned long>(millis() - t0));
+  // `art`: album art edge the new layout wants (0 = no album_art), like HELLO_ACK.
+  char body[96];
+  snprintf(body, sizeof(body), "{\"ok\":true,\"crc32\":%lu,\"error\":\"\",\"art\":%d}",
+           static_cast<unsigned long>(config::storedCrc()), media::artSize());
+  link::send(proto::kConfigAck, body);
+}
+
 }  // namespace
 
 bool begin() {
   if (!lvgl_port::begin()) return false;
   lv_obj_t* scr = lv_screen_active();
 
-  lv_obj_t* grid = lv_obj_create(scr);
-  lv_obj_remove_style_all(grid);
-  lv_obj_set_pos(grid, 0, kGridY);
-  lv_obj_set_size(grid, kScreenW, kGridH);
-  lv_obj_set_scrollable(grid, false);
+  gGrid = lv_obj_create(scr);
+  lv_obj_remove_style_all(gGrid);
+  lv_obj_set_pos(gGrid, 0, kGridY);
+  lv_obj_set_size(gGrid, kScreenW, kGridH);
+  lv_obj_set_scrollable(gGrid, false);
 
-  int count = 0;
-  const PageSpec* specs = defaultPages(count);
-  pages::build(grid, specs, count, 4, 3);
   status_bar::build(scr);
+  buildPages();
+  setUnits(config::active());
   updatePageIndicator();
 
   const uint32_t now = millis();
@@ -171,6 +209,7 @@ void loop(uint32_t nowMs) {
     gLastTick = nowMs;
     gPending |= kChangedTick;
   }
+  if (cfg::Config* next = config::take()) applyConfig(next);
   gPending |= pollRoom();
   gPending |= pollLink(nowMs);
   if (model().hostConnected && nowMs - gLastSensorSend >= kSensorSendMs) {
@@ -207,12 +246,13 @@ void mediaAction(actions::Action a, int value) {
   if (!m.hostConnected) return;
   const uint32_t now = millis();
   if (a == actions::Action::kVolume && m.volume.valid) {
-    int v = m.volume.level + value * kVolumeStep;
+    int v = m.volume.level + value * config::active().volumeStep;
     m.volume.level = static_cast<uint8_t>(v < 0 ? 0 : (v > 100 ? 100 : v));
     if (value > 0) m.volume.muted = false;
     gPending |= kChangedVolume;
   } else if (a == actions::Action::kSeek && m.np.canSeek) {
-    int64_t p = static_cast<int64_t>(m.np.positionAt(now)) + static_cast<int64_t>(value) * kSeekStepS * 1000;
+    int64_t p = static_cast<int64_t>(m.np.positionAt(now)) +
+                static_cast<int64_t>(value) * config::active().seekStepS * 1000;
     if (p < 0) p = 0;
     if (p > m.np.durMs) p = m.np.durMs;
     m.np.posMs = static_cast<uint32_t>(p);

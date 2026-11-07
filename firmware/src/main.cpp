@@ -2,7 +2,8 @@
 // Phase 6: Now Playing from the host (track, progress, album art, volume). Native USB is a
 // composite device (CDC + HID media keys); media actions go to the host app when it is connected,
 // otherwise out as media keys. Phase 7: system stats from the host. Phase 8: weather from the host, room
-// climate sent back as SENSOR, clock widget.
+// climate sent back as SENSOR, clock widget. Phase 9: pages, inputs and settings from the config
+// (LittleFS /config.json, pushed by the host; built-in default when missing or invalid).
 // The Phase 2 debug view and Phase 1 display tools stay available from the debug console on UART0 (the USB-UART bridge port, 115200 baud); they pause LVGL while they draw.
 #include <Arduino.h>
 #include <esp_chip_info.h>
@@ -10,7 +11,8 @@
 #include <string.h>
 
 #include "app/actions.h"
-#include "config/defaults.h"
+#include "app/settings.h"
+#include "config/store.h"
 #include "debug/console.h"
 #include "debug/wiring_check.h"
 #include "display/backlight.h"
@@ -197,8 +199,8 @@ void cmdAction(int argc, char** argv, Print& out) {
     out.println("usage: action <name> [value]   e.g. action media.next, action media.volume -3");
     return;
   }
-  const rp::actions::Action a = rp::actions::parse(argv[1]);
-  if (a == rp::actions::Action::kNone && strcmp(argv[1], "none") != 0) {
+  rp::actions::Action a;
+  if (!rp::actions::parse(argv[1], a)) {
     out.printf("unknown action '%s'\n", argv[1]);
     return;
   }
@@ -346,6 +348,23 @@ void cmdStats(int, char**, Print& out) {
   }
 }
 
+void cmdConfig(int, char**, Print& out) {
+  const auto& c = rp::config::active();
+  out.printf("stored crc %08lX%s\n", static_cast<unsigned long>(rp::config::storedCrc()),
+             rp::config::storedCrc() ? "" : " (none stored, built-in default)");
+  if (rp::config::warning()[0]) out.printf("warning: %s\n", rp::config::warning());
+  out.printf("grid %ux%u, brightness %u%%, spi %lu Hz, accent #%06lX, buttons %u, cpd %u/%u\n", c.cols, c.rows,
+             c.brightness, static_cast<unsigned long>(c.spiHz), static_cast<unsigned long>(c.accent), c.buttons,
+             c.countsPerDetent[0], c.countsPerDetent[1]);
+  for (int p = 0; p < c.pageCount; ++p) {
+    out.printf("page %d %s \"%s\": %u widgets\n", p, c.pages[p].id, c.pages[p].name, c.pages[p].widgetCount);
+    for (int i = 0; i < c.pages[p].widgetCount; ++i) {
+      const auto& w = c.pages[p].widgets[i];
+      out.printf("  %s %u,%u %ux%u %s\n", w.type, w.x, w.y, w.w, w.h, w.source);
+    }
+  }
+}
+
 const rp::console::Command kCommands[] = {
     {"info", "", cmdInfo},
     {"i2c", "", cmdI2c},
@@ -365,6 +384,7 @@ const rp::console::Command kCommands[] = {
     {"link", "", cmdLink},
     {"media", "", cmdMedia},
     {"stats", "", cmdStats},
+    {"config", "", cmdConfig},
     {"enc", "", cmdEnc},
     {"cpd", "<1|2> <counts per click>", cmdCpd},
     {"encinv", "<1|2> <0|1>", cmdEncInv},
@@ -382,29 +402,17 @@ void setup() {
   Serial.println("hello from rez-pad");
   // Start USB first so Windows can enumerate while the rest initializes.
   const bool usbOk = rp::usb::begin();
+  rp::config::begin();  // before the link task (HELLO_ACK reports the stored config's CRC)
   const bool mediaOk = rp::media::begin();  // before the link task, which feeds it
   const bool linkOk = rp::link::begin();
 
   rp::backlight::begin();  // off while the panel initializes, avoids a white flash
   const bool lcdOk = rp::display::begin();
 
-  rp::input::Config inCfg;
-  for (auto& e : inCfg.enc) {
-    e.countsPerDetent = rp::defaults::kCountsPerDetent;
-    e.invert = rp::defaults::kEncInvert;
-  }
-  inCfg.buttons = rp::defaults::kButtons;
-  const auto& map = rp::actions::map();
-  for (int i = 0; i < 2; ++i) {
-    // No double-click mapped: clicks fire on release instead of waiting for a second click.
-    inCfg.enc[i].doubleEnabled = map.enc[i].dbl != rp::actions::Action::kNone;
-  }
-  const bool inputOk = rp::input::begin(inCfg);
-
-  rp::sensors::Config sCfg;
-  sCfg.tempOffsetC = rp::defaults::kTempOffsetC;
-  sCfg.humOffsetPct = rp::defaults::kHumOffsetPct;
-  sCfg.trendThresholdHpa = rp::defaults::kTrendThresholdHpa;
+  const auto& cfg = rp::config::active();
+  if (rp::display::spiHz() != cfg.spiHz) rp::display::setSpiHz(cfg.spiHz);
+  const bool inputOk = rp::input::begin(rp::settings::inputConfig(cfg));
+  const rp::sensors::Config sCfg = rp::settings::sensorConfig(cfg);
 
   printInfo(Serial);
   if (!usbOk) Serial.println("USB init FAILED");
@@ -419,7 +427,7 @@ void setup() {
 
   if (!rp::ui::begin()) Serial.println("UI (LVGL) init FAILED");
   rp::ui::loop(millis());  // first frame before the backlight comes on
-  rp::backlight::set(rp::defaults::kBrightness);
+  rp::actions::setBrightness(cfg.brightness);
 
   rp::console::begin(kCommands, sizeof(kCommands) / sizeof(kCommands[0]));
   Serial.println("ready, type help");

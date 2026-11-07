@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <USBCDC.h>
+#include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
@@ -10,7 +11,9 @@
 #include <sys/time.h>
 #include <time.h>
 
-#include "config/defaults.h"
+#include "blob_assembler.h"
+#include "config/store.h"
+#include "config_logic.h"
 #include "link_monitor.h"
 #include "media/media.h"
 #include "sysstats/sysstats.h"
@@ -34,7 +37,8 @@ struct TxItem {
   char body[kMaxQueuedBody];
 };
 
-constexpr size_t kMaxReplyBody = 512;  // replies built inside the link task
+constexpr size_t kMaxReplyBody = 512;  // JSON replies built inside the link task
+constexpr size_t kConfigChunk = 1024;  // CONFIG_DATA_CHUNK payload (device -> host)
 
 QueueHandle_t gTxQueue = nullptr;
 proto::FrameDecoder gDecoder;
@@ -48,7 +52,11 @@ volatile bool gTimeSynced = false;
 volatile int32_t gTzOffsetMin = 0;
 Stats gStats = {};
 
-uint8_t gFrame[proto::maxFrameSize(kMaxReplyBody)];
+uint8_t gFrame[proto::maxFrameSize(kConfigChunk + 4)];
+
+// Config transfer (CONFIG_BEGIN / CHUNK / END) into a PSRAM buffer.
+uint8_t* gCfgBuf = nullptr;
+proto::BlobAssembler gCfgAsm(nullptr, 0);
 
 // Link task only.
 void writeFrame(uint8_t type, const uint8_t* body, size_t len) {
@@ -100,8 +108,8 @@ void onHello(const Packet& p, uint32_t now) {
   out["w"] = 480;
   out["h"] = 320;
   out["psram_free"] = ESP.getFreePsram();
-  out["cfg_crc"] = 0;  // config store arrives in Phase 9
-  out["buttons"] = defaults::kButtons;
+  out["cfg_crc"] = config::storedCrc();  // 0 = nothing stored, running on the built-in default
+  out["buttons"] = config::active().buttons;  // read-only use of the UI's config; a byte, no tearing
   out["serial"] = usb::serialNumber();
   if (media::artSize() > 0) out["art"] = media::artSize();  // album art edge the layout wants
   writeJson(proto::kHelloAck, out);
@@ -120,6 +128,83 @@ void onTimeSync(const Packet& p) {
   gTimeSynced = true;
 }
 
+void writeConfigAck(bool ok, uint32_t crc, const char* error) {
+  JsonDocument out;
+  out["ok"] = ok;
+  out["crc32"] = crc;
+  out["error"] = error;
+  writeJson(proto::kConfigAck, out);
+  if (!ok) Serial.printf("[link] config rejected: %s\n", error);
+}
+
+void onConfigBegin(const Packet& p) {
+  JsonDocument in;
+  if (deserializeJson(in, p.body, p.bodyLen)) {
+    writeConfigAck(false, 0, "config: CONFIG_BEGIN body is not valid JSON");
+    return;
+  }
+  const uint32_t size = in["size"] | 0u;
+  const uint32_t crc = in["crc32"] | 0u;
+  if (gCfgAsm.begin(size, crc) != proto::BlobAssembler::Result::kOk) {
+    char msg[64];
+    snprintf(msg, sizeof(msg), "config: size %lu not accepted (max %u bytes)", static_cast<unsigned long>(size),
+             static_cast<unsigned>(cfg::kMaxConfigBytes));
+    writeConfigAck(false, crc, msg);
+  }
+}
+
+void onConfigChunk(const Packet& p) {
+  const bool wasActive = gCfgAsm.active();
+  if (gCfgAsm.chunk(p.body, p.bodyLen) == proto::BlobAssembler::Result::kBadChunk && wasActive) {
+    writeConfigAck(false, gCfgAsm.crc(), "config: transfer chunk out of order");
+  }
+}
+
+void onConfigEnd() {
+  using R = proto::BlobAssembler::Result;
+  const R r = gCfgAsm.end();
+  if (r == R::kIgnored) return;  // already answered (bad begin or chunk)
+  if (r != R::kOk) {
+    writeConfigAck(false, gCfgAsm.crc(), r == R::kBadCrc ? "config: CRC mismatch" : "config: transfer incomplete");
+    return;
+  }
+  const uint32_t t0 = millis();
+  cfg::Config* c = config::allocate();
+  if (!c) {
+    writeConfigAck(false, gCfgAsm.crc(), "config: out of memory");
+    return;
+  }
+  char err[128];
+  if (!cfg::parse(reinterpret_cast<const char*>(gCfgAsm.data()), gCfgAsm.size(), *c, err, sizeof(err)) ||
+      !config::save(gCfgAsm.data(), gCfgAsm.size(), err, sizeof(err))) {
+    config::release(c);
+    writeConfigAck(false, gCfgAsm.crc(), err);
+    return;
+  }
+  Serial.printf("[link] config %u bytes validated and saved in %lu ms\n", static_cast<unsigned>(gCfgAsm.size()),
+                static_cast<unsigned long>(millis() - t0));
+  config::post(c);  // the UI task applies it and sends CONFIG_ACK
+}
+
+// CONFIG_GET: the stored config (or the built-in default) as CONFIG_DATA_BEGIN / CHUNK / END.
+void onConfigGet() {
+  uint8_t* buf = static_cast<uint8_t*>(heap_caps_malloc(cfg::kMaxConfigBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  const size_t n = buf ? config::readStored(buf, cfg::kMaxConfigBytes) : 0;
+  JsonDocument head;
+  head["size"] = n;
+  head["crc32"] = proto::crc32(buf, n);
+  writeJson(proto::kConfigDataBegin, head);
+  static uint8_t chunk[4 + kConfigChunk];
+  for (size_t off = 0; off < n; off += kConfigChunk) {
+    const size_t len = n - off < kConfigChunk ? n - off : kConfigChunk;
+    for (int i = 0; i < 4; ++i) chunk[i] = static_cast<uint8_t>(off >> (8 * i));
+    memcpy(chunk + 4, buf + off, len);
+    writeFrame(proto::kConfigDataChunk, chunk, 4 + len);
+  }
+  writeFrame(proto::kConfigDataEnd, nullptr, 0);
+  heap_caps_free(buf);
+}
+
 void onCmd(const Packet& p) {
   JsonDocument in;
   if (deserializeJson(in, p.body, p.bodyLen)) return;
@@ -128,6 +213,15 @@ void onCmd(const Packet& p) {
   out["cmd"] = cmd;
   if (strcmp(cmd, "reboot") == 0) {
     out["ok"] = true;
+    writeJson(proto::kCmdResult, out);
+    usb::cdc().flush();
+    delay(100);
+    ESP.restart();
+  }
+  if (strcmp(cmd, "factory_reset") == 0) {
+    // Deletes the stored config; the built-in default applies after the restart. Until the host
+    // pushes its config again (it will on connect, the CRC differs).
+    out["ok"] = config::erase();
     writeJson(proto::kCmdResult, out);
     usb::cdc().flush();
     delay(100);
@@ -156,8 +250,12 @@ void dispatch(const Packet& p, uint32_t now) {
     case proto::kArtNone: media::onArtNone(p.body, p.bodyLen); break;
     case proto::kSysStats: sysstats::onSysStats(p.body, p.bodyLen); break;
     case proto::kWeather: weather::onWeather(p.body, p.bodyLen); break;
+    case proto::kConfigBegin: onConfigBegin(p); break;
+    case proto::kConfigChunk: onConfigChunk(p); break;
+    case proto::kConfigEnd: onConfigEnd(); break;
+    case proto::kConfigGet: onConfigGet(); break;
     default:
-      gStats.unknownTypes++;  // CONFIG_*: Phase 9
+      gStats.unknownTypes++;  // SPECTRUM: stretch goal
       break;
   }
 }
@@ -202,6 +300,8 @@ void task(void*) {
 bool begin() {
   gTxQueue = xQueueCreate(8, sizeof(TxItem));
   if (!gTxQueue) return false;
+  gCfgBuf = static_cast<uint8_t*>(heap_caps_malloc(cfg::kMaxConfigBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  gCfgAsm = proto::BlobAssembler(gCfgBuf, gCfgBuf ? cfg::kMaxConfigBytes : 0);
   return xTaskCreatePinnedToCore(task, "link", 8192, nullptr, 4, nullptr, 0) == pdPASS;
 }
 

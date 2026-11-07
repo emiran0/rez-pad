@@ -241,6 +241,8 @@ rez-pad/
     config-schema.md   config schema and widget catalog
     measurements.md    SPI speed tests, timings, sensor calibration
     protocol-test-vectors.json  shared by C# and C++ protocol tests
+    default-config.json         built-in default config (host embeds it, firmware header generated)
+    config-test-vectors.json    config validation cases shared by C# and C++ tests
   firmware/
     platformio.ini
     partitions.csv
@@ -257,9 +259,11 @@ rez-pad/
       config/          load, validate, save, defaults
       fonts/           generated LVGL fonts
     lib/protocol/      pure C++ COBS/CRC/framing (no Arduino deps, host-testable)
+    lib/config_logic/  pure C++ config parsing and validation (ArduinoJson only, host-testable)
     test/              PlatformIO native tests (protocol, config validation)
   tools/
     gen_protocol_vectors.py   reference framing implementation, generates shared test vectors
+    gen_config_headers.py     C headers from docs/default-config.json and config-test-vectors.json
   host/
     RezPad.slnx
     src/RezPad.Host/
@@ -421,3 +425,8 @@ Tracked in the "Open hardware checks" table in `docs/hardware.md` (native USB po
 - 2026-11-07: "Start with Windows" relaunches the exe elevated (`--register-startup "<user>"` / `--unregister-startup`, one UAC prompt) to create or delete the `rez-pad` task (logon trigger, highest privileges, 5 s delay). It can restart into the task right away; a new instance waits up to 10 s for the old one's single-instance mutex, and the old one frees the HTTP port before releasing it.
 - 2026-11-07: Until the config exists (Phase 9) the host sends the default layout's sources (`StatsBridge.DefaultLayoutSources`) at 1 Hz. Firmware mock stats removed (`src/sysstats/` receives SYS_STATS); only weather is still demo data.
 - 2026-11-07: Keep the native USB cable off the Genesys USB 2.0 hub (`05E3:0610`): with both board USB devices behind it, the 30 s COM close / COM4 wedge came back (see `docs/measurements.md`).
+- 2026-11-07: Phase 9: one default config, `docs/default-config.json`. The host embeds it, `tools/gen_config_headers.py` generates the firmware's copy; the hand-written firmware layout (`ui/default_layout.cpp`) and `config/defaults.h` are gone. Default labels "CPU temp"/"GPU temp" (temperature widgets now get the unit "°C" from the source).
+- 2026-11-07: Config validation is implemented on both sides (`RezPad.Protocol/Config.cs`, `firmware/lib/config_logic`) and tested against the same cases (`docs/config-test-vectors.json`); errors are `"<path>: <reason>"` with identical paths. The action enum and names moved into `config_logic`. Rotate actions are only allowed on rotate gestures and press actions only on presses. Limits: 8 pages, 16 widgets per page, 16 different sources, 32 KB. Metric style fields default from the source id (`cfg::sourceDefaults`). `spectrum` is left out of the validators until it exists.
+- 2026-11-07: The config's identity is the CRC32 of its compact UTF-8 bytes; the host pushes when HELLO_ACK `cfg_crc` differs (0 = nothing stored) and after every saved change, the device stores exactly those bytes. A pushed config is validated and saved on the link task, then the UI task rebuilds all pages and sends CONFIG_ACK (with the new layout's `art` size, additive in v1). CONFIG_GET and CMD `factory_reset` implemented.
+- 2026-11-07: Host `Config/ConfigStore.cs` became `ConfigService.cs` (load, migrate by filling missing sections/keys from the default, validate, atomic save, `.bad` backup). `Device/ConfigSync.cs` does push and readback. Media options, stats sources and `stats.rate_hz` come from the config; weather refetches only when location or units change. New API: `GET/PUT /api/config`, `GET /api/config/default`, `GET /api/device/config`; `/api/status` has the sync state.
+- 2026-11-07: Page `inputs_override` is merged into a full per-page input map at parse time; the action handler uses the current page's map. Theme `accent` is applied (status bar dots, gauges, graphs). New widget `label` (`text`, optional `label`).

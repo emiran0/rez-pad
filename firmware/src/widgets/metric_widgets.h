@@ -15,7 +15,7 @@ class MetricWidget : public Widget {
   // Current value, or false when the source is unknown or not available.
   bool value(float& out) const;
   void format(char* buf, size_t n, float v) const;
-  const char* labelText() const { return spec_.label ? spec_.label : (spec_.source ? spec_.source : ""); }
+  const char* labelText() const { return spec_.label[0] ? spec_.label : spec_.source; }
 };
 
 class MetricValue : public MetricWidget {

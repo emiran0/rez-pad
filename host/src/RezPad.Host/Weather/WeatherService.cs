@@ -24,17 +24,29 @@ internal sealed class WeatherService : IDisposable
 
     private static readonly HttpClient Http = CreateClient();
 
-    private readonly ConfigStore _config;
+    private readonly ConfigService _config;
     private readonly CancellationTokenSource _cts = new();
     private readonly SemaphoreSlim _poke = new(0, 1);
     private WeatherMsg? _latest;
     private int _failures;
 
-    public WeatherService(ConfigStore config)
+    public WeatherService(ConfigService config)
     {
         _config = config;
-        _config.Changed += Refresh;
+        _lastSettings = (config.Weather, config.Units);
+        // Fetch again only when the location or units changed, not on every layout edit.
+        _config.Changed += () =>
+        {
+            var now = (_config.Weather, _config.Units);
+            if (now != _lastSettings)
+            {
+                _lastSettings = now;
+                Refresh();
+            }
+        };
     }
+
+    private (WeatherLocation, Units) _lastSettings;
 
     /// <summary>Raised after every successful fetch (on a thread-pool thread).</summary>
     public event Action<WeatherMsg>? Updated;

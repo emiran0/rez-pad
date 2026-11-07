@@ -40,7 +40,7 @@ internal sealed class SystemStatsService : IDisposable
     private Nvml? _nvml;
     private GpuEngines? _engines;
     private readonly CancellationTokenSource _cts = new();
-    private readonly TimeSpan _period;
+    private TimeSpan _period;
     // While the web page shows the whole catalog, sample everything for a few seconds.
     private static readonly TimeSpan CatalogWindow = TimeSpan.FromSeconds(5);
     private long _catalogWantedAt;
@@ -61,8 +61,14 @@ internal sealed class SystemStatsService : IDisposable
     private double? _netDown;
     private double? _netUp;
 
-    public SystemStatsService(double rateHz) =>
-        _period = TimeSpan.FromMilliseconds(1000 / Math.Clamp(rateHz, 0.2, 4));
+    public SystemStatsService(double rateHz) => RateHz = rateHz;
+
+    /// <summary>Samples per second (config "stats.rate_hz", 0.2 to 4); applies from the next tick.</summary>
+    public double RateHz
+    {
+        get => 1000 / _period.TotalMilliseconds;
+        set => _period = TimeSpan.FromMilliseconds(1000 / Math.Clamp(value, 0.2, 4));
+    }
 
     /// <summary>Raised on the sampling thread after every tick.</summary>
     public event Action? Sampled;

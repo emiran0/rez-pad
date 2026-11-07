@@ -3,10 +3,11 @@
 #include <Arduino.h>
 #include <string.h>
 
-#include "config/defaults.h"
+#include "config/store.h"
 #include "display/backlight.h"
 #include "hid/media_keys.h"
 #include "link/link.h"
+#include "ui/pages.h"
 #include "ui/ui.h"
 
 namespace rp {
@@ -14,35 +15,17 @@ namespace actions {
 
 namespace {
 
-Map gMap = defaults();
 bool gScreenOff = false;
-uint8_t gBrightness = rp::defaults::kBrightness;
-
-struct Name {
-  Action a;
-  const char* s;
-};
-const Name kNames[] = {
-    {Action::kNone, "none"},
-    {Action::kNavPage, "nav.page"},
-    {Action::kNavNext, "nav.next_page"},
-    {Action::kNavPrev, "nav.prev_page"},
-    {Action::kNavHome, "nav.home"},
-    {Action::kPlayPause, "media.play_pause"},
-    {Action::kNext, "media.next"},
-    {Action::kPrev, "media.prev"},
-    {Action::kSeek, "media.seek"},
-    {Action::kVolume, "media.volume"},
-    {Action::kMute, "media.mute"},
-    {Action::kDisplayToggle, "display.toggle"},
-    {Action::kDisplayBrightness, "display.brightness"},
-};
+uint8_t gBrightness = 80;
 
 Action resolve(const input::Event& e) {
+  const cfg::Config& c = config::active();
+  const int page = ui::pages::current();
+  const Map& map = (page >= 0 && page < c.pageCount) ? c.pages[page].inputs : c.inputs;
   const int idx = (e.source == input::Source::kEnc1 || e.source == input::Source::kBtn1) ? 0 : 1;
   const bool enc = e.source == input::Source::kEnc1 || e.source == input::Source::kEnc2;
   if (enc) {
-    const EncoderMap& m = gMap.enc[idx];
+    const EncoderMap& m = map.enc[idx];
     switch (e.kind) {
       case input::Kind::kRotate: return m.rotate;
       case input::Kind::kRotatePressed: return m.rotatePressed;
@@ -51,7 +34,7 @@ Action resolve(const input::Event& e) {
       case input::Kind::kLong: return m.lng;
     }
   } else {
-    const ButtonMap& m = gMap.btn[idx];
+    const ButtonMap& m = map.btn[idx];
     if (e.kind == input::Kind::kClick) return m.click;
     if (e.kind == input::Kind::kLong) return m.lng;
   }
@@ -60,31 +43,12 @@ Action resolve(const input::Event& e) {
 
 }  // namespace
 
-const char* name(Action a) {
-  for (const auto& n : kNames) {
-    if (n.a == a) return n.s;
-  }
-  return "none";
+void setBrightness(uint8_t percent) {
+  gBrightness = percent;
+  if (!gScreenOff) backlight::set(gBrightness);
 }
 
-Action parse(const char* s) {
-  for (const auto& n : kNames) {
-    if (strcmp(n.s, s) == 0) return n.a;
-  }
-  return Action::kNone;
-}
-
-Map defaults() {
-  Map m;
-  m.enc[0] = {Action::kNavPage, Action::kSeek, Action::kNavHome, Action::kNone, Action::kDisplayToggle};
-  m.enc[1] = {Action::kVolume, Action::kDisplayBrightness, Action::kPlayPause, Action::kNext, Action::kMute};
-  m.btn[0] = {Action::kPrev, Action::kNone};
-  m.btn[1] = {Action::kNext, Action::kNone};
-  return m;
-}
-
-void setMap(const Map& m) { gMap = m; }
-const Map& map() { return gMap; }
+uint8_t brightness() { return gBrightness; }
 
 void handle(const input::Event& e) {
   // While the screen is off, the first input only wakes it.
@@ -113,7 +77,7 @@ void run(Action a, int value) {
     case Action::kVolume:
     case Action::kMute:
       // Host app connected: it executes the action precisely (GSMTC / Core Audio from Phase 6).
-      // Otherwise the offline fallback: HID media keys. The demo player on screen follows along.
+      // Otherwise the offline fallback: HID media keys.
       if (link::hostConnected()) {
         link::sendAction(name(a), value);
       } else {

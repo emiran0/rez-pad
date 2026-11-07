@@ -15,6 +15,7 @@ lv_obj_t* gClock = nullptr;
 lv_obj_t* gPageName = nullptr;
 lv_obj_t* gDots[kMaxDots] = {};
 lv_obj_t* gHost = nullptr;
+lv_obj_t* gWarn = nullptr;
 
 }  // namespace
 
@@ -45,6 +46,15 @@ void build(lv_obj_t* parent) {
 
   gHost = widgets::makeLabel(gBar, font::small(), color::faint(), LV_SYMBOL_USB);
   lv_obj_align(gHost, LV_ALIGN_RIGHT_MID, 0, 0);
+
+  gWarn = widgets::makeLabel(gBar, font::small(), color::warn(), LV_SYMBOL_WARNING " config");
+  lv_obj_align(gWarn, LV_ALIGN_RIGHT_MID, -22, 0);
+  lv_obj_set_hidden(gWarn, true);
+}
+
+void setWarning(const char* text) {
+  // The bar has no room for the reason; it is in the serial log and the host's status page.
+  lv_obj_set_hidden(gWarn, !(text && text[0]));
 }
 
 void setPage(int index, int count, const char* name) {

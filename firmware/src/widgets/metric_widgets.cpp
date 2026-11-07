@@ -7,7 +7,7 @@ namespace rp {
 namespace widgets {
 
 bool MetricWidget::value(float& out) const {
-  const ui::Stat* s = spec_.source ? ui::findStat(spec_.source) : nullptr;
+  const ui::Stat* s = spec_.source[0] ? ui::findStat(spec_.source) : nullptr;
   if (!s) return false;
   out = s->value;
   return true;
@@ -15,7 +15,7 @@ bool MetricWidget::value(float& out) const {
 
 void MetricWidget::format(char* buf, size_t n, float v) const {
   // Network rates: switch to MB/s from 1000 kB/s so the number stays short.
-  if (spec_.unit && strcmp(spec_.unit, "kB/s") == 0 && v >= 1000.0f) {
+  if (strcmp(spec_.unit, "kB/s") == 0 && v >= 1000.0f) {
     fmtValue(buf, n, v / 1000.0f, spec_.decimals < 0 ? 1 : spec_.decimals, "MB/s");
     return;
   }

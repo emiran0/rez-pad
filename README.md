@@ -33,11 +33,12 @@ The tray app finds the board on its native USB port by itself (VID 303A, PID 400
 - `rez-pad.exe --exit` closes the running instance cleanly.
 - `GET http://127.0.0.1:47800/api/status`, `/api/log`, `/api/media` and `/api/sources` for status, recent log lines, the current Now Playing / volume, and the system data sources with live values.
 - Weather: pick a city on the config page (Open-Meteo, no API key); units there too. `GET /api/weather`, `/api/sensor` (the device's room sensor).
+- Config (layout, inputs, settings): `%APPDATA%\rez-pad\config.json`, `GET/PUT /api/config` (validated, saved and pushed to the device; the web editor comes in Phase 10), `GET /api/device/config` for the device's copy. The device keeps it in flash and boots into it without the host.
 - CPU temperature and motherboard fans need the [PawnIO](https://pawnio.eu/) driver and admin rights. Install PawnIO, then use the tray's "Start with Windows (full sensor access)", which registers an elevated logon task (one UAC prompt). GPU sensors work without either.
 - Plug the board's native USB port straight into the PC, not through a USB 2.0 hub shared with the UART cable (see `docs/measurements.md`).
 - Log file: `%LOCALAPPDATA%\rez-pad\host.log`.
 
-Firmware debug console (USB-UART port, 115200 baud): `help`, `link`, `media`, `stats`, `usb`, `sensor`, `enc`, `perf 1`, `view debug`, `bench`, ...
+Firmware debug console (USB-UART port, 115200 baud): `help`, `link`, `media`, `stats`, `config`, `usb`, `sensor`, `enc`, `perf 1`, `view debug`, `bench`, ...
 `tools/devconsole.py` sends commands from a script.
 
 ## Protocol test vectors

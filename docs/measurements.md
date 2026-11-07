@@ -153,6 +153,17 @@ Direct NVML calls (nvml.dll from the NVIDIA driver) cost about 2 us each for tem
 
 Not checked on the screen yet: icon placement and readability, the `clock` widget and the forecast `hourly` mode (neither is in the default layout; they become placeable with the config in Phase 9/10).
 
+## Config (Phase 9)
+
+| Date | Item | Result |
+|---|---|---|
+| 2026-11-07 | First connect after flashing (device on the built-in default, `cfg_crc` 0) | Host migrated its pre-Phase 9 file (kept Istanbul and m/s), pushed 2206 bytes; device validated and saved in 27 ms, rebuilt 3 pages in 108 ms; CONFIG_ACK 262 ms after the push started |
+| 2026-11-07 | Device reboot with a stored config | Loaded `/config.json` at boot, CRC matched on connect, no push |
+| 2026-11-07 | `PUT /api/config` with overlapping widgets | 400 `pages[0].widgets[1]: overlaps another widget`, nothing sent |
+| 2026-11-07 | `PUT /api/config` with a 4th page (clock, label with Turkish text, 2x2 gauge, CPU clock, room 2x1), hourly forecast, accent #FF7043 | Device applied 2762 bytes, 259 ms round trip; `sys.cpu.clock_mhz` added to SYS_STATS; CONFIG_GET readback identical (same CRC) |
+| 2026-11-07 | CMD `factory_reset` | Device restarted on the default, host pushed again on reconnect, applied 2.0 s after the command |
+| 2026-11-07 | Memory after boot | Internal heap 202 KB free, PSRAM 7834 KB free; firmware RAM 31.4 %, flash image 1.56 MB |
+
 ## Display power (2026-11-07)
 
 | Item | Before | After |

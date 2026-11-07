@@ -1,60 +1,22 @@
-// Input actions (docs/config-schema.md, "Actions") and the input-to-action map.
-// The device resolves encoder/button gestures into actions. Navigation and display actions run
-// locally; media actions go to the host (Phase 5) or out as HID keys (Phase 4). In Phase 3 they
-// drive the demo player.
+// Input-to-action handling. The action names and the input map types live in the config library
+// (lib/config_logic, docs/config-schema.md "Actions"). The device resolves encoder/button gestures
+// through the current page's map (global inputs plus that page's inputs_override). Navigation and
+// display actions run locally; media actions go to the host, or out as HID keys when it is absent.
 #pragma once
 
 #include <stdint.h>
 
+#include "config_logic.h"
 #include "input/input.h"
 
 namespace rp {
 namespace actions {
 
-enum class Action : uint8_t {
-  kNone,
-  kNavPage,      // rotate
-  kNavNext,
-  kNavPrev,
-  kNavHome,
-  kPlayPause,
-  kNext,
-  kPrev,
-  kSeek,         // rotate
-  kVolume,       // rotate
-  kMute,
-  kDisplayToggle,
-  kDisplayBrightness,  // rotate
-};
+// Brightness from the config (display.brightness); the knob changes it until the next config.
+void setBrightness(uint8_t percent);
+uint8_t brightness();
 
-const char* name(Action a);
-Action parse(const char* s);  // kNone for unknown names
-
-struct EncoderMap {
-  Action rotate = Action::kNone;
-  Action rotatePressed = Action::kNone;  // turned while the knob is held down
-  Action click = Action::kNone;
-  Action dbl = Action::kNone;
-  Action lng = Action::kNone;
-};
-
-struct ButtonMap {
-  Action click = Action::kNone;
-  Action lng = Action::kNone;
-};
-
-struct Map {
-  EncoderMap enc[2];
-  ButtonMap btn[2];
-};
-
-// Default map from docs/config-schema.md.
-Map defaults();
-
-void setMap(const Map& m);
-const Map& map();
-
-// Resolves an input event to an action and runs it.
+// Resolves an input event through the current page's map and runs the action.
 void handle(const input::Event& e);
 
 // Runs an action directly (also used by the `action` console command).

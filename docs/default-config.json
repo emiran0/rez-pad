@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "display": {
+    "brightness": 80,
+    "night": { "enabled": true, "from": "23:00", "to": "07:30", "brightness": 15 },
+    "sleep_on_pc_sleep": true,
+    "spi_hz": 40000000
+  },
+  "grid": { "cols": 4, "rows": 3 },
+  "theme": { "name": "dark", "accent": "#4FC3F7" },
+  "units": { "temp": "c", "pressure": "hpa", "wind": "kmh" },
+  "weather": { "lat": null, "lon": null, "name": "", "refresh_min": 15 },
+  "sensor": { "temp_offset_c": -1.5, "hum_offset_pct": 0, "trend_threshold_hpa": 1.0 },
+  "media": { "app_priority": ["Spotify", "*"], "art_size": 200, "volume_step": 2, "seek_step_s": 5 },
+  "stats": { "rate_hz": 1 },
+  "inputs": {
+    "buttons": 0,
+    "enc1": { "counts_per_detent": 4, "invert": false,
+              "rotate": "nav.page", "rotate_pressed": "media.seek",
+              "click": "nav.home", "double": "none", "long": "display.toggle" },
+    "enc2": { "counts_per_detent": 4, "invert": false,
+              "rotate": "media.volume", "rotate_pressed": "display.brightness",
+              "click": "media.play_pause", "double": "media.next", "long": "media.mute" },
+    "btn1": { "click": "media.prev", "long": "none" },
+    "btn2": { "click": "media.next", "long": "none" }
+  },
+  "pages": [
+    {
+      "id": "now_playing",
+      "name": "Now Playing",
+      "widgets": [
+        { "type": "album_art",      "x": 0, "y": 0, "w": 2, "h": 2 },
+        { "type": "track_info",     "x": 2, "y": 0, "w": 2, "h": 2 },
+        { "type": "media_controls", "x": 0, "y": 2, "w": 3, "h": 1 },
+        { "type": "volume",         "x": 3, "y": 2, "w": 1, "h": 1 }
+      ]
+    },
+    {
+      "id": "system",
+      "name": "System",
+      "widgets": [
+        { "type": "metric_gauge", "x": 0, "y": 0, "w": 1, "h": 1, "source": "sys.cpu.load", "label": "CPU" },
+        { "type": "metric_gauge", "x": 1, "y": 0, "w": 1, "h": 1, "source": "sys.cpu.temp", "label": "CPU temp" },
+        { "type": "metric_gauge", "x": 2, "y": 0, "w": 1, "h": 1, "source": "sys.gpu.load", "label": "GPU" },
+        { "type": "metric_gauge", "x": 3, "y": 0, "w": 1, "h": 1, "source": "sys.gpu.temp", "label": "GPU temp" },
+        { "type": "metric_graph", "x": 0, "y": 1, "w": 2, "h": 1, "source": "sys.cpu.load", "label": "CPU history" },
+        { "type": "metric_bar",   "x": 2, "y": 1, "w": 2, "h": 1, "source": "sys.ram.used_pct", "label": "RAM" },
+        { "type": "metric_value", "x": 0, "y": 2, "w": 2, "h": 1, "source": "sys.net.down_kbps", "label": "Down" },
+        { "type": "metric_value", "x": 2, "y": 2, "w": 2, "h": 1, "source": "sys.net.up_kbps", "label": "Up" }
+      ]
+    },
+    {
+      "id": "weather_room",
+      "name": "Weather & Room",
+      "widgets": [
+        { "type": "weather_now",      "x": 0, "y": 0, "w": 2, "h": 2 },
+        { "type": "room_climate",     "x": 2, "y": 0, "w": 2, "h": 2 },
+        { "type": "weather_forecast", "x": 0, "y": 2, "w": 4, "h": 1, "mode": "daily" }
+      ]
+    }
+  ]
+}

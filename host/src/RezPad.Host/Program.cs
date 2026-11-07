@@ -63,23 +63,24 @@ internal static class Program
         Log.Info($"rez-pad host {Version} starting{(StartupTask.IsElevated() ? " (elevated)" : "")}, log at {Log.LogFile}");
         AppDomain.CurrentDomain.UnhandledException += (_, e) => Log.Error($"unhandled: {e.ExceptionObject}");
 
-        var config = new ConfigStore();
+        var config = new ConfigService();
         var room = new RoomSensor();
         using var link = new SerialLink(Version);
-        var mediaOptions = MediaOptions.Default;
+        var configSync = new ConfigSync(link, config);
         using var audio = new AudioService();
-        using var media = new MediaService(mediaOptions);
-        using var bridge = new MediaBridge(link, media, audio, mediaOptions);
+        using var media = new MediaService(() => config.Media);
+        using var bridge = new MediaBridge(link, media, audio, () => config.Media);
+        configSync.Applied += bridge.OnConfigApplied;
         link.PacketReceived += packet =>
         {
-            if (!bridge.HandlePacket(packet))
+            if (!bridge.HandlePacket(packet) && !configSync.HandlePacket(packet))
             {
                 OnPacket(packet, room);
             }
         };
 
-        using var stats = new SystemStatsService(rateHz: 1);  // config "stats.rate_hz" from Phase 9
-        _ = new StatsBridge(link, stats, StatsBridge.DefaultLayoutSources);
+        using var stats = new SystemStatsService(config.StatsRateHz);
+        _ = new StatsBridge(link, stats, config);
         using var weather = new WeatherService(config);
         _ = new WeatherBridge(link, weather);
 
@@ -87,7 +88,7 @@ internal static class Program
         media.Start();
         stats.Start();
         weather.Start();
-        var web = new WebServer(port, new WebServices(link, media, audio, stats, config, weather, room));
+        var web = new WebServer(port, new WebServices(link, media, audio, stats, config, weather, room, configSync));
         web.Start();
         link.Start();
 
@@ -124,7 +125,7 @@ internal static class Program
                 Log.Info($"device {log?.Lvl}: {log?.Msg}");
                 break;
             default:
-                break;  // CONFIG_*, CMD_RESULT: later phases
+                break;  // CMD_RESULT: logged by the web API caller
         }
     }
 }

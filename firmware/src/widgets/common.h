@@ -57,7 +57,9 @@ inline void fmtDuration(char* buf, size_t n, uint32_t ms) {
 // Value with automatic decimals: 1 decimal below 10, none above.
 inline void fmtValue(char* buf, size_t n, float v, int decimals, const char* unit) {
   if (decimals < 0) decimals = fabsf(v) < 10.0f ? 1 : 0;
-  snprintf(buf, n, "%.*f%s%s", decimals, v, unit && *unit ? " " : "", unit ? unit : "");
+  // "62°C", "12.5 %", "830 kB/s": no space before a degree sign.
+  const bool space = unit && *unit && strncmp(unit, "\xC2\xB0", 2) != 0;
+  snprintf(buf, n, "%.*f%s%s", decimals, v, space ? " " : "", unit ? unit : "");
 }
 
 inline lv_color_t levelColor(float v, float warn, float crit) {
