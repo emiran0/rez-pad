@@ -1,0 +1,25 @@
+// LVGL 9 on the ILI9488 through LovyanGFX: display driver, tick and log hookup.
+#pragma once
+
+#include <lvgl.h>
+
+namespace rp {
+namespace lvgl_port {
+
+// Creates the LVGL display with two 480x40 RGB565 draw buffers in internal DMA RAM.
+bool begin();
+
+// Runs LVGL timers and rendering. Returns ms until LVGL wants to run again.
+uint32_t handle();
+
+// While paused (debug view, test pattern), LVGL does not render or flush.
+void setPaused(bool paused);
+bool paused();
+
+// Forces a full redraw on the next handle().
+void invalidateAll();
+
+void showPerfMonitor(bool on);
+
+}  // namespace lvgl_port
+}  // namespace rp

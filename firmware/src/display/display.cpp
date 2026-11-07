@@ -88,7 +88,13 @@ lgfx::LGFX_Device& lcd() { return gLcd; }
 
 void setSpiHz(uint32_t hz) {
   gSpiHz = hz;
+  // The clock divider is only applied when a transaction starts, and the LVGL port keeps the
+  // bus claimed. Release it fully, change the clock, then restore the same claim depth.
+  gLcd.waitDMA();
+  const uint32_t depth = gLcd.getStartCount();
+  for (uint32_t i = 0; i < depth; ++i) gLcd.endWrite();
   gLcd.setWriteClock(hz);
+  for (uint32_t i = 0; i < depth; ++i) gLcd.startWrite();
 }
 
 uint32_t spiHz() { return gSpiHz; }

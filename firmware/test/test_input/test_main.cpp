@@ -101,6 +101,40 @@ static void test_click_then_hold_is_long() {
   TEST_ASSERT_EQUAL(Gesture::kLong, ev[0].second);
 }
 
+static void test_cancel_press_suppresses_gestures() {
+  GestureDetector g;
+  std::vector<Gesture> out;
+  // Press at 100 (debounced 120), cancelled at 300 by a turn, held until 1500, released.
+  for (uint32_t t = 0; t <= 2500; ++t) {
+    const bool pressed = t >= 100 && t < 1500;
+    if (t == 300) g.cancelPress();
+    const Gesture e = g.update(pressed, t);
+    if (e != Gesture::kNone) out.push_back(e);
+  }
+  TEST_ASSERT_EQUAL(0, out.size());
+
+  // The next normal click still works.
+  for (uint32_t t = 2500; t <= 3500; ++t) {
+    const Gesture e = g.update(t >= 2600 && t < 2700, t);
+    if (e != Gesture::kNone) out.push_back(e);
+  }
+  TEST_ASSERT_EQUAL(1, out.size());
+  TEST_ASSERT_EQUAL(Gesture::kClick, out[0]);
+}
+
+static void test_cancel_second_press_of_double() {
+  GestureDetector g;
+  std::vector<Gesture> out;
+  // click, then press again and turn: neither click nor double must fire.
+  for (uint32_t t = 0; t <= 2000; ++t) {
+    const bool pressed = (t >= 100 && t < 180) || (t >= 300 && t < 900);
+    if (t == 400) g.cancelPress();
+    const Gesture e = g.update(pressed, t);
+    if (e != Gesture::kNone) out.push_back(e);
+  }
+  TEST_ASSERT_EQUAL(0, out.size());
+}
+
 static void test_detent_two_counts() {
   DetentAccumulator d;
   d.configure(2, false);
@@ -142,6 +176,8 @@ int main(int, char**) {
   RUN_TEST(test_bounce_is_ignored);
   RUN_TEST(test_glitch_shorter_than_debounce);
   RUN_TEST(test_click_then_hold_is_long);
+  RUN_TEST(test_cancel_press_suppresses_gestures);
+  RUN_TEST(test_cancel_second_press_of_double);
   RUN_TEST(test_detent_two_counts);
   RUN_TEST(test_detent_four_counts_and_invert);
   RUN_TEST(test_detent_fast_spin_no_loss);

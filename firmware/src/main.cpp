@@ -1,12 +1,13 @@
 // rez-pad firmware entry point.
-// Phase 2: encoders (PCNT), switch gestures, AHT20 + BMP280 with filtering and trend, shown on an
-// on-screen debug view. Phase 1 display tools (test pattern, SPI benchmark) stay available on the
-// debug console on UART0 (the USB-UART bridge port, 115200 baud).
+// Phase 3: LVGL UI (status bar, page manager, widget grid) with demo data; encoder 1 switches
+// pages. The Phase 2 debug view and Phase 1 display tools stay available from the debug console
+// on UART0 (the USB-UART bridge port, 115200 baud); they pause LVGL while they draw.
 #include <Arduino.h>
 #include <esp_chip_info.h>
 #include <esp_flash.h>
 #include <string.h>
 
+#include "app/actions.h"
 #include "config/defaults.h"
 #include "debug/console.h"
 #include "debug/wiring_check.h"
@@ -17,6 +18,8 @@
 #include "rezpad_protocol.h"
 #include "sensors/sensors.h"
 #include "ui/debug_view.h"
+#include "ui/lvgl_port.h"
+#include "ui/ui.h"
 
 #ifndef FW_VERSION
 #define FW_VERSION "dev"
@@ -25,6 +28,12 @@
 namespace {
 
 constexpr uint32_t kViewRefreshMs = 50;
+
+// Direct LCD drawing (test pattern, fills, benchmark): pause LVGL so it does not draw over it.
+void rawView() {
+  rp::debug_view::hide();
+  rp::lvgl_port::setPaused(true);
+}
 
 bool protocolSelfTest() {
   static const uint8_t kCheck[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
@@ -91,7 +100,7 @@ void cmdSpi(int argc, char** argv, Print& out) {
   long mhz = 0;
   if (argc == 2 && parseUint(argv[1], 1, 80, mhz)) {
     rp::display::setSpiHz(static_cast<uint32_t>(mhz) * 1000000u);
-    rp::debug_view::hide();
+    rawView();
     rp::display::drawTestPattern();
   } else if (argc != 1) {
     out.println("usage: spi <1-80>  (MHz, redraws the test pattern)");
@@ -101,7 +110,7 @@ void cmdSpi(int argc, char** argv, Print& out) {
 }
 
 void cmdPattern(int, char**, Print& out) {
-  rp::debug_view::hide();
+  rawView();
   const uint32_t t0 = micros();
   rp::display::drawTestPattern();
   out.printf("test pattern drawn in %.1f ms\n", (micros() - t0) / 1000.0f);
@@ -117,7 +126,7 @@ void cmdFill(int argc, char** argv, Print& out) {
   if (argc == 2) {
     for (const auto& c : kColors) {
       if (strcmp(argv[1], c.name) == 0) {
-        rp::debug_view::hide();
+        rawView();
         rp::display::lcd().fillScreen(c.color);
         return;
       }
@@ -130,7 +139,7 @@ void cmdRotation(int argc, char** argv, Print& out) {
   long r = 0;
   if (argc == 2 && parseUint(argv[1], 0, 3, r)) {
     rp::display::setRotation(static_cast<uint8_t>(r));
-    rp::debug_view::hide();
+    rawView();
     rp::display::drawTestPattern();
   } else {
     out.println("usage: rot <0-3>  (1 and 3 are landscape)");
@@ -155,15 +164,50 @@ void cmdBench(int argc, char** argv, Print& out) {
     }
     list[n++] = static_cast<uint32_t>(mhz) * 1000000u;
   }
-  rp::debug_view::hide();
+  rawView();
   if (n == 0) rp::display::runBenchmark(kDefault, 4, out);
   else rp::display::runBenchmark(list, n, out);
 }
 
 void cmdView(int argc, char** argv, Print& out) {
-  if (argc == 2 && strcmp(argv[1], "debug") == 0) rp::debug_view::show();
-  else if (argc == 2 && strcmp(argv[1], "pattern") == 0) cmdPattern(1, argv, out);
-  else out.println("usage: view <debug|pattern>");
+  if (argc == 2 && strcmp(argv[1], "ui") == 0) {
+    rp::debug_view::hide();
+    rp::lvgl_port::setPaused(false);
+  } else if (argc == 2 && strcmp(argv[1], "debug") == 0) {
+    rp::lvgl_port::setPaused(true);
+    rp::debug_view::show();
+  } else if (argc == 2 && strcmp(argv[1], "pattern") == 0) {
+    cmdPattern(1, argv, out);
+  } else {
+    out.println("usage: view <ui|debug|pattern>");
+  }
+}
+
+void cmdAction(int argc, char** argv, Print& out) {
+  if (argc < 2) {
+    out.println("usage: action <name> [value]   e.g. action media.next, action media.volume -3");
+    return;
+  }
+  const rp::actions::Action a = rp::actions::parse(argv[1]);
+  if (a == rp::actions::Action::kNone && strcmp(argv[1], "none") != 0) {
+    out.printf("unknown action '%s'\n", argv[1]);
+    return;
+  }
+  const int value = argc >= 3 ? atoi(argv[2]) : 1;
+  rp::actions::run(a, value);
+  out.printf("ran %s %d\n", rp::actions::name(a), value);
+}
+
+void cmdPage(int argc, char** argv, Print& out) {
+  long n = 0;
+  if (argc == 2 && parseUint(argv[1], 0, 7, n)) rp::ui::showPage(static_cast<int>(n));
+  else out.println("usage: page <index>");
+}
+
+void cmdPerf(int argc, char** argv, Print& out) {
+  long v = 0;
+  if (argc == 2 && parseUint(argv[1], 0, 1, v)) rp::lvgl_port::showPerfMonitor(v != 0);
+  else out.println("usage: perf <0|1>  (LVGL FPS/CPU overlay)");
 }
 
 void cmdSensor(int, char**, Print& out) {
@@ -253,7 +297,10 @@ const rp::console::Command kCommands[] = {
     {"rot", "<0-3>", cmdRotation},
     {"lcdinv", "<0|1>", cmdInvert},
     {"bench", "[MHz ...]", cmdBench},
-    {"view", "<debug|pattern>", cmdView},
+    {"view", "<ui|debug|pattern>", cmdView},
+    {"action", "<name> [value]", cmdAction},
+    {"page", "<index>", cmdPage},
+    {"perf", "<0|1>", cmdPerf},
     {"enc", "", cmdEnc},
     {"cpd", "<1|2> <counts per click>", cmdCpd},
     {"encinv", "<1|2> <0|1>", cmdEncInv},
@@ -279,6 +326,11 @@ void setup() {
     e.invert = rp::defaults::kEncInvert;
   }
   inCfg.buttons = rp::defaults::kButtons;
+  const auto& map = rp::actions::map();
+  for (int i = 0; i < 2; ++i) {
+    // No double-click mapped: clicks fire on release instead of waiting for a second click.
+    inCfg.enc[i].doubleEnabled = map.enc[i].dbl != rp::actions::Action::kNone;
+  }
   const bool inputOk = rp::input::begin(inCfg);
 
   rp::sensors::Config sCfg;
@@ -293,7 +345,8 @@ void setup() {
   rp::wiring::printInputLevels(Serial);
   if (!rp::sensors::begin(sCfg)) Serial.println("sensor task FAILED");
 
-  rp::debug_view::show();
+  if (!rp::ui::begin()) Serial.println("UI (LVGL) init FAILED");
+  rp::ui::loop(millis());  // first frame before the backlight comes on
   rp::backlight::set(rp::defaults::kBrightness);
 
   rp::console::begin(kCommands, sizeof(kCommands) / sizeof(kCommands[0]));
@@ -305,19 +358,23 @@ void loop() {
 
   rp::input::Event e;
   while (rp::input::poll(e)) {
-    if (e.kind == rp::input::Kind::kRotate) {
-      Serial.printf("[input] %s rotate %+d\n", rp::input::sourceName(e.source), e.value);
+    if (e.kind == rp::input::Kind::kRotate || e.kind == rp::input::Kind::kRotatePressed) {
+      Serial.printf("[input] %s %s %+d\n", rp::input::sourceName(e.source), rp::input::kindName(e.kind), e.value);
     } else {
       Serial.printf("[input] %s %s\n", rp::input::sourceName(e.source), rp::input::kindName(e.kind));
     }
     rp::debug_view::addEvent(e);
+    if (!rp::debug_view::active()) rp::actions::handle(e);
   }
 
-  static uint32_t lastView = 0;
   const uint32_t now = millis();
-  if (now - lastView >= kViewRefreshMs) {
-    lastView = now;
-    rp::debug_view::update(rp::input::snapshot(), rp::sensors::latest());
+  if (rp::debug_view::active()) {
+    static uint32_t lastView = 0;
+    if (now - lastView >= kViewRefreshMs) {
+      lastView = now;
+      rp::debug_view::update(rp::input::snapshot(), rp::sensors::latest());
+    }
   }
+  rp::ui::loop(now);
   delay(2);
 }

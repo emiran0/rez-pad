@@ -10,12 +10,13 @@ namespace rp {
 namespace input {
 
 enum class Source : uint8_t { kEnc1, kEnc2, kBtn1, kBtn2 };
-enum class Kind : uint8_t { kRotate, kClick, kDouble, kLong };
+// kRotatePressed: turned while the encoder's own switch is held (press-and-turn).
+enum class Kind : uint8_t { kRotate, kRotatePressed, kClick, kDouble, kLong };
 
 struct Event {
   Source source;
   Kind kind;
-  int16_t value;   // detents for kRotate (+ clockwise), 0 otherwise
+  int16_t value;   // detents for kRotate / kRotatePressed (+ clockwise), 0 otherwise
   uint32_t timeMs;
 };
 

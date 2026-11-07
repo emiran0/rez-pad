@@ -50,3 +50,16 @@ Chosen default: **40 MHz** (2026-11-07). Full frame 92.7 ms, within the < 120 ms
 | Date | Reference temp | AHT20 temp | Offset applied | Reference RH | AHT20 RH | Notes |
 |---|---|---|---|---|---|---|
 | 2026-11-07 | none | 28.3 C raw at boot, 29.2 C after ~5 min (BMP280 29.4 C) | -1.5 C default | none | 33.1 % raw, about 35 % after the temperature correction | Breadboard, sensor near the ESP32 and display: it warms up after boot (self-heating). Pressure 1018.2 hPa, 0 read errors in 22 samples. Calibrate once the sensor sits in its final position. |
+
+## UI rendering (LVGL)
+
+LVGL sysmon overlay (`perf 1`), 30 FPS cap (LV_DEF_REFR_PERIOD 33 ms), SPI 40 MHz, 2 x 480x40 RGB565 draw buffers.
+
+| Date | Page / situation | FPS | CPU (UI core) | Notes |
+|---|---|---|---|---|
+| 2026-11-07 | System, Weather & Room (idle, 1 Hz stats) | 45-50 | 3-24 % | before the 30 FPS cap |
+| 2026-11-07 | Now Playing, title + artist + album all scrolling | ~25 | 50-55 % | first version, 3 marquees at 40 px/s |
+| 2026-11-07 | same, 3 marquees at 20 px/s | | 80-85 % | worse: labels step on different frames, more refresh passes |
+| 2026-11-07 | same, only the title scrolls (30 px/s = 1 px per frame) | 30 (cap) | ~40 % | current. Remaining load is mostly waiting for SPI inside the flush. |
+
+Page switch: reported as instant on the hardware. Possible later optimization if needed: convert RGB565 to RGB666 into a separate DMA buffer and return from flush immediately, so the next strip renders while the previous one is on the wire.

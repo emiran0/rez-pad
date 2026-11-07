@@ -128,7 +128,10 @@ void tick(void*) {
       const int steps = gDetent[i].update(count);
       if (steps != 0) {
         gDetentTotal[i] = gDetentTotal[i] + steps;
-        push(i == 0 ? Source::kEnc1 : Source::kEnc2, Kind::kRotate, static_cast<int16_t>(steps), now);
+        const bool held = gEncSw[i].pressed();
+        if (held) gEncSw[i].cancelPress();  // this press is a modifier now, not a click
+        push(i == 0 ? Source::kEnc1 : Source::kEnc2, held ? Kind::kRotatePressed : Kind::kRotate,
+             static_cast<int16_t>(steps), now);
       }
     }
     const bool sw = digitalRead(gEnc[i].pinSw) == LOW;
@@ -162,6 +165,7 @@ const char* sourceName(Source s) {
 const char* kindName(Kind k) {
   switch (k) {
     case Kind::kRotate: return "rotate";
+    case Kind::kRotatePressed: return "press+rotate";
     case Kind::kClick: return "click";
     case Kind::kDouble: return "double";
     case Kind::kLong: return "long";

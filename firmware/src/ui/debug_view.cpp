@@ -110,9 +110,9 @@ void hide() { gActive = false; }
 
 void addEvent(const input::Event& e) {
   for (int i = kEventLines - 1; i > 0; --i) memcpy(gEvents[i], gEvents[i - 1], sizeof(gEvents[i]));
-  if (e.kind == input::Kind::kRotate) {
-    snprintf(gEvents[0], sizeof(gEvents[0]), "%7.2fs  %s rotate %+d", e.timeMs / 1000.0f,
-             input::sourceName(e.source), e.value);
+  if (e.kind == input::Kind::kRotate || e.kind == input::Kind::kRotatePressed) {
+    snprintf(gEvents[0], sizeof(gEvents[0]), "%7.2fs  %s %s %+d", e.timeMs / 1000.0f,
+             input::sourceName(e.source), input::kindName(e.kind), e.value);
   } else {
     snprintf(gEvents[0], sizeof(gEvents[0]), "%7.2fs  %s %s", e.timeMs / 1000.0f, input::sourceName(e.source),
              input::kindName(e.kind));

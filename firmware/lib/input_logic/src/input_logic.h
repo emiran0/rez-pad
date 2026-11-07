@@ -30,6 +30,10 @@ class GestureDetector {
 
   bool pressed() const { return stable_; }
 
+  // The current press was used for something else (press-and-turn): it produces no
+  // click, double or long, and does not start a double-click window.
+  void cancelPress();
+
  private:
   GestureConfig cfg_;
   bool raw_ = false;

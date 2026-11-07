@@ -25,9 +25,11 @@ Schema changes bump `schema` and include a migration on the host.
   "inputs": {
     "buttons": 0,
     "enc1": { "counts_per_detent": 4, "invert": false,
-              "rotate": "nav.page", "click": "nav.home", "double": "none", "long": "display.toggle" },
+              "rotate": "nav.page", "rotate_pressed": "media.seek",
+              "click": "nav.home", "double": "none", "long": "display.toggle" },
     "enc2": { "counts_per_detent": 4, "invert": false,
-              "rotate": "media.volume", "click": "media.play_pause", "double": "media.next", "long": "media.mute" },
+              "rotate": "media.volume", "rotate_pressed": "display.brightness",
+              "click": "media.play_pause", "double": "media.next", "long": "media.mute" },
     "btn1": { "click": "media.prev", "long": "none" },
     "btn2": { "click": "media.next", "long": "none" }
   },
@@ -35,7 +37,6 @@ Schema changes bump `schema` and include a migration on the host.
     {
       "id": "now_playing",
       "name": "Now Playing",
-      "inputs_override": { "enc1": { "rotate": "media.seek" } },
       "widgets": [
         { "type": "album_art",      "x": 0, "y": 0, "w": 2, "h": 2 },
         { "type": "track_info",     "x": 2, "y": 0, "w": 2, "h": 2 },
@@ -69,6 +70,10 @@ Schema changes bump `schema` and include a migration on the host.
   ]
 }
 ```
+
+Encoder gestures: `rotate`, `rotate_pressed` (turned while the knob is held down; that press then produces no click/double/long), `click`, `double` (when `none`, clicks fire on release without waiting for a second click), `long`. Buttons: `click`, `long`.
+
+Pages may still carry `inputs_override` (same shape as `inputs`, only the keys to change) for page-specific mappings. The default config uses none: an override of `enc1.rotate` would make it impossible to leave that page by turning.
 
 `inputs.buttons` (0 to 2) is the number of physical buttons fitted. `btn1`/`btn2` mappings are kept but ignored when the button is not fitted. Default is 0 until the hardware is decided.
 

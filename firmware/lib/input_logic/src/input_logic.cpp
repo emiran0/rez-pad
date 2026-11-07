@@ -51,6 +51,13 @@ Gesture GestureDetector::update(bool rawPressed, uint32_t nowMs) {
   return out;
 }
 
+void GestureDetector::cancelPress() {
+  if (!stable_) return;
+  longFired_ = true;  // suppresses long now and click/double on release
+  secondPress_ = false;
+  clickPending_ = false;
+}
+
 void DetentAccumulator::configure(int countsPerDetent, bool invert) {
   cpd_ = countsPerDetent > 0 ? countsPerDetent : 1;
   invert_ = invert;
