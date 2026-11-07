@@ -86,13 +86,21 @@ Stable dotted IDs. The host publishes the catalog of what exists on this PC (`GE
 
 ## Web config editor
 
-- Location: `web/` in the repo, served by the host.
-- Plain HTML/CSS/JS (no build step) with **gridstack.js** (MIT) vendored in `web/vendor/`.
-- Features: page list (add, remove, rename, reorder), grid editor with a widget palette restricted to allowed sizes, properties panel per widget (source dropdown from the host's catalog, labels, thresholds), input mapping form, display/night settings, weather location search (Open-Meteo geocoding), units, sensor offsets with live readings, device status (connected, firmware version, protocol version).
-- A 480x320 scaled preview that approximates the device look.
-- Save -> host validates -> writes master config -> pushes to the device -> shows result from CONFIG_ACK.
+`web/` in the repo, copied next to the host exe and served at `http://127.0.0.1:47800`. Plain HTML/CSS/JS as ES modules, no build step and no third-party code:
+
+- `app.js`: loading, live data polling, live validation, save and undo.
+- `state.js`: the working copy of the config, change events, API helpers.
+- `editor.js`: Layout tab. Page tabs (add, rename, reorder, remove), the device screen with draggable widget cards, the widget palette (only types with room for an allowed size), the selected widget's properties (allowed sizes that fit, source dropdown with live values, style fields with the source defaults as placeholders), grid size, and per-page knob overrides.
+- `preview.js`: draws the 480x320 screen like the firmware does (same card geometry, colors, fonts sizes and widget layouts, weather icons exported by `tools/gen_weather_icons.py --web web/img/weather`), fed with live data: stats, now playing with album art, weather, room sensor.
+- `settings.js`: Knobs, Display (brightness, accent color, SPI clock, night settings for Phase 11), Weather (city search, refresh, units), Sensor & media (offsets with the live reading, app priority, steps, stats rate), Device (status, compare with the device's copy, restart, clear device config, data source table).
+
+Editing changes only the working copy. Every change is validated by the host (`POST /api/config/validate`, same validator as saving); an error blocks saving and "Show" jumps to the widget it names. Save (or Ctrl+S) sends `PUT /api/config?base=<crc>`: the host refuses (409) when the config changed elsewhere since the page loaded, otherwise it saves, pushes to the device and the page shows the device's answer. Live data is polled (status every 2 s, stats and media every 1 s, weather and room every 5 s, paused while the tab is hidden).
 
 ## Host API (localhost only)
 
-- `GET /api/status` (includes `config`: host CRC, device CRC, in sync, last push result), `GET /api/config`, `PUT /api/config` (validates, saves, pushes; `400 {error}` with the validator's message, otherwise `{saved, crc, device}` where `device` is the push result or null when no device is connected), `GET /api/config/default`, `GET /api/device/config` (the device's stored copy via CONFIG_GET), `GET /api/sources`, `GET /api/geocode?q=`, `GET /api/sensor`, `POST /api/device/cmd`, WebSocket `/ws` for live status and sensor updates (Phase 10).
+- `GET /api/status` (includes `config`: host CRC, device CRC, in sync, last push result).
+- `GET /api/config` (current config, its CRC in the `X-Config-Crc` header), `PUT /api/config[?base=<crc>]` (validates, saves, pushes; `400 {error}` with the validator's message, `409` when `base` is not the current CRC, otherwise `{saved, crc, device}` where `device` is the push result or null when no device is connected), `POST /api/config/validate` (`{error, bytes}`, saves nothing), `GET /api/config/default`.
+- `GET /api/catalog`: widget types with allowed sizes, actions and which of them take a rotation, limits, and every data source on this PC with its style defaults.
+- `GET /api/device/config` (the device's stored copy via CONFIG_GET), `POST /api/device/cmd`.
+- `GET /api/sources`, `GET /api/media`, `GET /api/media/art?size=` (current album art as JPEG), `GET /api/weather`, `PUT /api/weather`, `GET /api/geocode?q=`, `GET /api/sensor`, `GET /api/hardware`, `GET /api/log`.
 - Bind to `127.0.0.1` only. No remote access.

@@ -7,8 +7,8 @@
 // RGB565; LovyanGFX converts to the panel's RGB666. (LVGL 9.6 replaced LV_COLOR_DEPTH with this.)
 #define LV_COLOR_FORMAT_DEFAULT LV_COLOR_FORMAT_RGB565
 
-// Use the C library allocator: ESP-IDF malloc spills large blocks into PSRAM automatically.
-#define LV_USE_STDLIB_MALLOC LV_STDLIB_CLIB
+// LVGL objects in PSRAM: plain malloc kept every small block in internal RAM (96 widgets left 3 KB).
+#define LV_USE_STDLIB_MALLOC LV_STDLIB_CUSTOM  // PSRAM, see src/ui/lv_mem_psram.c
 #define LV_USE_STDLIB_STRING LV_STDLIB_CLIB
 #define LV_USE_STDLIB_SPRINTF LV_STDLIB_CLIB
 

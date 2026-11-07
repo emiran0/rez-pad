@@ -211,6 +211,7 @@ def c_array(data):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--preview", help="also write a PNG sheet of all icons on the card color")
+    ap.add_argument("--web", help="also write <name>.png (72 px) per icon into this folder (web editor preview)")
     args = ap.parse_args()
 
     root = pathlib.Path(__file__).resolve().parent.parent
@@ -272,6 +273,11 @@ def main():
                 img = rendered[n].resize((size, size), Image.LANCZOS)
                 sheet.alpha_composite(img, (i * cell + (cell - size) // 2, j * cell + (cell - size) // 2))
         sheet.save(args.preview)
+    if args.web:
+        web = pathlib.Path(args.web)
+        web.mkdir(parents=True, exist_ok=True)
+        for n in ICONS:
+            rendered[n].resize((72, 72), Image.LANCZOS).save(web / f"{n}.png", optimize=True)
     print(f"wrote {out_c.name} ({out_c.stat().st_size // 1024} KB source), {len(ICONS)} icons x {SIZES}")
 
 

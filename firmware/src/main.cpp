@@ -8,6 +8,8 @@
 #include <Arduino.h>
 #include <esp_chip_info.h>
 #include <esp_flash.h>
+#include <esp_heap_caps.h>
+#include <esp_system.h>
 #include <string.h>
 
 #include "app/actions.h"
@@ -46,6 +48,21 @@ void rawView() {
   rp::lvgl_port::setPaused(true);
 }
 
+const char* resetReason() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON: return "power on";
+    case ESP_RST_SW: return "software restart";
+    case ESP_RST_PANIC: return "crash (panic)";
+    case ESP_RST_INT_WDT: return "interrupt watchdog";
+    case ESP_RST_TASK_WDT: return "task watchdog";
+    case ESP_RST_WDT: return "watchdog";
+    case ESP_RST_BROWNOUT: return "brownout (supply dipped)";
+    case ESP_RST_EXT: return "reset pin";
+    case ESP_RST_USB: return "USB";
+    default: return "other";
+  }
+}
+
 bool protocolSelfTest() {
   static const uint8_t kCheck[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
   return rp::proto::crc16(kCheck, sizeof(kCheck)) == 0x29B1 &&
@@ -69,7 +86,10 @@ void printInfo(Print& out) {
   } else {
     out.println("PSRAM NOT FOUND (check board/memory_type settings)");
   }
-  out.printf("internal heap %lu KB free\n", static_cast<unsigned long>(ESP.getFreeHeap() / 1024));
+  out.printf("internal heap %lu KB free (lowest %lu KB), uptime %lu s, last reset: %s\n",
+             static_cast<unsigned long>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+             static_cast<unsigned long>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024),
+             static_cast<unsigned long>(millis() / 1000), resetReason());
   out.printf("protocol self-test %s\n", protocolSelfTest() ? "ok" : "FAILED");
   out.printf("display %dx%d, SPI %.1f MHz, backlight %u%%\n", static_cast<int>(rp::display::lcd().width()),
              static_cast<int>(rp::display::lcd().height()), rp::display::effectiveSpiHz(rp::display::spiHz()) / 1e6,
@@ -211,8 +231,16 @@ void cmdAction(int argc, char** argv, Print& out) {
 
 void cmdPage(int argc, char** argv, Print& out) {
   long n = 0;
-  if (argc == 2 && parseUint(argv[1], 0, 7, n)) rp::ui::showPage(static_cast<int>(n));
-  else out.println("usage: page <index>");
+  if (argc == 2 && parseUint(argv[1], 0, 7, n)) {
+    // The console runs on the UI loop, so drawing here is safe; times the full redraw of the page.
+    const uint32_t t0 = micros();
+    rp::ui::showPage(static_cast<int>(n));
+    rp::ui::loop(millis());  // refresh the new page's widgets
+    lv_refr_now(nullptr);
+    out.printf("page %ld drawn in %.1f ms\n", n, (micros() - t0) / 1000.0f);
+  } else {
+    out.println("usage: page <index>");
+  }
 }
 
 void cmdPerf(int argc, char** argv, Print& out) {

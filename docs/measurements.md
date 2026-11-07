@@ -164,6 +164,17 @@ Not checked on the screen yet: icon placement and readability, the `clock` widge
 | 2026-11-07 | CMD `factory_reset` | Device restarted on the default, host pushed again on reconnect, applied 2.0 s after the command |
 | 2026-11-07 | Memory after boot | Internal heap 202 KB free, PSRAM 7834 KB free; firmware RAM 31.4 %, flash image 1.56 MB |
 
+## Config editor and LVGL memory (Phase 10)
+
+| Date | Item | Result |
+|---|---|---|
+| 2026-11-08 | Editor: add a page, add 4 widgets, drag, resize, override a knob, save | Device applied it in 299 ms; drag, resize, live validation (save blocked while invalid) and the "changed elsewhere" conflict all worked |
+| 2026-11-08 | Internal heap with the default 3 pages, LVGL on malloc | 68-77 KB free (the 202 KB printed at boot is before the UI is built) |
+| 2026-11-08 | 8 pages of 12 widgets (96), LVGL on malloc | 3 KB free: about to fail |
+| 2026-11-08 | Same 96 widgets, LVGL on PSRAM (`LV_STDLIB_CUSTOM`) | 115 KB free; default 3 pages: 117 KB free |
+| 2026-11-08 | Full page redraw (`page <n>`, System and Weather pages, 40 MHz SPI) | 152-155 ms on PSRAM, 153-157 ms on malloc: same, the SPI transfer dominates. Above the 120 ms target, see known-issues.md |
+| 2026-11-08 | Repeated config pushes | Heap stays flat (68, 67, 67 KB over 3 pushes): no leak in the rebuild |
+
 ## Display power (2026-11-07)
 
 | Item | Before | After |

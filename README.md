@@ -33,7 +33,7 @@ The tray app finds the board on its native USB port by itself (VID 303A, PID 400
 - `rez-pad.exe --exit` closes the running instance cleanly.
 - `GET http://127.0.0.1:47800/api/status`, `/api/log`, `/api/media` and `/api/sources` for status, recent log lines, the current Now Playing / volume, and the system data sources with live values.
 - Weather: pick a city on the config page (Open-Meteo, no API key); units there too. `GET /api/weather`, `/api/sensor` (the device's room sensor).
-- Config (layout, inputs, settings): `%APPDATA%\rez-pad\config.json`, `GET/PUT /api/config` (validated, saved and pushed to the device; the web editor comes in Phase 10), `GET /api/device/config` for the device's copy. The device keeps it in flash and boots into it without the host.
+- Config editor: open the config page from the tray (or `http://127.0.0.1:47800`). Layout tab: pick a page, add widgets from the list, drag them on the screen preview, edit the selected one on the right. Knobs, Display, Weather and Sensor & media tabs for the rest. "Save to device" (Ctrl+S) validates, saves `%APPDATA%\rez-pad\config.json` and shows the device's answer. The device keeps the config in flash and boots into it without the host.
 - CPU temperature and motherboard fans need the [PawnIO](https://pawnio.eu/) driver and admin rights. Install PawnIO, then use the tray's "Start with Windows (full sensor access)", which registers an elevated logon task (one UAC prompt). GPU sensors work without either.
 - Plug the board's native USB port straight into the PC, not through a USB 2.0 hub shared with the UART cable (see `docs/measurements.md`).
 - Log file: `%LOCALAPPDATA%\rez-pad\host.log`.
@@ -43,6 +43,6 @@ Firmware debug console (USB-UART port, 115200 baud): `help`, `link`, `media`, `s
 
 ## Protocol test vectors
 
-Weather icons: `python tools/gen_weather_icons.py [--preview sheet.png]` regenerates `firmware/src/widgets/weather_icons.c/.h` (needs Pillow).
+Weather icons: `python tools/gen_weather_icons.py [--preview sheet.png] --web web/img/weather` regenerates `firmware/src/widgets/weather_icons.c/.h` and the web editor's copies (needs Pillow).
 
 `python tools/gen_protocol_vectors.py` regenerates `docs/protocol-test-vectors.json` and `firmware/test/test_protocol/vectors.h`. Both test suites use them.

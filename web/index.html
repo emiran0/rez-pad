@@ -7,39 +7,54 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <main>
+  <header class="topbar">
     <h1>rez-pad</h1>
-    <p>Config editor placeholder (Phase 10).</p>
-    <dl id="status">
-      <dt>Host</dt><dd id="host-ver">...</dd>
-      <dt>Protocol</dt><dd id="proto-ver">...</dd>
-      <dt>Device</dt><dd id="device">...</dd>
-      <dt>Sensors</dt><dd id="sensors">...</dd>
-    </dl>
-    <h2>Weather</h2>
-    <dl>
-      <dt>Location</dt><dd id="wx-loc">...</dd>
-      <dt>Now</dt><dd id="wx-now">...</dd>
-      <dt>Room</dt><dd id="room">...</dd>
-    </dl>
-    <form id="wx-search" class="row">
-      <input id="wx-q" type="search" placeholder="Search a city" autocomplete="off" aria-label="City">
-      <button type="submit">Search</button>
-    </form>
-    <ul id="wx-results" class="results"></ul>
-    <div class="row">
-      <label>Temperature <select id="u-temp"><option value="c">°C</option><option value="f">°F</option></select></label>
-      <label>Wind <select id="u-wind"><option value="kmh">km/h</option><option value="ms">m/s</option><option value="mph">mph</option></select></label>
-      <label>Pressure <select id="u-pressure"><option value="hpa">hPa</option><option value="inhg">inHg</option></select></label>
-    </div>
+    <span id="pill-device" class="pill">...</span>
+    <span id="pill-sync" class="pill" hidden></span>
+  </header>
 
-    <h2>Data sources</h2>
-    <p class="hint">Everything this PC can show. Sources marked "on device" are in the current layout.</p>
-    <table id="sources">
-      <thead><tr><th>Source</th><th>Name</th><th class="num">Value</th><th></th></tr></thead>
-      <tbody></tbody>
-    </table>
+  <nav class="tabs" role="tablist">
+    <button type="button" role="tab" data-tab="layout">Layout</button>
+    <button type="button" role="tab" data-tab="inputs">Knobs</button>
+    <button type="button" role="tab" data-tab="display">Display</button>
+    <button type="button" role="tab" data-tab="weather">Weather</button>
+    <button type="button" role="tab" data-tab="sensor">Sensor &amp; media</button>
+    <button type="button" role="tab" data-tab="device">Device</button>
+  </nav>
+
+  <main>
+    <section id="tab-layout" class="layout" hidden>
+      <div class="layout-main">
+        <div id="page-tabs" class="page-tabs" role="tablist" aria-label="Pages"></div>
+        <div id="screen-wrap" class="screen-wrap">
+          <div id="screen" class="screen" tabindex="0" aria-label="Device screen preview"></div>
+        </div>
+        <div id="page-props" class="panel"></div>
+      </div>
+      <aside class="layout-side">
+        <div class="panel">
+          <h2>Add a widget</h2>
+          <div id="palette" class="palette"></div>
+        </div>
+        <div class="panel">
+          <h2>Selected widget</h2>
+          <div id="props"></div>
+        </div>
+      </aside>
+    </section>
+    <section id="tab-inputs" hidden></section>
+    <section id="tab-display" hidden></section>
+    <section id="tab-weather" hidden></section>
+    <section id="tab-sensor" hidden></section>
+    <section id="tab-device" hidden></section>
   </main>
-  <script src="app.js"></script>
+
+  <footer id="savebar" class="savebar">
+    <span id="save-msg" class="save-msg">Loading...</span>
+    <button type="button" id="btn-revert" disabled>Undo changes</button>
+    <button type="button" id="btn-save" class="primary" disabled title="Ctrl+S">Save to device</button>
+  </footer>
+
+  <script type="module" src="app.js"></script>
 </body>
 </html>

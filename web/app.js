@@ -1,134 +1,228 @@
+// rez-pad config editor: loads the config and catalog, polls live data, validates while editing
+// and saves (host validates, writes and pushes to the device; docs/config-schema.md).
 "use strict";
 
-const STATE_TEXT = {
-  Connected: "connected",
-  Connecting: "connecting...",
-  Searching: "not found (plug in the native USB port)",
-  Incompatible: "incompatible firmware",
-};
+import { state, on, emit, dirty, api, postJson, h } from "./state.js";
+import { initEditor, renderAll, selectPage } from "./editor.js";
+import { initSettings, renderSettings, linkText } from "./settings.js";
 
-async function refreshStatus() {
-  try {
-    const res = await fetch("/api/status");
-    const s = await res.json();
-    document.getElementById("host-ver").textContent = s.hostVersion;
-    document.getElementById("proto-ver").textContent = "v" + s.protocolVersion;
-    let device = STATE_TEXT[s.linkState] || s.linkState;
-    if (s.deviceConnected) {
-      device += ` on ${s.port}, firmware ${s.firmwareVersion} (protocol v${s.firmwareProtocol}), ${s.serial}`;
-    } else if (s.error && s.linkState === "Incompatible") {
-      device += `: ${s.error}`;
-    }
-    document.getElementById("device").textContent = device;
-    const sensors = document.getElementById("sensors");
-    sensors.textContent = s.sensors?.message ?? (s.elevated ? "all readable (running as administrator)" : "all readable");
-    sensors.className = s.sensors?.message ? "warn" : "";
-  } catch {
-    document.getElementById("device").textContent = "host not reachable";
-  }
+const $ = (id) => document.getElementById(id);
+const HISTORY = 120;
+
+// ---- loading ----
+
+async function loadConfig() {
+  const r = await api("/api/config");
+  if (!r.ok) throw new Error(`config: ${r.status}`);
+  state.cfg = r.body;
+  state.savedJson = JSON.stringify(r.body);
+  state.baseCrc = r.headers.get("X-Config-Crc");
+  state.error = null;
+  state.page = Math.min(state.page, state.cfg.pages.length - 1);
+  state.selected = -1;
+  renderAll();
+  renderSettings();
+  updateSaveBar();
 }
 
-async function refreshSources() {
+async function start() {
   try {
-    const res = await fetch("/api/sources");
-    const data = await res.json();
-    const body = document.querySelector("#sources tbody");
-    body.replaceChildren(...data.sources.map((s) => {
-      const tr = document.createElement("tr");
-      const value = s.available ? `${s.value} ${s.unit}` : "unavailable";
-      for (const [text, cls] of [[s.id, "id"], [s.name, ""], [value, s.available ? "num" : "num dim"], [s.used ? "on device" : "", "dim"]]) {
-        const td = document.createElement("td");
-        td.textContent = text;
-        if (cls) td.className = cls;
-        tr.append(td);
-      }
-      return tr;
-    }));
-  } catch {
-    // Host not reachable; the status line already says so.
-  }
-}
-
-const WIND = { kmh: "km/h", ms: "m/s", mph: "mph" };
-
-async function refreshWeather() {
-  try {
-    const w = await (await fetch("/api/weather")).json();
-    const loc = w.location;
-    document.getElementById("wx-loc").textContent = loc.is_set
-      ? `${loc.name} (${loc.lat.toFixed(2)}, ${loc.lon.toFixed(2)}), every ${loc.refresh_min} min`
-      : "not set: search for a city below";
-    for (const k of ["temp", "wind", "pressure"]) {
-      const sel = document.getElementById(`u-${k}`);
-      if (document.activeElement !== sel) sel.value = w.units[k];
-    }
-    const now = w.latest?.now;
-    const u = w.units;
-    document.getElementById("wx-now").textContent = now
-      ? `${now.temp}°${u.temp.toUpperCase()}, feels ${now.feels}°, ${now.hum} % RH, wind ${now.wind} ${WIND[u.wind]}, code ${now.code}, ` +
-        `updated ${Math.round(w.age_s / 60)} min ago`
-      : (w.error ? `error: ${w.error}` : "no data yet");
-  } catch {
-    document.getElementById("wx-now").textContent = "host not reachable";
-  }
-  try {
-    const s = await (await fetch("/api/sensor")).json();
-    const r = s.reading;
-    document.getElementById("room").textContent = r
-      ? `${r.temp_c ?? "--"} °C, ${r.hum_pct ?? "--"} % RH, ${r.press_hpa ?? "--"} hPa, trend ${r.trend} (${s.age_s} s ago)`
-      : "no reading (device not connected)";
-  } catch {
-    // status line covers it
-  }
-}
-
-async function saveWeather(body) {
-  const res = await fetch("/api/weather", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!res.ok) alert("Could not save: " + (await res.text()));
-  setTimeout(refreshWeather, 1500);
-}
-
-document.getElementById("wx-search").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const q = document.getElementById("wx-q").value.trim();
-  const list = document.getElementById("wx-results");
-  list.replaceChildren();
-  if (!q) return;
-  const res = await fetch("/api/geocode?q=" + encodeURIComponent(q));
-  const items = res.ok ? await res.json() : [];
-  if (items.length === 0) {
-    const li = document.createElement("li");
-    li.textContent = res.ok ? "No places found" : "Search failed";
-    list.append(li);
+    const c = await api("/api/catalog");
+    state.catalog = c.body;
+    await Promise.all([pollLive(), pollSlow(), pollStatus()]);
+    await loadConfig();
+  } catch (e) {
+    $("save-msg").textContent = "The rez-pad host is not reachable. Is it running?";
+    console.error(e);
+    setTimeout(start, 3000);
     return;
   }
-  for (const it of items) {
-    const li = document.createElement("li");
-    const b = document.createElement("button");
-    b.type = "button";
-    b.textContent = [it.name, it.admin1, it.country].filter(Boolean).join(", ") + ` (${it.lat.toFixed(2)}, ${it.lon.toFixed(2)})`;
-    b.addEventListener("click", () => {
-      list.replaceChildren();
-      saveWeather({ name: it.name, lat: it.lat, lon: it.lon });
-    });
-    li.append(b);
-    list.append(li);
-  }
-});
-
-for (const k of ["temp", "wind", "pressure"]) {
-  document.getElementById(`u-${k}`).addEventListener("change", () => saveWeather({
-    units: {
-      temp: document.getElementById("u-temp").value,
-      wind: document.getElementById("u-wind").value,
-      pressure: document.getElementById("u-pressure").value,
-    },
-  }));
+  setInterval(() => !document.hidden && pollLive(), 1000);
+  setInterval(() => !document.hidden && pollStatus(), 2000);
+  setInterval(() => !document.hidden && pollSlow(), 5000);
 }
 
-refreshStatus();
-refreshSources();
-refreshWeather();
-setInterval(refreshWeather, 5000);
-setInterval(refreshStatus, 2000);
-setInterval(refreshSources, 1000);
+// ---- live data ----
+
+async function pollStatus() {
+  const r = await api("/api/status").catch(() => null);
+  state.data.status = r?.ok ? r.body : null;
+  state.data.connected = !!state.data.status?.deviceConnected;
+  const s = state.data.status;
+  const dev = $("pill-device");
+  dev.textContent = linkText(s);
+  dev.className = "pill " + (state.data.connected ? "ok" : "bad");
+  const sync = $("pill-sync");
+  const synced = s?.config?.inSync;
+  sync.hidden = !state.data.connected;
+  sync.textContent = synced ? "Device up to date" : "Device not up to date";
+  sync.className = "pill " + (synced ? "ok" : "warn");
+  emit("status");
+}
+
+async function pollLive() {
+  const [src, media] = await Promise.all([api("/api/sources").catch(() => null), api("/api/media").catch(() => null)]);
+  if (src?.ok) {
+    for (const s of src.body.sources) {
+      state.data.sources.set(s.id, s);
+      if (s.available) {
+        const list = state.data.history.get(s.id) || [];
+        list.push(s.value);
+        if (list.length > HISTORY) list.shift();
+        state.data.history.set(s.id, list);
+      }
+    }
+  }
+  if (media?.ok) {
+    const prev = state.data.media?.now_playing?.track_id;
+    state.data.media = media.body;
+    const np = media.body.now_playing;
+    if (np.track_id !== prev) {
+      state.data.artUrl = np.state !== "none" && media.body.art.source_bytes > 0 ? `/api/media/art?size=192&t=${np.track_id}` : null;
+    }
+  }
+  emit("live");
+}
+
+async function pollSlow() {
+  const [wx, room] = await Promise.all([api("/api/weather").catch(() => null), api("/api/sensor").catch(() => null)]);
+  if (wx?.ok) state.data.weather = wx.body;
+  if (room?.ok) state.data.room = room.body.reading;
+  emit("live");
+}
+
+// ---- validation and saving ----
+
+let validateTimer = 0;
+let validateSeq = 0;
+
+function scheduleValidate() {
+  clearTimeout(validateTimer);
+  validateTimer = setTimeout(async () => {
+    const seq = ++validateSeq;
+    const r = await postJson("/api/config/validate", state.cfg).catch(() => null);
+    if (seq !== validateSeq || !r?.ok) return;
+    state.error = r.body.error;
+    state.bytes = r.body.bytes;
+    updateSaveBar();
+  }, 250);
+}
+
+// "pages[2].widgets[1].source: ..." -> {page: 2, widget: 1}
+function errorTarget(error) {
+  const m = /^pages\[(\d+)\](?:\.widgets\[(\d+)\])?/.exec(error || "");
+  return m ? { page: Number(m[1]), widget: m[2] === undefined ? -1 : Number(m[2]) } : null;
+}
+
+function updateSaveBar() {
+  const changed = dirty();
+  const bar = $("savebar");
+  bar.classList.toggle("changed", changed);
+  $("btn-save").disabled = !changed || !!state.error;
+  $("btn-revert").disabled = !changed;
+  const msg = $("save-msg");
+  if (state.error) {
+    const t = errorTarget(state.error);
+    msg.replaceChildren(h("span", { class: "crit", text: `Cannot save: ${state.error}` }),
+      t ? h("button", { type: "button", class: "link", onclick: () => showTarget(t) }, "Show") : null);
+  } else if (changed) {
+    msg.textContent = "Unsaved changes.";
+  } else if (!msg.dataset.keep) {
+    msg.textContent = "All changes saved.";
+  }
+  delete msg.dataset.keep;
+}
+
+function showTarget(t) {
+  selectPage(t.page);
+  document.querySelector('[data-tab="layout"]').click();
+  if (t.widget >= 0) {
+    state.selected = t.widget;
+    emit("selection");
+  }
+}
+
+async function save() {
+  const msg = $("save-msg");
+  $("btn-save").disabled = true;
+  msg.textContent = "Saving...";
+  const r = await api(`/api/config?base=${state.baseCrc}`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(state.cfg),
+  }).catch(() => null);
+  if (!r) {
+    msg.textContent = "The host is not reachable; nothing saved.";
+    updateSaveBar();
+    return;
+  }
+  if (r.status === 409) {
+    msg.replaceChildren(h("span", { class: "warn", text: "The config was changed elsewhere since this page loaded. " }),
+      h("button", { type: "button", class: "link", onclick: () => loadConfig() }, "Load it (drops your changes here)"));
+    $("btn-save").disabled = false;
+    return;
+  }
+  if (!r.ok) {
+    state.error = r.body?.error || `save failed (${r.status})`;
+    updateSaveBar();
+    return;
+  }
+  const keepPage = state.page;
+  await loadConfig();
+  selectPage(keepPage);
+  const d = r.body.device;
+  msg.dataset.keep = "1";
+  msg.textContent = d === null ? "Saved. The device gets it when it connects."
+    : d.ok ? `Saved and shown on the device (${d.ms} ms).` : `Saved on this PC, but the device did not take it: ${d.error}`;
+  updateSaveBar();
+  pollStatus();
+}
+
+// ---- tabs ----
+
+function initTabs() {
+  for (const b of document.querySelectorAll("[data-tab]")) {
+    b.addEventListener("click", () => {
+      for (const o of document.querySelectorAll("[data-tab]")) {
+        const active = o === b;
+        o.classList.toggle("active", active);
+        o.setAttribute("aria-selected", String(active));
+        $(`tab-${o.dataset.tab}`).hidden = !active;
+      }
+      try {
+        localStorage.setItem("rezpad.tab", b.dataset.tab);
+      } catch {
+        // storage blocked: the first tab opens next time
+      }
+    });
+  }
+  let last = null;
+  try {
+    last = localStorage.getItem("rezpad.tab");
+  } catch {
+    last = null;
+  }
+  (document.querySelector(`[data-tab="${last}"]`) || document.querySelector("[data-tab]")).click();
+}
+
+// ---- start ----
+
+initTabs();
+initEditor();
+initSettings();
+on("config", () => {
+  updateSaveBar();
+  scheduleValidate();
+});
+$("btn-save").addEventListener("click", save);
+$("btn-revert").addEventListener("click", () => {
+  if (confirm("Drop all unsaved changes?")) loadConfig();
+});
+document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+    e.preventDefault();
+    if (!$("btn-save").disabled) save();
+  }
+});
+window.addEventListener("beforeunload", (e) => {
+  if (dirty()) e.preventDefault();
+});
+start();

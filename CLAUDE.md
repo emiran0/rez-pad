@@ -271,9 +271,9 @@ rez-pad/
     tests/RezPad.Protocol.Tests/
   web/
     index.html
-    app.js
+    app.js, state.js, editor.js, preview.js, settings.js
     styles.css
-    vendor/
+    img/weather/       weather icons for the preview (tools/gen_weather_icons.py --web)
 ```
 
 ---
@@ -430,3 +430,7 @@ Tracked in the "Open hardware checks" table in `docs/hardware.md` (native USB po
 - 2026-11-07: The config's identity is the CRC32 of its compact UTF-8 bytes; the host pushes when HELLO_ACK `cfg_crc` differs (0 = nothing stored) and after every saved change, the device stores exactly those bytes. A pushed config is validated and saved on the link task, then the UI task rebuilds all pages and sends CONFIG_ACK (with the new layout's `art` size, additive in v1). CONFIG_GET and CMD `factory_reset` implemented.
 - 2026-11-07: Host `Config/ConfigStore.cs` became `ConfigService.cs` (load, migrate by filling missing sections/keys from the default, validate, atomic save, `.bad` backup). `Device/ConfigSync.cs` does push and readback. Media options, stats sources and `stats.rate_hz` come from the config; weather refetches only when location or units change. New API: `GET/PUT /api/config`, `GET /api/config/default`, `GET /api/device/config`; `/api/status` has the sync state.
 - 2026-11-07: Page `inputs_override` is merged into a full per-page input map at parse time; the action handler uses the current page's map. Theme `accent` is applied (status bar dots, gauges, graphs). New widget `label` (`text`, optional `label`).
+- 2026-11-08: Phase 10 web editor without gridstack.js: the grid has at most 8x8 cells and each widget type a short list of allowed sizes, so a small own editor (drag to move, size picked from the allowed list) fits better than a free-resize library, and there is nothing to vendor. The editor is also the preview: cards are drawn like the device (`web/preview.js`) with live data. Plain ES modules, no build step.
+- 2026-11-08: The editor polls instead of a WebSocket (`/ws` dropped from the plan): localhost, a handful of small requests per second, simpler host. Validation runs on the host only (`POST /api/config/validate`), so the web page has no third copy of the rules. `PUT /api/config?base=<crc>` refuses to overwrite a config that changed since the page loaded.
+- 2026-11-08: LVGL allocates from PSRAM (`LV_STDLIB_CUSTOM`, `src/ui/lv_mem_psram.c`). With malloc every LVGL object went to internal RAM: 8 pages of 12 widgets left 3 KB; now 115 KB. Measured page redraw time is the same (about 153 ms either way, the SPI transfer dominates). Draw buffers stay in internal DMA RAM.
+- 2026-11-08: Console `info` shows the internal heap low-water mark, uptime and the reset reason; `page <n>` reports the redraw time.

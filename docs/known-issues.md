@@ -23,6 +23,12 @@ Quick check on a new PC: run the host, then save `http://127.0.0.1:47800/api/sou
 
 - **Resolved 2026-11-07: white/grey screen after a cold plug-in.** Seen once with the display on 3V3 (its U1 regulator starved, about 3.0 V out): native USB plugged in first, backlight on but no image while the firmware ran; RST fixed it. After moving display VCC to 5V (`IN-OUT` bridged), 5 of 5 cold plug-ins with the native cable first came up normally. If it ever comes back: delay the panel init after a power-on reset and/or re-run it once (the ILI9488 cannot be read back, MISO is not connected).
 
+## Firmware
+
+- **Full page redraw about 153 ms** (target 120 ms). Measured with `page <n>` on the System and Weather pages at 40 MHz SPI; the page switch still looks instant on the hardware. The flush waits for each strip to go out over SPI before LVGL renders the next one. Fix if it matters: convert RGB565 to RGB666 into a separate DMA buffer and return from the flush right away (see measurements.md, "UI rendering").
+- **Night dimming and "screen off while the PC sleeps"** are in the config and the editor but not applied by the firmware until Phase 11.
+- **Unexplained restart on 2026-11-08 around 01:21**: seen afterwards from the sensor sample count; the host log showed no link drop (the host was being restarted at that time) and the reset reason was not recorded yet. `info` now prints the reset reason; check it if the device restarts again. The AHT20 has had a loose contact before.
+
 ## USB and development setup
 
 - **30 s COM close / COM4 wedge** behind the Genesys USB 2.0 hub (`05E3:0610`). Plug the native port straight into the PC. Details in `measurements.md`.

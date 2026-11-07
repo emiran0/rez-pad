@@ -76,6 +76,15 @@ internal sealed class ConfigService
         }
     }
 
+    /// <summary>A copy of the whole config and its CRC, taken together.</summary>
+    public (JsonObject Root, uint Crc) SnapshotWithCrc()
+    {
+        lock (_lock)
+        {
+            return (_root.DeepClone().AsObject(), Crc);
+        }
+    }
+
     public static JsonObject Default() =>
         JsonNode.Parse(typeof(ConfigService).Assembly.GetManifestResourceStream("RezPad.Host.default-config.json")!)!
             .AsObject();

@@ -172,10 +172,52 @@ internal sealed class WebServer(int port, WebServices services)
         });
         // The master config (docs/config-schema.md). PUT validates, saves and pushes it to the device;
         // the answer says whether the device applied it.
-        app.MapGet("/api/config", () => Results.Text(config.Snapshot().ToJsonString(), "application/json"));
+        app.MapGet("/api/config", (HttpResponse res) =>
+        {
+            var (root, crc) = config.SnapshotWithCrc();
+            res.Headers["X-Config-Crc"] = crc.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return Results.Text(root.ToJsonString(), "application/json");
+        });
         app.MapGet("/api/config/default", () => Results.Text(ConfigService.Default().ToJsonString(), "application/json"));
+        // What the editor may offer: widget types and sizes, actions, limits, and the style defaults
+        // of every data source on this PC (one source of truth: RezPad.Protocol.ConfigCatalog).
+        app.MapGet("/api/catalog", () => Results.Json(new
+        {
+            schema = ConfigCatalog.Schema,
+            limits = new
+            {
+                pages = ConfigCatalog.MaxPages,
+                widgets = ConfigCatalog.MaxWidgets,
+                grid = ConfigCatalog.MaxGrid,
+                sources = ConfigCatalog.MaxSources,
+                bytes = ConfigCatalog.MaxConfigBytes,
+            },
+            widgets = ConfigCatalog.WidgetSizes.Select(kv => new
+            {
+                type = kv.Key,
+                sizes = kv.Value.Select(s => new[] { s.W, s.H }),
+                any_size = kv.Value.Length == 0,
+            }),
+            actions = ConfigCatalog.Actions,
+            rotate_actions = ConfigCatalog.RotateActions,
+            sources = stats.Catalog.Select(s => new { id = s.Id, name = s.Name, style = ConfigCatalog.SourceDefaults(s.Id) }),
+        }, ProtocolJson.Options));
+        // Live validation while editing; same validator as PUT, nothing is saved.
+        app.MapPost("/api/config/validate", async (HttpRequest req) =>
+        {
+            using var ms = new MemoryStream();
+            await req.Body.CopyToAsync(ms);
+            var error = ConfigValidator.Validate(ms.ToArray());
+            return Results.Json(new { error, bytes = ms.Length }, ProtocolJson.Options);
+        });
         app.MapPut("/api/config", async (HttpRequest req) =>
         {
+            // ?base=<crc>: the config the editor started from. Refuse to overwrite a newer one (saved
+            // from another tab, or a weather location set meanwhile).
+            if (uint.TryParse(req.Query["base"], out var baseCrc) && baseCrc != config.Crc)
+            {
+                return Results.Conflict(new { error = "the config changed since the editor loaded it; reload to get the current one", crc = config.Crc });
+            }
             System.Text.Json.Nodes.JsonNode? body;
             try
             {
@@ -193,6 +235,17 @@ internal sealed class WebServer(int port, WebServices services)
             var push = link.IsConnected ? configSync.ChangePush : null;
             var result = push is null ? null : await push;
             return Results.Json(new { saved = true, device = result, crc = config.Crc }, ProtocolJson.Options);
+        });
+        // The current album art as the device gets it (editor preview).
+        app.MapGet("/api/media/art", async (int? size) =>
+        {
+            var art = media.Art;
+            if (art.Source is null || art.TrackId != media.Current.TrackId)
+            {
+                return Results.NotFound();
+            }
+            var jpeg = await ArtProcessor.ToJpegAsync(art.Source, Math.Clamp(size ?? 192, 32, 480));
+            return jpeg is null ? Results.NotFound() : Results.File(jpeg, "image/jpeg");
         });
         // The device's stored copy (CONFIG_GET), for diagnostics.
         app.MapGet("/api/device/config", async () =>
