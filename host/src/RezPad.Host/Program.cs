@@ -2,6 +2,7 @@ using System.Reflection;
 using RezPad.Host.Audio;
 using RezPad.Host.Device;
 using RezPad.Host.Media;
+using RezPad.Host.Stats;
 using RezPad.Host.Web;
 using RezPad.Protocol;
 
@@ -26,11 +27,28 @@ internal static class Program
             return 0;
         }
 
+        // Elevated helper modes for "Start with Windows" (create/delete the scheduled task).
+        if (StartupTask.RunHelper(args) is { } helperExit)
+        {
+            return helperExit;
+        }
+
         // One instance per user session: a second copy would fight over the COM port and the HTTP port.
+        // Wait a little for a previous instance that is shutting down (restart through the startup task).
         using var mutex = new Mutex(initiallyOwned: true, @"Local\RezPad.Host", out var createdNew);
         if (!createdNew)
         {
-            return 1;
+            try
+            {
+                if (!mutex.WaitOne(TimeSpan.FromSeconds(10)))
+                {
+                    return 1;
+                }
+            }
+            catch (AbandonedMutexException)
+            {
+                // The previous instance died without releasing it; it is ours now.
+            }
         }
 
         var port = DefaultPort;
@@ -40,7 +58,7 @@ internal static class Program
             port = p;
         }
 
-        Log.Info($"rez-pad host {Version} starting, log at {Log.LogFile}");
+        Log.Info($"rez-pad host {Version} starting{(StartupTask.IsElevated() ? " (elevated)" : "")}, log at {Log.LogFile}");
         AppDomain.CurrentDomain.UnhandledException += (_, e) => Log.Error($"unhandled: {e.ExceptionObject}");
 
         using var link = new SerialLink(Version);
@@ -56,27 +74,30 @@ internal static class Program
             }
         };
 
+        using var stats = new SystemStatsService(rateHz: 1);  // config "stats.rate_hz" from Phase 9
+        _ = new StatsBridge(link, stats, StatsBridge.DefaultLayoutSources);
+
         audio.Start();
         media.Start();
-        var web = new WebServer(port, link, media, audio);
+        stats.Start();
+        var web = new WebServer(port, link, media, audio, stats);
         web.Start();
         link.Start();
 
         ApplicationConfiguration.Initialize();
-        var tray = new TrayContext(web, link);
+        var tray = new TrayContext(web, link, stats);
         var ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
         ThreadPool.RegisterWaitForSingleObject(exitSignal, (_, _) => ui.Post(_ => tray.ExitThread(), null), null,
             Timeout.Infinite, executeOnlyOnce: true);
         Application.Run(tray);
-        // Let a new instance start right away even if closing the port stalls (Windows can take up
-        // to 30 s to close a USB CDC port in some states, see docs/measurements.md). The new
-        // instance retries the busy port every 0.5 s.
+        // Free the HTTP port, then let a new instance start right away even if closing the COM port
+        // stalls (Windows can take up to 30 s to close a USB CDC port in some states, see
+        // docs/measurements.md). The new instance retries the busy port every 0.5 s.
+        web.StopAsync().GetAwaiter().GetResult();
         mutex.ReleaseMutex();
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         link.Dispose();
         Log.Info($"link closed in {stopwatch.ElapsedMilliseconds} ms");
-
-        web.StopAsync().GetAwaiter().GetResult();
         Log.Info("rez-pad host stopped");
         return 0;
     }

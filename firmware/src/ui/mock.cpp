@@ -1,6 +1,5 @@
 #include "mock.h"
 
-#include <esp_random.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -8,33 +7,9 @@ namespace rp {
 namespace ui {
 namespace mock {
 
-namespace {
-
-struct StatDef {
-  const char* id;
-  float base, spread, min, max;
-};
-const StatDef kStats[] = {
-    {"sys.cpu.load", 18, 14, 0, 100},   {"sys.cpu.temp", 52, 8, 30, 100},
-    {"sys.gpu.load", 35, 25, 0, 100},   {"sys.gpu.temp", 58, 6, 30, 100},
-    {"sys.ram.used_pct", 63, 3, 0, 100}, {"sys.net.down_kbps", 900, 800, 0, 100000},
-    {"sys.net.up_kbps", 80, 60, 0, 100000},
-};
-constexpr int kStatCount = sizeof(kStats) / sizeof(kStats[0]);
-
-float rnd() { return (esp_random() & 0xFFFF) / 65535.0f; }  // 0..1
-
-}  // namespace
-
 uint32_t begin(Model& m, uint32_t nowMs) {
   m.demo = true;
   m.hostConnected = false;
-
-  for (int i = 0; i < kStatCount && i < kMaxStats; ++i) {
-    strncpy(m.stats[i].id, kStats[i].id, sizeof(m.stats[i].id) - 1);
-    m.stats[i].value = kStats[i].base;
-    m.stats[i].valid = true;
-  }
 
   auto& w = m.weather;
   w.valid = true;
@@ -58,20 +33,6 @@ uint32_t begin(Model& m, uint32_t nowMs) {
     w.daily[i].pop = 0;
   }
   return kChangedAll;
-}
-
-uint32_t update(Model& m, uint32_t) {
-  uint32_t changed = kChangedStats;
-  for (int i = 0; i < kStatCount; ++i) {
-    const StatDef& d = kStats[i];
-    Stat& s = m.stats[i];
-    // Random walk pulled back towards the base value.
-    float v = s.value + (rnd() - 0.5f) * d.spread * 0.6f + (d.base - s.value) * 0.15f;
-    if (v < d.min) v = d.min;
-    if (v > d.max) v = d.max;
-    s.value = v;
-  }
-  return changed;
 }
 
 }  // namespace mock

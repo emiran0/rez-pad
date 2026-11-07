@@ -72,6 +72,12 @@ public sealed record ArtBeginMsg(uint Id, int W, int H, string Fmt, int Size, ui
 /// <summary>ART_END (0x13), ART_NONE (0x14) and ART_REQUEST (0x91).</summary>
 public sealed record ArtIdMsg(uint Id);
 
+/// <summary>
+/// SYS_STATS (0x20). <c>T</c> is the host unix time in ms, <c>V</c> maps source ids to values;
+/// null means the source exists in the layout but has no value on this PC (no driver, no admin).
+/// </summary>
+public sealed record SysStatsMsg(long T, IReadOnlyDictionary<string, double?> V);
+
 /// <summary>VOLUME (0x15). Level 0 to 100.</summary>
 public sealed record VolumeMsg(int Level, bool Muted);
 

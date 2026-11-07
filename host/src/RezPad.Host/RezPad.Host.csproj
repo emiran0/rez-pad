@@ -7,6 +7,8 @@
     <AssemblyName>rez-pad</AssemblyName>
     <RootNamespace>RezPad.Host</RootNamespace>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <!-- D3DKMT statistics buffers (Stats/GpuEngines.cs). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <!-- Kestrel for the localhost config editor and API. -->
@@ -18,5 +20,10 @@
   <ItemGroup>
     <!-- The web editor lives in the repo's web/ folder and is copied next to the exe. -->
     <Content Include="..\..\..\web\**\*" LinkBase="web" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Latest stable on nuget.org, verified 2026-11-07 (0.9.7 still prerelease). MPL-2.0. Uses the
+         PawnIO driver (installed separately) for CPU temperature and motherboard sensors. -->
+    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
   </ItemGroup>
 </Project>

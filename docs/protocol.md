@@ -51,7 +51,7 @@ The host opens the port with DTR and RTS on (TinyUSB only sends while DTR is set
 | 0x13 | ART_END | JSON `{id}` | Device verifies CRC32, decodes, swaps image |
 | 0x14 | ART_NONE | JSON `{id}` | Track has no art, show placeholder |
 | 0x15 | VOLUME | JSON `{level, muted}` | level 0 to 100 |
-| 0x20 | SYS_STATS | JSON `{t, v:{"<source_id>": number, ...}}` | Only referenced sources |
+| 0x20 | SYS_STATS | JSON `{t, v:{"<source_id>": number or null, ...}}` | Only referenced sources, after every sample (default 1 Hz) |
 | 0x30 | WEATHER | JSON, see below | Every 15 min and on connect |
 | 0x40 | CONFIG_BEGIN | JSON `{size, crc32}` | |
 | 0x41 | CONFIG_CHUNK | binary `[offset u32][data]` | |
@@ -92,6 +92,17 @@ The host opens the port with DTR and RTS on (TinyUSB only sends while DTR is set
 - ART_NONE: the track has no art (or it could not be converted); the device shows its placeholder.
 - The host skips art the device already has (same `id` and JPEG CRC) and sends it again after every (re)connect.
 - ART_REQUEST: the device sends it once per track when the current track still has no art 2.5 s after it started showing (lost transfer, bad CRC). The host answers with the art or ART_NONE.
+
+### SYS_STATS body
+
+```json
+{ "t": 1793912345678, "v": { "sys.cpu.load": 12.5, "sys.cpu.temp": null, "sys.gpu.temp": 49 } }
+```
+
+- `t` is the host unix time in ms of the sample. Values are rounded to one decimal.
+- `null` means the layout uses the source but this PC has no value for it right now (no PawnIO driver or no admin rights for CPU temperature, no such GPU). The device shows `--`.
+- Each message carries the complete set; a source missing from it also shows `--`. The device keeps up to 16 sources with ids shorter than 32 bytes and drops (counts) the rest.
+- When the host is lost the device clears all values.
 
 ### WEATHER body
 

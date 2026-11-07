@@ -55,6 +55,20 @@ public class MessageTests
     }
 
     [Fact]
+    public void SysStatsKeepsIdsAndNulls()
+    {
+        var msg = new SysStatsMsg(1793912345678, new Dictionary<string, double?>
+        {
+            ["sys.cpu.load"] = 12.5,
+            ["sys.cpu.temp"] = null,
+            ["sys.disk.C.used_pct"] = 71,
+        });
+        var json = Encoding.UTF8.GetString(ProtocolJson.Serialize(msg));
+        // Source ids are not renamed by the snake_case policy, and null stays (the device shows "--").
+        Assert.Equal("""{"t":1793912345678,"v":{"sys.cpu.load":12.5,"sys.cpu.temp":null,"sys.disk.C.used_pct":71}}""", json);
+    }
+
+    [Fact]
     public void BadJsonReturnsNull() => Assert.Null(ProtocolJson.Deserialize<HelloAckMsg>("{nope"u8));
 
     [Fact]

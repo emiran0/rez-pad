@@ -29,8 +29,8 @@ Chosen default: **40 MHz** (2026-11-07). Full frame 92.7 ms, within the < 120 ms
 | Full page redraw at 40 MHz SPI | < 120 ms | 92.7 ms (480x40 DMA strips) | 2026-11-07 |
 | Device recovers after host restart | < 3 s | | |
 | Host recovers after device unplug/replug | < 3 s | | |
-| Host average CPU | < 1% | 0.07 % of 12 cores, idle link with a playing Brave tab, 30 s | 2026-11-07 |
-| Host memory | < 150 MB | 90 MB working set, 21 MB private (debug build) | 2026-11-07 |
+| Host average CPU | < 1% | 0.10 % of 12 cores (12 ms CPU per second) with 1 Hz system stats (direct NVML + D3DKMT) and media; 0.29 % with LibreHardwareMonitor for the GPU; 0.07 % before Phase 7 | 2026-11-07 |
+| Host memory | < 150 MB | 147 MB working set, 61 MB private (debug build, Phase 7). The working set is mostly mapped images shared with other processes: Microsoft.Windows.SDK.NET (WinRT projection, 24 MB), nvml.dll (22 MB), CoreLib, WinForms. Was 90 MB before LibreHardwareMonitor; most of the jump is NVIDIA driver DLLs mapped into the process. Recheck with a Release build in Phase 11 | 2026-11-07 |
 
 ## Boot log
 
@@ -102,4 +102,39 @@ Windows 11, host debug build, Spotify desktop and a Brave tab (YouTube). Art 192
 **Art transfer rate is about 80 KB/s.** Arduino's `USBCDC` passes every received byte through a FreeRTOS queue (`xQueueSend` per byte in the USB callback, `xQueueReceive` per byte in `read()`), roughly 12 us per byte. Fine for art (8 to 20 KB) and config; replacing the Arduino CDC class with direct TinyUSB reads would lift it if ever needed.
 
 **Hub finding for the 30 s close issue.** It came back on the first runs with Phase 6 (host closes taking 2 s, then 30.0 s, and COM4 "Incorrect function", COM4 and COM6 both wedged until a power cycle). Both cables were plugged into the same Genesys Logic USB 2.0 hub (`VID_05E3&PID_0610`). Both board USB devices are full speed, so behind that hub they share one transaction translator, which explains why two independent chips always wedged together. After moving the native cable to a PC port directly (CH343 still on the hub), the same workload (host start, art transfer, actions, host exit with the debug console open on COM4) closed cleanly (34 ms, DTR and RTS changes reached the device 3 ms apart). Only a few runs so far; keep the native cable off that hub, and record it here if it ever happens on a direct connection. The final device only uses the native port.
+
+## System stats (Phase 7)
+
+Ryzen 5 5600X, RTX 3070 Ti, ASUS TUF B450M-PRO GAMING, 32 GB, Windows 11. Host not elevated, PawnIO not installed.
+
+| Date | Item | Result |
+|---|---|---|
+| 2026-11-07 | Catalog | 20 sources (CPU, RAM, network, GPU x9, disk C:), ready 1.1 s after start |
+| 2026-11-07 | Without PawnIO / admin | CPU temperature and power read as 0 from LibreHardwareMonitor (now treated as unavailable, sent as null, shown as `--`); motherboard has 0 sensors (no fans). Tray and web page show the PawnIO / admin hint |
+| 2026-11-07 | GPU without admin | load, temperature, hot spot, clock, power, VRAM, fan: all read (NVAPI) |
+| 2026-11-07 | Sample values | CPU 5 to 17 %, 4.2 GHz, RAM 46 % (14.7 of 31.9 GB), GPU 49 C idle. To compare with Task Manager on the device |
+| 2026-11-07 | Host CPU / memory | 0.34 % / 156 MB working set, 69 MB private |
+| 2026-11-07 | COM close times (native port direct to the PC) | 30 to 34 ms over 3 host restarts |
+
+Not yet measured: CPU temperature with PawnIO installed and the host elevated ("Start with Windows").
+
+**AHT20 missing (2026-11-07, Phase 7 bring-up).** The I2C scan finds only the BMP280 (0x77); the AHT20 (0x38) does not answer, so room temperature and humidity read 0. Sensor code is unchanged since Phase 2. Probably wiring (cables were replugged) or a stuck AHT20; check the module wiring and power-cycle.
+
+**GPU load fix (2026-11-07).** The first version used LibreHardwareMonitor's "GPU Core" load (NVIDIA's graphics-engine figure): 1 % on the device while Task Manager showed 18 % (video decode). `sys.gpu.load` is now the busiest D3D engine, as in Task Manager; during YouTube playback it reads the decode engine (8 to 9 %), core load 10 to 12 %.
+
+**Where the host CPU goes (2026-11-07, thread CPU time per 1 s sample, 60-sample average):**
+
+| Part | CPU ms per sample |
+|---|---|
+| LibreHardwareMonitor GPU update (all 39 sensors: NVAPI, NVML, D3D engine statistics) | 32.8 |
+| Network adapter enumeration (`GetAllNetworkInterfaces`) | 5.7, now cached for 30 s, about 0 |
+| LibreHardwareMonitor CPU update (no PawnIO) | about 0 |
+| Windows CPU counters | 0.5 |
+| Whole process | 35 to 39 ms per second |
+
+Direct NVML calls (nvml.dll from the NVIDIA driver) cost about 2 us each for temperature, power, clock, utilization and VRAM (fan 0.27 ms); `nvmlDeviceGetPcieThroughput` waits 30 ms but uses no CPU. So reading the GPU without LibreHardwareMonitor (NVML plus the D3DKMT engine statistics Task Manager uses) would cut most of the 33 ms. Only the layout's hardware groups are refreshed now (CPU, GPU, motherboard), and everything only while the web page asks for the full catalog.
+
+**Direct GPU readers (2026-11-07).** NVML for the NVIDIA values and D3DKMTQueryStatistics per engine node for the loads, matched to the same GPU by PCI bus/device. Checked against LibreHardwareMonitor side by side during YouTube playback: load 8.4 to 9.0 vs 8.5 to 8.7, decode identical, 3D 0.4 vs 0.4, temperature, power, clock and VRAM identical. Host CPU 35 ms/s to 11.6 to 12.2 ms/s. The D3DKMT struct sizes were taken from LibreHardwareMonitor's CsWin32-generated types at runtime (`D3DKMT_QUERYSTATISTICS` 808 bytes, `D3DKMT_NODEMETADATA` 78 bytes; 80 is rejected with STATUS_INVALID_PARAMETER). This adapter has no registry info (`KMTQAITYPE_ADAPTERREGISTRYINFO` returns STATUS_OBJECT_NAME_NOT_FOUND), so the name comes from `KMTQAITYPE_DRIVER_DESCRIPTION`.
+
+**CPU load floor check (2026-11-07).** Reported: the device never shows CPU below 3.0 % while Task Manager sometimes shows 2 to 3 %. Compared for 60 s, once per second: the device value (debug console `stats`) against `typeperf` on the same PC. The device follows "% Processor Utility" (Task Manager's counter) with about 1 s lag: device 3.1 to 18.7 % (avg 6.75), Utility 2.7 to 16.8 % (avg 6.68). "% Processor Time" is lower at idle (1.3 to 3 %), since Utility also counts boost frequency above base clock. Idle Utility on this PC sits at about 3.1 to 3.5 %; Task Manager rounds to whole percent and samples at a different moment. No bug.
 

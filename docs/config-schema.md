@@ -103,7 +103,23 @@ Widgets may have optional style fields (`label`, `unit`, `min`, `max`, `warn`, `
 
 ## Data source IDs
 
-Stable dotted IDs. Examples: `sys.cpu.load`, `sys.cpu.temp`, `sys.cpu.clock_mhz`, `sys.ram.used_pct`, `sys.ram.used_gb`, `sys.gpu.load`, `sys.gpu.temp`, `sys.gpu.vram_pct`, `sys.disk.C.used_pct`, `sys.net.down_kbps`, `sys.net.up_kbps`, `sys.fan.<n>.rpm`, `room.temp`, `room.hum`, `room.pressure`. The host publishes the full catalog of what exists on this PC; the web editor only offers sources from that catalog.
+Stable dotted IDs. The host publishes the catalog of what exists on this PC (`GET /api/sources`); the web editor only offers sources from that catalog.
+
+| ID | Unit | From | Notes |
+|---|---|---|---|
+| `sys.cpu.load` | % | Windows counter "% Processor Utility" | Same number as Task Manager. Falls back to GetSystemTimes |
+| `sys.cpu.clock_mhz` | MHz | "Processor Frequency" x "% Processor Performance" | Task Manager's "Speed" |
+| `sys.cpu.temp` | °C | LibreHardwareMonitor | Needs the PawnIO driver and admin rights. AMD: Tctl/Tdie, Intel: CPU Package |
+| `sys.cpu.power_w` | W | LibreHardwareMonitor | Needs PawnIO and admin |
+| `sys.ram.used_pct`, `sys.ram.used_gb`, `sys.ram.total_gb` | %, GB | GlobalMemoryStatusEx | used = total minus available, like Task Manager "In use" |
+| `sys.net.down_kbps`, `sys.net.up_kbps` | kB/s (1000 bytes) | NIC byte counters | Connected physical adapters only (no loopback, tunnels, Hyper-V switches). Widgets switch to MB/s from 1000 kB/s |
+| `sys.gpu.load` | % | D3DKMT engine statistics (any vendor) | Task Manager's GPU number: the busiest engine node (3D, video decode, copy, ...). Always listed; `--` without a GPU |
+| `sys.gpu.3d_load`, `sys.gpu.decode_load`, `sys.gpu.encode_load` | % | D3DKMT | Busiest node of that engine type |
+| `sys.gpu.temp`, `sys.gpu.core_load`, `sys.gpu.clock_mhz`, `sys.gpu.power_w`, `sys.gpu.vram_used_gb`, `sys.gpu.vram_pct`, `sys.gpu.fan_pct`, `sys.gpu.fan_rpm` | | NVML on NVIDIA, LibreHardwareMonitor otherwise | `core_load` is the driver's graphics-engine load (ignores video decode). `fan_rpm` needs driver R535+ |
+| `sys.gpu.hotspot_temp` | °C | LibreHardwareMonitor | Not in NVML's public API. Its GPU part (vendor DLLs, about 33 ms CPU per refresh) opens only when the layout uses this source |
+| `sys.fan.<n>.rpm` | RPM | LibreHardwareMonitor (motherboard SuperIO) | Fans spinning at startup, numbered from 1. Needs PawnIO and admin |
+| `sys.disk.<letter>.used_pct`, `sys.disk.<letter>.free_gb` | %, GB | DriveInfo | Fixed drives |
+| `room.temp`, `room.hum`, `room.pressure` | | device sensor | Device side, not sent by the host (Phase 8+) |
 
 ## Actions
 

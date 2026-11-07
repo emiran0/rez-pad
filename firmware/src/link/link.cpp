@@ -13,6 +13,7 @@
 #include "config/defaults.h"
 #include "link_monitor.h"
 #include "media/media.h"
+#include "sysstats/sysstats.h"
 #include "usb_device.h"
 
 #ifndef FW_VERSION
@@ -152,8 +153,9 @@ void dispatch(const Packet& p, uint32_t now) {
     case proto::kArtChunk: media::onArtChunk(p.body, p.bodyLen); break;
     case proto::kArtEnd: media::onArtEnd(p.body, p.bodyLen); break;
     case proto::kArtNone: media::onArtNone(p.body, p.bodyLen); break;
+    case proto::kSysStats: sysstats::onSysStats(p.body, p.bodyLen); break;
     default:
-      gStats.unknownTypes++;  // SYS_STATS, WEATHER, CONFIG_*: later phases
+      gStats.unknownTypes++;  // WEATHER, CONFIG_*: later phases
       break;
   }
 }

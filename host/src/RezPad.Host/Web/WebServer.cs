@@ -7,12 +7,14 @@ using Microsoft.Extensions.Logging;
 using RezPad.Host.Audio;
 using RezPad.Host.Device;
 using RezPad.Host.Media;
+using RezPad.Host.Stats;
 using RezPad.Protocol;
 
 namespace RezPad.Host.Web;
 
 /// <summary>Kestrel bound to 127.0.0.1 only. Serves web/ and the /api endpoints (docs/config-schema.md).</summary>
-internal sealed class WebServer(int port, SerialLink link, MediaService media, AudioService audio)
+internal sealed class WebServer(int port, SerialLink link, MediaService media, AudioService audio,
+    SystemStatsService stats)
 {
     private WebApplication? _app;
 
@@ -37,7 +39,7 @@ internal sealed class WebServer(int port, SerialLink link, MediaService media, A
         app.MapGet("/api/status", () =>
         {
             var s = link.Status;
-            var stats = link.Stats;
+            var decoder = link.Stats;
             return Results.Json(new StatusDto(
                 HostVersion: Program.Version,
                 ProtocolVersion: Frame.ProtocolVersion,
@@ -48,9 +50,41 @@ internal sealed class WebServer(int port, SerialLink link, MediaService media, A
                 FirmwareVersion: s.Device?.FwVer,
                 FirmwareProtocol: s.Device?.Proto,
                 Error: s.Error,
-                BadFrames: stats is null ? 0 : stats.BadCobs + stats.BadCrc + stats.TooShort + stats.TooLarge + stats.BadVersion));
+                Elevated: StartupTask.IsElevated(),
+                Sensors: stats.Access,
+                BadFrames: decoder is null ? 0 : decoder.BadCobs + decoder.BadCrc + decoder.TooShort + decoder.TooLarge + decoder.BadVersion));
         });
         app.MapGet("/api/log", () => Results.Json(Log.Recent()));
+        // Everything LibreHardwareMonitor sees, with raw sensor names (debugging aid).
+        app.MapGet("/api/hardware", () =>
+        {
+            stats.WantCatalog();
+            return Results.Json(stats.HardwareReport().ToList());
+        });
+        // Data source catalog for the editor: every source this PC has, its live value, and whether
+        // the current layout uses it (docs/config-schema.md, "Data source IDs").
+        app.MapGet("/api/sources", () =>
+        {
+            stats.WantCatalog();  // values for every source, not only the layout's, for the next few seconds
+            var used = StatsBridge.DefaultLayoutSources;
+            return Results.Json(new
+            {
+                sensors = stats.Access,
+                sources = stats.Catalog.Select(s =>
+                {
+                    var v = stats.Value(s.Id);
+                    return new
+                    {
+                        id = s.Id,
+                        name = s.Name,
+                        unit = s.Unit,
+                        available = v is not null,
+                        value = v is { } d ? Math.Round(d, 2) : (double?)null,
+                        used = used.Contains(s.Id),
+                    };
+                }),
+            }, ProtocolJson.Options);
+        });
         // What the host sends as NOW_PLAYING and VOLUME right now (debugging aid).
         app.MapGet("/api/media", () =>
         {
@@ -107,5 +141,7 @@ internal sealed class WebServer(int port, SerialLink link, MediaService media, A
         string? FirmwareVersion,
         int? FirmwareProtocol,
         string? Error,
+        bool Elevated,
+        SensorAccess Sensors,
         uint BadFrames);
 }

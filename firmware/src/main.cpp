@@ -1,7 +1,7 @@
 // rez-pad firmware entry point.
 // Phase 6: Now Playing from the host (track, progress, album art, volume). Native USB is a
 // composite device (CDC + HID media keys); media actions go to the host app when it is connected,
-// otherwise out as media keys. System stats and weather still show demo data (Phases 7 and 8).
+// otherwise out as media keys. Phase 7: system stats from the host. Weather is still demo data (Phase 8).
 // The Phase 2 debug view and Phase 1 display tools stay available from the debug console on UART0 (the USB-UART bridge port, 115200 baud); they pause LVGL while they draw.
 #include <Arduino.h>
 #include <esp_chip_info.h>
@@ -19,11 +19,13 @@
 #include "link/link.h"
 #include "link/usb_device.h"
 #include "media/media.h"
+#include "sysstats/sysstats.h"
 #include "pins.h"
 #include "rezpad_protocol.h"
 #include "sensors/sensors.h"
 #include "ui/debug_view.h"
 #include "ui/lvgl_port.h"
+#include "ui/model.h"
 #include "ui/ui.h"
 
 #ifndef FW_VERSION
@@ -325,6 +327,17 @@ void cmdMedia(int, char**, Print& out) {
              rp::media::artSize(), rp::media::artTransferActive() ? "in progress" : "idle");
 }
 
+void cmdStats(int, char**, Print& out) {
+  out.printf("SYS_STATS received %lu, sources dropped %lu\n", static_cast<unsigned long>(rp::sysstats::received()),
+             static_cast<unsigned long>(rp::sysstats::dropped()));
+  // What the widgets show right now (the console runs on the UI loop, so reading the model is safe).
+  for (const auto& st : rp::ui::model().stats) {
+    if (!st.id[0]) continue;
+    if (st.valid) out.printf("  %s = %.1f\n", st.id, st.value);
+    else out.printf("  %s = --\n", st.id);
+  }
+}
+
 const rp::console::Command kCommands[] = {
     {"info", "", cmdInfo},
     {"i2c", "", cmdI2c},
@@ -343,6 +356,7 @@ const rp::console::Command kCommands[] = {
     {"usb", "", cmdUsb},
     {"link", "", cmdLink},
     {"media", "", cmdMedia},
+    {"stats", "", cmdStats},
     {"enc", "", cmdEnc},
     {"cpd", "<1|2> <counts per click>", cmdCpd},
     {"encinv", "<1|2> <0|1>", cmdEncInv},

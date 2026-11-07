@@ -6,6 +6,7 @@
 #include "link/link.h"
 #include "lvgl_port.h"
 #include "media/media.h"
+#include "sysstats/sysstats.h"
 #include "mock.h"
 #include "model.h"
 #include "pages.h"
@@ -19,7 +20,6 @@ namespace ui {
 namespace {
 
 constexpr uint32_t kTickMs = 250;    // progress bar interpolation
-constexpr uint32_t kMockMs = 1000;   // demo stats
 constexpr int kVolumeStep = 2;       // media.volume_step default (the host applies the real one)
 constexpr int kSeekStepS = 5;        // media.seek_step_s default (the host applies the real one)
 constexpr uint32_t kArtRequestMs = 2500;  // no art this long after a track change: ask for it
@@ -27,7 +27,6 @@ constexpr uint32_t kArtRequestMs = 2500;  // no art this long after a track chan
 uint32_t gPending = 0;
 uint32_t gArtRequested = 0;  // track id we already sent ART_REQUEST for
 uint32_t gLastTick = 0;
-uint32_t gLastMock = 0;
 uint32_t gRoomSamples = 0;
 
 void updatePageIndicator() { status_bar::setPage(pages::current(), pages::count(), pages::name(pages::current())); }
@@ -105,11 +104,14 @@ uint32_t pollLink(uint32_t nowMs) {
       m.volume = Volume();
       m.art = Art();
       media::releaseArt();
+      for (Stat& s : m.stats) s = Stat();  // system widgets show "--"
+      changed |= kChangedStats;
       gArtRequested = 0;
       changed |= kChangedMedia | kChangedVolume | kChangedArt;
     }
   }
   changed |= pollMedia(m, nowMs);
+  if (sysstats::take(m.stats)) changed |= kChangedStats;
   const int minutes = link::localMinutes();
   if (minutes != m.clockMinutes) {
     m.clockMinutes = minutes;
@@ -139,7 +141,7 @@ bool begin() {
   const uint32_t now = millis();
   gPending |= mock::begin(model(), now);
   gPending |= pollRoom();
-  gLastTick = gLastMock = now;
+  gLastTick = now;
   return true;
 }
 
@@ -147,10 +149,6 @@ void loop(uint32_t nowMs) {
   if (nowMs - gLastTick >= kTickMs) {
     gLastTick = nowMs;
     gPending |= kChangedTick;
-  }
-  if (nowMs - gLastMock >= kMockMs) {
-    gLastMock = nowMs;
-    gPending |= mock::update(model(), nowMs);
   }
   gPending |= pollRoom();
   gPending |= pollLink(nowMs);

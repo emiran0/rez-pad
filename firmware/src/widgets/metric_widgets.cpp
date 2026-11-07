@@ -13,7 +13,14 @@ bool MetricWidget::value(float& out) const {
   return true;
 }
 
-void MetricWidget::format(char* buf, size_t n, float v) const { fmtValue(buf, n, v, spec_.decimals, spec_.unit); }
+void MetricWidget::format(char* buf, size_t n, float v) const {
+  // Network rates: switch to MB/s from 1000 kB/s so the number stays short.
+  if (spec_.unit && strcmp(spec_.unit, "kB/s") == 0 && v >= 1000.0f) {
+    fmtValue(buf, n, v / 1000.0f, spec_.decimals < 0 ? 1 : spec_.decimals, "MB/s");
+    return;
+  }
+  fmtValue(buf, n, v, spec_.decimals, spec_.unit);
+}
 
 namespace {
 
