@@ -41,12 +41,13 @@ internal sealed class HardwareSensors : IDisposable
         Update(cpu: true, gpu: true, board: true);
         Cpu = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Cpu);
         FindGpu();
-        // Motherboard fans live on the SuperIO chip (sub-hardware). Only fans that spin are listed.
+        // Motherboard fans live on the SuperIO chip (sub-hardware). All headers are listed, also at
+        // 0 rpm (unused header, or a fan in zero-RPM mode), so ids never shift.
         Fans = _computer.Hardware
             .Where(h => h.HardwareType == HardwareType.Motherboard)
             .SelectMany(h => h.SubHardware)
             .SelectMany(h => h.Sensors)
-            .Where(s => s.SensorType == SensorType.Fan && s.Value > 0)
+            .Where(s => s.SensorType == SensorType.Fan)
             .ToList();
         foreach (var hw in _computer.Hardware)
         {

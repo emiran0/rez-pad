@@ -51,6 +51,7 @@ internal sealed class WebServer(int port, SerialLink link, MediaService media, A
                 FirmwareProtocol: s.Device?.Proto,
                 Error: s.Error,
                 Elevated: StartupTask.IsElevated(),
+                LogFileError: Log.FileError,
                 Sensors: stats.Access,
                 BadFrames: decoder is null ? 0 : decoder.BadCobs + decoder.BadCrc + decoder.TooShort + decoder.TooLarge + decoder.BadVersion));
         });
@@ -142,6 +143,7 @@ internal sealed class WebServer(int port, SerialLink link, MediaService media, A
         int? FirmwareProtocol,
         string? Error,
         bool Elevated,
+        string? LogFileError,
         SensorAccess Sensors,
         uint BadFrames);
 }

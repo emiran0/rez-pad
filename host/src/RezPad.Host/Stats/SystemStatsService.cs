@@ -268,10 +268,18 @@ internal sealed class SystemStatsService : IDisposable
                 () => Positive(Sensor(_hw.Gpu, SensorType.Temperature, "GPU Hot Spot")), L));
         }
 
+        // Fan ids follow the motherboard header ("Fan #3" is sys.fan.3.rpm), not the order found.
+        var used = new HashSet<int>();
         for (var i = 0; i < _hw.Fans.Count; i++)
         {
             var fan = _hw.Fans[i];
-            list.Add(new($"sys.fan.{i + 1}.rpm", $"Fan {i + 1} ({fan.Name})", "RPM", () => fan.Value, Needs.BoardSensors));
+            var hash = fan.Name.LastIndexOf('#');
+            var n = hash >= 0 && int.TryParse(fan.Name[(hash + 1)..], out var parsed) ? parsed : fan.Index + 1;
+            while (!used.Add(n))
+            {
+                n++;  // a second SuperIO chip with the same names: keep ids unique
+            }
+            list.Add(new($"sys.fan.{n}.rpm", $"Motherboard fan {n}", "RPM", () => fan.Value, Needs.BoardSensors));
         }
 
         foreach (var drive in DriveInfo.GetDrives())

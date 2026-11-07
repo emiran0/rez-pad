@@ -116,9 +116,9 @@ Ryzen 5 5600X, RTX 3070 Ti, ASUS TUF B450M-PRO GAMING, 32 GB, Windows 11. Host n
 | 2026-11-07 | Host CPU / memory | 0.34 % / 156 MB working set, 69 MB private |
 | 2026-11-07 | COM close times (native port direct to the PC) | 30 to 34 ms over 3 host restarts |
 
-Not yet measured: CPU temperature with PawnIO installed and the host elevated ("Start with Windows").
+With PawnIO 2.x installed and the host started elevated by the "Start with Windows" task (2026-11-07): CPU Tctl/Tdie 62 to 64 C, CCD1 62 C, package power 49 W, per-core power; motherboard SuperIO ITE IT8655E: fans #1 1445 rpm, #2 0 (empty header), #3 1383 rpm, six unlabeled temperatures (#1 follows the CPU, #2 39 C, #3 to #6 46 C; not exposed as sources until they can be named). Host 0.11 % CPU (12.8 ms/s), 58 MB private.
 
-**AHT20 missing (2026-11-07, Phase 7 bring-up).** The I2C scan finds only the BMP280 (0x77); the AHT20 (0x38) does not answer, so room temperature and humidity read 0. Sensor code is unchanged since Phase 2. Probably wiring (cables were replugged) or a stuck AHT20; check the module wiring and power-cycle.
+**AHT20 missing (2026-11-07, Phase 7 bring-up), resolved.** For a while the I2C scan found only the BMP280 (0x77) and room temperature/humidity read 0. After later resets and power cycles it answers again at 0x38: 28.9 C raw, 29.7 % RH, 0 errors in 120 samples. Sensor code was never changed; most likely a loose contact on the breadboard or a stuck AHT20. Watch for `ok aht 0` in the `sensor` console output.
 
 **GPU load fix (2026-11-07).** The first version used LibreHardwareMonitor's "GPU Core" load (NVIDIA's graphics-engine figure): 1 % on the device while Task Manager showed 18 % (video decode). `sys.gpu.load` is now the busiest D3D engine, as in Task Manager; during YouTube playback it reads the decode engine (8 to 9 %), core load 10 to 12 %.
 
@@ -137,4 +137,8 @@ Direct NVML calls (nvml.dll from the NVIDIA driver) cost about 2 us each for tem
 **Direct GPU readers (2026-11-07).** NVML for the NVIDIA values and D3DKMTQueryStatistics per engine node for the loads, matched to the same GPU by PCI bus/device. Checked against LibreHardwareMonitor side by side during YouTube playback: load 8.4 to 9.0 vs 8.5 to 8.7, decode identical, 3D 0.4 vs 0.4, temperature, power, clock and VRAM identical. Host CPU 35 ms/s to 11.6 to 12.2 ms/s. The D3DKMT struct sizes were taken from LibreHardwareMonitor's CsWin32-generated types at runtime (`D3DKMT_QUERYSTATISTICS` 808 bytes, `D3DKMT_NODEMETADATA` 78 bytes; 80 is rejected with STATUS_INVALID_PARAMETER). This adapter has no registry info (`KMTQAITYPE_ADAPTERREGISTRYINFO` returns STATUS_OBJECT_NAME_NOT_FOUND), so the name comes from `KMTQAITYPE_DRIVER_DESCRIPTION`.
 
 **CPU load floor check (2026-11-07).** Reported: the device never shows CPU below 3.0 % while Task Manager sometimes shows 2 to 3 %. Compared for 60 s, once per second: the device value (debug console `stats`) against `typeperf` on the same PC. The device follows "% Processor Utility" (Task Manager's counter) with about 1 s lag: device 3.1 to 18.7 % (avg 6.75), Utility 2.7 to 16.8 % (avg 6.68). "% Processor Time" is lower at idle (1.3 to 3 %), since Utility also counts boost frequency above base clock. Idle Utility on this PC sits at about 3.1 to 3.5 %; Task Manager rounds to whole percent and samples at a different moment. No bug.
+
+**Start with Windows (2026-11-07).** Tray item used by the user: one UAC prompt, task `rez-pad` created (logon trigger, highest privileges, user lolhe, interactive), host restarted through it elevated; `--exit` from a non-elevated shell still stops the elevated instance.
+
+**Host log seen from a Claude desktop session.** The Claude desktop app is an MSIX package, so processes started from it (shells, and hosts launched from them) get a private copy of `%LOCALAPPDATA%` (`%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Localez-pad\host.log`). A host started by Task Scheduler writes the real `%LOCALAPPDATA%ez-pad\host.log`, which such a session cannot see. Use `GET /api/log` instead. `Log` now catches every exception and reports file problems as `logFileError` in `/api/status`.
 

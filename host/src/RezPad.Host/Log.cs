@@ -26,6 +26,9 @@ internal static class Log
 
     public static IReadOnlyList<string> Recent() => Ring.ToArray();
 
+    /// <summary>Why the last write to the log file failed (null when the file is fine).</summary>
+    public static string? FileError { get; private set; }
+
     private static void Write(string level, string msg)
     {
         var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {level} {msg}";
@@ -44,11 +47,13 @@ internal static class Log
                     File.Move(FilePath, FilePath + ".1", overwrite: true);
                 }
                 File.AppendAllText(FilePath, line + Environment.NewLine, Encoding.UTF8);
+                FileError = null;
             }
         }
-        catch (IOException)
+        catch (Exception ex)
         {
-            // Logging must never take the app down.
+            // Logging must never take the app down; the ring and /api/status still show it.
+            FileError = $"{ex.GetType().Name}: {ex.Message}";
         }
     }
 }

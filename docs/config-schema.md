@@ -117,7 +117,7 @@ Stable dotted IDs. The host publishes the catalog of what exists on this PC (`GE
 | `sys.gpu.3d_load`, `sys.gpu.decode_load`, `sys.gpu.encode_load` | % | D3DKMT | Busiest node of that engine type |
 | `sys.gpu.temp`, `sys.gpu.core_load`, `sys.gpu.clock_mhz`, `sys.gpu.power_w`, `sys.gpu.vram_used_gb`, `sys.gpu.vram_pct`, `sys.gpu.fan_pct`, `sys.gpu.fan_rpm` | | NVML on NVIDIA, LibreHardwareMonitor otherwise | `core_load` is the driver's graphics-engine load (ignores video decode). `fan_rpm` needs driver R535+ |
 | `sys.gpu.hotspot_temp` | °C | LibreHardwareMonitor | Not in NVML's public API. Its GPU part (vendor DLLs, about 33 ms CPU per refresh) opens only when the layout uses this source |
-| `sys.fan.<n>.rpm` | RPM | LibreHardwareMonitor (motherboard SuperIO) | Fans spinning at startup, numbered from 1. Needs PawnIO and admin |
+| `sys.fan.<n>.rpm` | RPM | LibreHardwareMonitor (motherboard SuperIO) | `n` is the header number ("Fan #3" is `sys.fan.3.rpm`); all headers are listed, also at 0 rpm, so ids never shift. Needs PawnIO and admin |
 | `sys.disk.<letter>.used_pct`, `sys.disk.<letter>.free_gb` | %, GB | DriveInfo | Fixed drives |
 | `room.temp`, `room.hum`, `room.pressure` | | device sensor | Device side, not sent by the host (Phase 8+) |
 
