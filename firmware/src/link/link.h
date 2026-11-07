@@ -5,6 +5,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <time.h>
 
 #include "rezpad_protocol.h"
 
@@ -28,6 +29,12 @@ bool sendAction(const char* action, int value);
 bool timeSynced();
 // Local time as minutes since midnight, or -1 when never synced.
 int localMinutes();
+// Unix time in seconds, or 0 when never synced.
+int64_t unixNow();
+// UTC offset of the PC's time zone in minutes (from TIME_SYNC).
+int tzOffsetMin();
+// Local calendar time; false when never synced.
+bool localTime(struct tm& out);
 
 struct Stats {
   uint32_t rxPackets;

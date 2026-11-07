@@ -15,7 +15,6 @@ lv_obj_t* gClock = nullptr;
 lv_obj_t* gPageName = nullptr;
 lv_obj_t* gDots[kMaxDots] = {};
 lv_obj_t* gHost = nullptr;
-lv_obj_t* gDemo = nullptr;
 
 }  // namespace
 
@@ -46,8 +45,6 @@ void build(lv_obj_t* parent) {
 
   gHost = widgets::makeLabel(gBar, font::small(), color::faint(), LV_SYMBOL_USB);
   lv_obj_align(gHost, LV_ALIGN_RIGHT_MID, 0, 0);
-  gDemo = widgets::makeLabel(gBar, font::small(), color::warn(), "DEMO");
-  lv_obj_align(gDemo, LV_ALIGN_RIGHT_MID, -24, 0);
 }
 
 void setPage(int index, int count, const char* name) {
@@ -74,8 +71,6 @@ void refresh(const Model& m, uint32_t changed) {
   }
   if (changed & kChangedHost) {
     lv_obj_set_style_text_color(gHost, m.hostConnected ? color::ok() : color::faint(), 0);
-    if (m.demo) lv_obj_set_hidden(gDemo, false);
-    else lv_obj_set_hidden(gDemo, true);
   }
 }
 

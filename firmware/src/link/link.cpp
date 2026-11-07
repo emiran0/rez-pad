@@ -14,6 +14,7 @@
 #include "link_monitor.h"
 #include "media/media.h"
 #include "sysstats/sysstats.h"
+#include "weather/weather.h"
 #include "usb_device.h"
 
 #ifndef FW_VERSION
@@ -154,8 +155,9 @@ void dispatch(const Packet& p, uint32_t now) {
     case proto::kArtEnd: media::onArtEnd(p.body, p.bodyLen); break;
     case proto::kArtNone: media::onArtNone(p.body, p.bodyLen); break;
     case proto::kSysStats: sysstats::onSysStats(p.body, p.bodyLen); break;
+    case proto::kWeather: weather::onWeather(p.body, p.bodyLen); break;
     default:
-      gStats.unknownTypes++;  // WEATHER, CONFIG_*: later phases
+      gStats.unknownTypes++;  // CONFIG_*: Phase 9
       break;
   }
 }
@@ -236,6 +238,17 @@ int localMinutes() {
   int64_t m = (local / 60) % 1440;
   if (m < 0) m += 1440;
   return static_cast<int>(m);
+}
+
+int64_t unixNow() { return gTimeSynced ? static_cast<int64_t>(time(nullptr)) : 0; }
+
+int tzOffsetMin() { return gTzOffsetMin; }
+
+bool localTime(struct tm& out) {
+  if (!gTimeSynced) return false;
+  const time_t local = time(nullptr) + static_cast<time_t>(gTzOffsetMin) * 60;
+  gmtime_r(&local, &out);
+  return true;
 }
 
 Stats stats() {

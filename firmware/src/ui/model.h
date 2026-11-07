@@ -1,4 +1,4 @@
-// Data the UI shows. Filled with mock data in Phase 3; by the host link (Phase 5+) and the
+// Data the UI shows. Filled by the host link (Phase 5+) and the
 // sensor task later. Only the UI loop reads or writes it.
 #pragma once
 
@@ -51,20 +51,39 @@ struct Stat {
   bool valid = false;
 };
 
+// Display units from the config's "units" section (arrive with WEATHER until the config store
+// exists, Phase 9). The room sensor is converted with them too.
+struct Units {
+  bool fahrenheit = false;
+  uint8_t wind = 0;  // 0 km/h, 1 m/s, 2 mph
+  bool inHg = false;
+};
+
 struct Weather {
   bool valid = false;
   char loc[48] = "";
-  uint32_t updatedMs = 0;
-  float temp = 0, feels = 0, wind = 0;
+  int64_t updated = 0;  // unix s when the host fetched it (age and 12 h expiry)
+  float temp = 0, feels = 0, wind = 0, press = 0;
+  bool hasPress = false;
   uint8_t hum = 0;
   uint8_t code = 0;  // WMO weather code
   bool isDay = true;
+  struct Hour {
+    int64_t t = 0;  // unix s
+    float temp = 0;
+    uint8_t code = 0;
+    uint8_t pop = 0;
+    bool isDay = true;
+  } hourly[12];
+  uint8_t hourCount = 0;
   struct Day {
-    char name[4] = "";
+    int16_t year = 0;  // local date at the location
+    uint8_t month = 0, day = 0;
     float min = 0, max = 0;
     uint8_t code = 0;
     uint8_t pop = 0;
   } daily[5];
+  uint8_t dayCount = 0;
 };
 
 // Live room climate from the device's own sensor (always real, also in demo mode).
@@ -83,10 +102,12 @@ struct Model {
   Art art;
   Stat stats[kMaxStats];
   Weather weather;
+  Units units;
   Room room;
   bool hostConnected = false;
-  bool demo = false;  // showing mock data
   int clockMinutes = -1;  // minutes since midnight, -1 = unknown
+  int64_t unixTime = 0;   // unix s from the synced clock, 0 = unknown (updated every loop)
+  int tzOffsetMin = 0;    // PC time zone offset, for local dates
 };
 
 // What changed since the last refresh; widgets only redraw what concerns them.

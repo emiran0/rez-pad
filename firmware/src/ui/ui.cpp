@@ -7,7 +7,7 @@
 #include "lvgl_port.h"
 #include "media/media.h"
 #include "sysstats/sysstats.h"
-#include "mock.h"
+#include "weather/weather.h"
 #include "model.h"
 #include "pages.h"
 #include "sensors/sensors.h"
@@ -23,9 +23,11 @@ constexpr uint32_t kTickMs = 250;    // progress bar interpolation
 constexpr int kVolumeStep = 2;       // media.volume_step default (the host applies the real one)
 constexpr int kSeekStepS = 5;        // media.seek_step_s default (the host applies the real one)
 constexpr uint32_t kArtRequestMs = 2500;  // no art this long after a track change: ask for it
+constexpr uint32_t kSensorSendMs = 10000;  // SENSOR to the host (docs/protocol.md)
 
 uint32_t gPending = 0;
 uint32_t gArtRequested = 0;  // track id we already sent ART_REQUEST for
+uint32_t gLastSensorSend = 0;
 uint32_t gLastTick = 0;
 uint32_t gRoomSamples = 0;
 
@@ -112,12 +114,32 @@ uint32_t pollLink(uint32_t nowMs) {
   }
   changed |= pollMedia(m, nowMs);
   if (sysstats::take(m.stats)) changed |= kChangedStats;
+  if (weather::take(m.weather, m.units)) changed |= kChangedWeather;
+  m.unixTime = link::unixNow();
+  m.tzOffsetMin = link::tzOffsetMin();
   const int minutes = link::localMinutes();
   if (minutes != m.clockMinutes) {
     m.clockMinutes = minutes;
     changed |= kChangedClock;
   }
   return changed;
+}
+
+// SENSOR: room readings for the host's web page, metric, null when missing.
+void sendSensor() {
+  const Room& r = model().room;
+  if (r.samples == 0) return;
+  char body[160];
+  char t[16] = "null", h[16] = "null", p[16] = "null", d[16] = "null";
+  if (r.tempValid) {
+    snprintf(t, sizeof(t), "%.2f", r.temp);
+    snprintf(h, sizeof(h), "%.1f", r.hum);
+  }
+  if (r.pressValid) snprintf(p, sizeof(p), "%.2f", r.press);
+  if (r.trend != 0) snprintf(d, sizeof(d), "%.2f", r.delta3h);
+  snprintf(body, sizeof(body), "{\"temp_c\":%s,\"hum_pct\":%s,\"press_hpa\":%s,\"trend\":\"%s\",\"delta_3h\":%s}", t, h,
+           p, sensor::trendName(static_cast<sensor::Trend>(r.trend)), d);
+  link::send(proto::kSensor, body);
 }
 
 }  // namespace
@@ -139,7 +161,6 @@ bool begin() {
   updatePageIndicator();
 
   const uint32_t now = millis();
-  gPending |= mock::begin(model(), now);
   gPending |= pollRoom();
   gLastTick = now;
   return true;
@@ -152,6 +173,10 @@ void loop(uint32_t nowMs) {
   }
   gPending |= pollRoom();
   gPending |= pollLink(nowMs);
+  if (model().hostConnected && nowMs - gLastSensorSend >= kSensorSendMs) {
+    gLastSensorSend = nowMs;
+    sendSensor();
+  }
 
   if (gPending && !lvgl_port::paused()) {
     const uint32_t changed = gPending;

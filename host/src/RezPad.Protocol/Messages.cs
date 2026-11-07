@@ -78,6 +78,24 @@ public sealed record ArtIdMsg(uint Id);
 /// </summary>
 public sealed record SysStatsMsg(long T, IReadOnlyDictionary<string, double?> V);
 
+/// <summary>WEATHER (0x30), see docs/protocol.md "WEATHER body".</summary>
+public sealed record WeatherMsg(
+    string Loc,
+    WeatherUnits Units,
+    long Updated,
+    WeatherNow Now,
+    IReadOnlyList<WeatherHour> Hourly,
+    IReadOnlyList<WeatherDay> Daily);
+
+/// <summary><c>Temp</c> c/f, <c>Wind</c> kmh/ms/mph, <c>Pressure</c> hpa/inhg.</summary>
+public sealed record WeatherUnits(string Temp, string Wind, string Pressure);
+
+public sealed record WeatherNow(double Temp, double Feels, int Hum, double Wind, double? Press, int Code, bool IsDay);
+
+public sealed record WeatherHour(long T, double Temp, int Code, int Pop, bool IsDay);
+
+public sealed record WeatherDay(string D, double Min, double Max, int Code, int Pop);
+
 /// <summary>VOLUME (0x15). Level 0 to 100.</summary>
 public sealed record VolumeMsg(int Level, bool Muted);
 
@@ -92,7 +110,13 @@ public sealed record HelloAckMsg(int Proto, string FwVer, int W, int H, long Psr
 
 public sealed record ActionMsg(string Action, int Value);
 
-public sealed record SensorMsg(double TempC, double HumPct, double PressHpa, string Trend);
+/// <summary>SENSOR (0xA0): the device's room sensor, metric, null when a reading is missing.</summary>
+public sealed record SensorMsg(
+    double? TempC,
+    double? HumPct,
+    double? PressHpa,
+    string Trend,
+    [property: JsonPropertyName("delta_3h")] double? Delta3h = null);
 
 public sealed record LogMsg(string Lvl, string Msg);
 

@@ -16,6 +16,23 @@
       <dt>Device</dt><dd id="device">...</dd>
       <dt>Sensors</dt><dd id="sensors">...</dd>
     </dl>
+    <h2>Weather</h2>
+    <dl>
+      <dt>Location</dt><dd id="wx-loc">...</dd>
+      <dt>Now</dt><dd id="wx-now">...</dd>
+      <dt>Room</dt><dd id="room">...</dd>
+    </dl>
+    <form id="wx-search" class="row">
+      <input id="wx-q" type="search" placeholder="Search a city" autocomplete="off" aria-label="City">
+      <button type="submit">Search</button>
+    </form>
+    <ul id="wx-results" class="results"></ul>
+    <div class="row">
+      <label>Temperature <select id="u-temp"><option value="c">°C</option><option value="f">°F</option></select></label>
+      <label>Wind <select id="u-wind"><option value="kmh">km/h</option><option value="ms">m/s</option><option value="mph">mph</option></select></label>
+      <label>Pressure <select id="u-pressure"><option value="hpa">hPa</option><option value="inhg">inHg</option></select></label>
+    </div>
+
     <h2>Data sources</h2>
     <p class="hint">Everything this PC can show. Sources marked "on device" are in the current layout.</p>
     <table id="sources">

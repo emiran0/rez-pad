@@ -142,3 +142,14 @@ Direct NVML calls (nvml.dll from the NVIDIA driver) cost about 2 us each for tem
 
 **Host log seen from a Claude desktop session.** The Claude desktop app is an MSIX package, so processes started from it (shells, and hosts launched from them) get a private copy of `%LOCALAPPDATA%` (`%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Local\rez-pad\host.log`). A host started by Task Scheduler writes the real `%LOCALAPPDATA%\rez-pad\host.log`, which such a session cannot see. Use `GET /api/log` instead. `Log` now catches every exception and reports file problems as `logFileError` in `/api/status`.
 
+## Weather and room (Phase 8)
+
+| Date | Item | Result |
+|---|---|---|
+| 2026-11-07 | Location set through `PUT /api/weather` (Istanbul, 41.01384, 28.94966; units c / m/s / hPa) | Config saved, forecast fetched 0.2 s later: 10 C, code 2, wind 5.7 m/s, 5 days, 12 hours from the current hour |
+| 2026-11-07 | WEATHER on the device | Received right after connect (`stats` console: Istanbul 10.0, code 2, 5 days, 12 hours) |
+| 2026-11-07 | SENSOR to the host | Every 10 s: 26.6 C, 32.6 % RH, 1021.6 hPa, trend unknown (needs 1 h of history after a reboot) |
+| 2026-11-07 | Firmware size | 1.49 MB of the 6 MB app partition (weather icons about 300 KB) |
+
+Not checked on the screen yet: icon placement and readability, the `clock` widget and the forecast `hourly` mode (neither is in the default layout; they become placeable with the config in Phase 9/10).
+

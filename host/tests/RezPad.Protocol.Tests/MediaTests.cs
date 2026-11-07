@@ -79,4 +79,25 @@ public class MediaTests
         }
         Assert.Equal(jpeg, rebuilt);
     }
+
+    [Fact]
+    public void WeatherUsesWireFieldNames()
+    {
+        var msg = new WeatherMsg("Istanbul", new WeatherUnits("c", "ms", "hpa"), 1793912345,
+            new WeatherNow(14.2, 12.9, 71, 5.7, 1020.9, 3, false),
+            [new WeatherHour(1793913600, 13.8, 3, 10, false)],
+            [new WeatherDay("2026-11-06", 9.1, 16.4, 61, 60)]);
+        var json = Encoding.UTF8.GetString(ProtocolJson.Serialize(msg));
+        Assert.Equal("""{"loc":"Istanbul","units":{"temp":"c","wind":"ms","pressure":"hpa"},"updated":1793912345,"now":{"temp":14.2,"feels":12.9,"hum":71,"wind":5.7,"press":1020.9,"code":3,"is_day":false},"hourly":[{"t":1793913600,"temp":13.8,"code":3,"pop":10,"is_day":false}],"daily":[{"d":"2026-11-06","min":9.1,"max":16.4,"code":61,"pop":60}]}""", json);
+    }
+
+    [Fact]
+    public void ParsesSensorFromFirmware()
+    {
+        var full = ProtocolJson.Deserialize<SensorMsg>("""{"temp_c":27.4,"hum_pct":29.7,"press_hpa":1021.5,"trend":"steady","delta_3h":0.3}"""u8);
+        Assert.Equal(new SensorMsg(27.4, 29.7, 1021.5, "steady", 0.3), full);
+        var partial = ProtocolJson.Deserialize<SensorMsg>("""{"temp_c":null,"hum_pct":null,"press_hpa":1021.5,"trend":"unknown","delta_3h":null}"""u8);
+        Assert.Null(partial!.TempC);
+        Assert.Equal(1021.5, partial.PressHpa);
+    }
 }

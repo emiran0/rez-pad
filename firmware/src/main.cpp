@@ -1,7 +1,8 @@
 // rez-pad firmware entry point.
 // Phase 6: Now Playing from the host (track, progress, album art, volume). Native USB is a
 // composite device (CDC + HID media keys); media actions go to the host app when it is connected,
-// otherwise out as media keys. Phase 7: system stats from the host. Weather is still demo data (Phase 8).
+// otherwise out as media keys. Phase 7: system stats from the host. Phase 8: weather from the host, room
+// climate sent back as SENSOR, clock widget.
 // The Phase 2 debug view and Phase 1 display tools stay available from the debug console on UART0 (the USB-UART bridge port, 115200 baud); they pause LVGL while they draw.
 #include <Arduino.h>
 #include <esp_chip_info.h>
@@ -20,6 +21,7 @@
 #include "link/usb_device.h"
 #include "media/media.h"
 #include "sysstats/sysstats.h"
+#include "weather/weather.h"
 #include "pins.h"
 #include "rezpad_protocol.h"
 #include "sensors/sensors.h"
@@ -328,8 +330,14 @@ void cmdMedia(int, char**, Print& out) {
 }
 
 void cmdStats(int, char**, Print& out) {
-  out.printf("SYS_STATS received %lu, sources dropped %lu\n", static_cast<unsigned long>(rp::sysstats::received()),
-             static_cast<unsigned long>(rp::sysstats::dropped()));
+  out.printf("SYS_STATS received %lu, sources dropped %lu, WEATHER received %lu\n",
+             static_cast<unsigned long>(rp::sysstats::received()), static_cast<unsigned long>(rp::sysstats::dropped()),
+             static_cast<unsigned long>(rp::weather::received()));
+  const auto& wx = rp::ui::model().weather;
+  if (wx.valid) {
+    out.printf("  weather %s %.1f, code %u, %u days, %u hours, updated %lld\n", wx.loc, wx.temp, wx.code, wx.dayCount,
+               wx.hourCount, static_cast<long long>(wx.updated));
+  }
   // What the widgets show right now (the console runs on the UI loop, so reading the model is safe).
   for (const auto& st : rp::ui::model().stats) {
     if (!st.id[0]) continue;

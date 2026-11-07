@@ -108,16 +108,22 @@ The host opens the port with DTR and RTS on (TinyUSB only sends while DTR is set
 
 ```json
 {
-  "loc": "Example City",
-  "units": "metric",
+  "loc": "Istanbul",
+  "units": { "temp": "c", "wind": "ms", "pressure": "hpa" },
   "updated": 1793912345,
-  "now": { "temp": 14.2, "feels": 12.9, "hum": 71, "wind": 12.0, "code": 3, "is_day": false },
-  "hourly": [ { "t": 1793913600, "temp": 13.8, "code": 3, "pop": 10 } ],
+  "now": { "temp": 14.2, "feels": 12.9, "hum": 71, "wind": 5.7, "press": 1020.9, "code": 3, "is_day": false },
+  "hourly": [ { "t": 1793913600, "temp": 13.8, "code": 3, "pop": 10, "is_day": false } ],
   "daily":  [ { "d": "2026-11-06", "min": 9.1, "max": 16.4, "code": 61, "pop": 60 } ]
 }
 ```
 
-`code` is the WMO weather code from Open-Meteo. Send 12 hourly and 5 daily entries.
+- `units` mirrors the config's `units` section: `temp` `c` or `f`, `wind` `kmh`, `ms` or `mph`, `pressure` `hpa` or `inhg`. Values are already converted by the host (Open-Meteo does it). The device also uses `temp` and `pressure` for its own room sensor display.
+- `updated` is the unix time (s) when the host fetched the data. The device shows the age ("updated 20 min ago") and hides weather 12 h after `updated`.
+- `now.press` is the surface pressure at the location (in `units.pressure`).
+- `code` is the WMO weather code from Open-Meteo. `is_day` picks day or night icons.
+- `hourly`: 12 entries from the current hour on, `t` unix time (s). `daily`: 5 entries from today on, `d` the local date at the location; the device names them (Today, Mon, ...).
+- `pop` is the precipitation probability in %.
+- The host sends WEATHER after every fetch (default every 15 min), when the location changes, and on connect.
 
 ## Device -> Host
 
@@ -127,7 +133,7 @@ The host opens the port with DTR and RTS on (TinyUSB only sends while DTR is set
 | 0x82 | PONG | empty | Reply to PING |
 | 0x90 | ACTION | JSON `{action, value}` | Resolved from input map, see `config-schema.md` |
 | 0x91 | ART_REQUEST | JSON `{id}` | Device lost or never received art for current track |
-| 0xA0 | SENSOR | JSON `{temp_c, hum_pct, press_hpa, trend}` | Every 10 s |
+| 0xA0 | SENSOR | JSON `{temp_c, hum_pct, press_hpa, trend, delta_3h}` | Every 10 s while connected. Values after offsets and filtering, always metric; a missing reading is `null`. `trend` is `rising`, `falling`, `steady` or `unknown` |
 | 0xC0 | CONFIG_ACK | JSON `{ok, crc32, error}` | |
 | 0xC1 | CONFIG_DATA_BEGIN | JSON `{size, crc32}` | Reply to CONFIG_GET |
 | 0xC2 | CONFIG_DATA_CHUNK | binary `[offset u32][data]` | |

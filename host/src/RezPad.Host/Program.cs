@@ -1,8 +1,10 @@
 using System.Reflection;
 using RezPad.Host.Audio;
+using RezPad.Host.Config;
 using RezPad.Host.Device;
 using RezPad.Host.Media;
 using RezPad.Host.Stats;
+using RezPad.Host.Weather;
 using RezPad.Host.Web;
 using RezPad.Protocol;
 
@@ -61,6 +63,8 @@ internal static class Program
         Log.Info($"rez-pad host {Version} starting{(StartupTask.IsElevated() ? " (elevated)" : "")}, log at {Log.LogFile}");
         AppDomain.CurrentDomain.UnhandledException += (_, e) => Log.Error($"unhandled: {e.ExceptionObject}");
 
+        var config = new ConfigStore();
+        var room = new RoomSensor();
         using var link = new SerialLink(Version);
         var mediaOptions = MediaOptions.Default;
         using var audio = new AudioService();
@@ -70,17 +74,20 @@ internal static class Program
         {
             if (!bridge.HandlePacket(packet))
             {
-                OnPacket(packet);
+                OnPacket(packet, room);
             }
         };
 
         using var stats = new SystemStatsService(rateHz: 1);  // config "stats.rate_hz" from Phase 9
         _ = new StatsBridge(link, stats, StatsBridge.DefaultLayoutSources);
+        using var weather = new WeatherService(config);
+        _ = new WeatherBridge(link, weather);
 
         audio.Start();
         media.Start();
         stats.Start();
-        var web = new WebServer(port, link, media, audio, stats);
+        weather.Start();
+        var web = new WebServer(port, new WebServices(link, media, audio, stats, config, weather, room));
         web.Start();
         link.Start();
 
@@ -102,16 +109,22 @@ internal static class Program
         return 0;
     }
 
-    private static void OnPacket(Packet packet)
+    private static void OnPacket(Packet packet, RoomSensor room)
     {
         switch (packet.Type)
         {
+            case MsgType.Sensor:
+                if (ProtocolJson.Deserialize<SensorMsg>(packet.Body) is { } reading)
+                {
+                    room.Update(reading);
+                }
+                break;
             case MsgType.Log:
                 var log = ProtocolJson.Deserialize<LogMsg>(packet.Body);
                 Log.Info($"device {log?.Lvl}: {log?.Msg}");
                 break;
             default:
-                break;  // SENSOR, CONFIG_*, CMD_RESULT: later phases
+                break;  // CONFIG_*, CMD_RESULT: later phases
         }
     }
 }

@@ -67,7 +67,8 @@ Widget* create(const Spec& s) {
   if (strcmp(t, "weather_now") == 0) return new WeatherNow(s);
   if (strcmp(t, "weather_forecast") == 0) return new WeatherForecast(s);
   if (strcmp(t, "room_climate") == 0) return new RoomClimate(s);
-  return nullptr;  // clock, label, spectrum: later phases
+  if (strcmp(t, "clock") == 0) return new Clock(s);
+  return nullptr;  // label (Phase 9), spectrum (stretch)
 }
 
 }  // namespace widgets

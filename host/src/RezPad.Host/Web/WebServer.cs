@@ -5,17 +5,29 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging;
 using RezPad.Host.Audio;
+using RezPad.Host.Config;
 using RezPad.Host.Device;
 using RezPad.Host.Media;
 using RezPad.Host.Stats;
+using RezPad.Host.Weather;
 using RezPad.Protocol;
 
 namespace RezPad.Host.Web;
 
 /// <summary>Kestrel bound to 127.0.0.1 only. Serves web/ and the /api endpoints (docs/config-schema.md).</summary>
-internal sealed class WebServer(int port, SerialLink link, MediaService media, AudioService audio,
-    SystemStatsService stats)
+internal sealed record WebServices(SerialLink Link, MediaService Media, AudioService Audio, SystemStatsService Stats,
+    ConfigStore Config, WeatherService Weather, RoomSensor Room);
+
+internal sealed class WebServer(int port, WebServices services)
 {
+    private readonly SerialLink link = services.Link;
+    private readonly MediaService media = services.Media;
+    private readonly AudioService audio = services.Audio;
+    private readonly SystemStatsService stats = services.Stats;
+    private readonly ConfigStore config = services.Config;
+    private readonly WeatherService weather = services.Weather;
+    private readonly RoomSensor room = services.Room;
+
     private WebApplication? _app;
 
     public string Url { get; } = $"http://127.0.0.1:{port}/";
@@ -56,6 +68,64 @@ internal sealed class WebServer(int port, SerialLink link, MediaService media, A
                 BadFrames: decoder is null ? 0 : decoder.BadCobs + decoder.BadCrc + decoder.TooShort + decoder.TooLarge + decoder.BadVersion));
         });
         app.MapGet("/api/log", () => Results.Json(Log.Recent()));
+
+        // Weather location, units and the latest forecast the device got.
+        app.MapGet("/api/weather", () =>
+        {
+            var latest = weather.Latest;
+            return Results.Json(new
+            {
+                location = config.Weather,
+                units = config.Units,
+                latest,
+                age_s = latest is null ? (long?)null : DateTimeOffset.UtcNow.ToUnixTimeSeconds() - latest.Updated,
+                error = weather.LastError,
+            }, ProtocolJson.Options);
+        });
+        // {"name": "...", "lat": .., "lon": ..} and/or {"units": {"temp": "c", "wind": "ms", "pressure": "hpa"}}
+        app.MapPut("/api/weather", async (HttpRequest req) =>
+        {
+            WeatherUpdate? body;
+            try
+            {
+                body = await System.Text.Json.JsonSerializer.DeserializeAsync<WeatherUpdate>(req.Body, ProtocolJson.Options);
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                body = null;
+            }
+            if (body is null || (body.Lat is null != body.Lon is null) ||
+                body.Lat is < -90 or > 90 || body.Lon is < -180 or > 180 ||
+                (body.Units is not null && !Units.Valid(body.Units)))
+            {
+                return Results.BadRequest(new { error = "expected {name, lat, lon} and/or {units: {temp: c|f, wind: kmh|ms|mph, pressure: hpa|inhg}}" });
+            }
+            if (body.Units is not null)
+            {
+                config.SetUnits(body.Units);
+            }
+            if (body.Lat is { } lat && body.Lon is { } lon)
+            {
+                var name = string.IsNullOrWhiteSpace(body.Name) ? $"{lat:F2}, {lon:F2}" : body.Name.Trim();
+                config.SetWeatherLocation(name[..Math.Min(name.Length, 40)], lat, lon);
+            }
+            return Results.Ok();
+        });
+        app.MapGet("/api/geocode", async (string? q, CancellationToken ct) =>
+        {
+            try
+            {
+                return Results.Json(await WeatherService.GeocodeAsync(q ?? "", ct), ProtocolJson.Options);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+            {
+                return Results.Problem($"geocoding failed: {ex.Message}", statusCode: 502);
+            }
+        });
+        // The device's room sensor (SENSOR every 10 s while connected).
+        app.MapGet("/api/sensor", () => room.Latest is { } r
+            ? Results.Json(new { reading = r.Reading, age_s = (int)(DateTimeOffset.UtcNow - r.At).TotalSeconds }, ProtocolJson.Options)
+            : Results.Json(new { reading = (SensorMsg?)null }, ProtocolJson.Options));
         // Everything LibreHardwareMonitor sees, with raw sensor names (debugging aid).
         app.MapGet("/api/hardware", () =>
         {
@@ -131,6 +201,8 @@ internal sealed class WebServer(int port, SerialLink link, MediaService media, A
             await _app.DisposeAsync();
         }
     }
+
+    private sealed record WeatherUpdate(string? Name, double? Lat, double? Lon, Units? Units);
 
     private sealed record StatusDto(
         string HostVersion,
