@@ -19,6 +19,10 @@ The host has only been tested on one PC: Ryzen 5 5600X, RTX 3070 Ti, ASUS TUF B4
 
 Quick check on a new PC: run the host, then save `http://127.0.0.1:47800/api/sources` and `/api/hardware`.
 
+## Display
+
+- **White/grey screen after a cold plug-in (2026-11-07, seen once).** Plugging in the native USB cable first (board unpowered before): the backlight came on but the screen stayed white with no image, while the firmware ran normally (host connected). Pressing RST fixed it. The display was on 3V3 (its U1 regulator starved, about 3.0 V out). Suspects: contact bounce while plugging in drops the display but not the ESP32, or panel init before the display supply is stable. Recheck after moving display VCC to 5 V; if it still happens, delay the panel init after a power-on reset and/or re-run it once (the ILI9488 cannot be read back, MISO is not connected).
+
 ## USB and development setup
 
 - **30 s COM close / COM4 wedge** behind the Genesys USB 2.0 hub (`05E3:0610`). Plug the native port straight into the PC. Details in `measurements.md`.
