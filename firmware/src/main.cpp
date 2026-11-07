@@ -1,7 +1,7 @@
 // rez-pad firmware entry point.
-// Phase 3: LVGL UI (status bar, page manager, widget grid) with demo data; encoder 1 switches
-// pages. The Phase 2 debug view and Phase 1 display tools stay available from the debug console
-// on UART0 (the USB-UART bridge port, 115200 baud); they pause LVGL while they draw.
+// Phase 4: native USB is a composite device (CDC for the host link, HID media keys). Media
+// actions go out as media keys while no host app is connected. LVGL UI with demo data (Phase 3).
+// The Phase 2 debug view and Phase 1 display tools stay available from the debug console on UART0 (the USB-UART bridge port, 115200 baud); they pause LVGL while they draw.
 #include <Arduino.h>
 #include <esp_chip_info.h>
 #include <esp_flash.h>
@@ -13,7 +13,9 @@
 #include "debug/wiring_check.h"
 #include "display/backlight.h"
 #include "display/display.h"
+#include "hid/media_keys.h"
 #include "input/input.h"
+#include "link/usb_device.h"
 #include "pins.h"
 #include "rezpad_protocol.h"
 #include "sensors/sensors.h"
@@ -286,6 +288,13 @@ void cmdButtons(int argc, char** argv, Print& out) {
   cmdEnc(1, argv, out);
 }
 
+void cmdUsb(int, char**, Print& out) {
+  out.printf("USB %04X:%04X serial %s, %s%s\n", rp::usb::kVid, rp::usb::kPid, rp::usb::serialNumber(),
+             rp::usb::mounted() ? "connected" : "not connected", rp::usb::suspended() ? " (suspended)" : "");
+  out.printf("HID media keys sent %lu, dropped %lu\n", static_cast<unsigned long>(rp::hid::sentCount()),
+             static_cast<unsigned long>(rp::hid::droppedCount()));
+}
+
 const rp::console::Command kCommands[] = {
     {"info", "", cmdInfo},
     {"i2c", "", cmdI2c},
@@ -301,6 +310,7 @@ const rp::console::Command kCommands[] = {
     {"action", "<name> [value]", cmdAction},
     {"page", "<index>", cmdPage},
     {"perf", "<0|1>", cmdPerf},
+    {"usb", "", cmdUsb},
     {"enc", "", cmdEnc},
     {"cpd", "<1|2> <counts per click>", cmdCpd},
     {"encinv", "<1|2> <0|1>", cmdEncInv},
@@ -316,6 +326,8 @@ void setup() {
   delay(200);
   Serial.println();
   Serial.println("hello from rez-pad");
+  // Start USB first so Windows can enumerate while the rest initializes.
+  const bool usbOk = rp::usb::begin();
 
   rp::backlight::begin();  // off while the panel initializes, avoids a white flash
   const bool lcdOk = rp::display::begin();
@@ -339,6 +351,8 @@ void setup() {
   sCfg.trendThresholdHpa = rp::defaults::kTrendThresholdHpa;
 
   printInfo(Serial);
+  if (!usbOk) Serial.println("USB init FAILED");
+  Serial.printf("USB %04X:%04X serial %s\n", rp::usb::kVid, rp::usb::kPid, rp::usb::serialNumber());
   if (!lcdOk) Serial.println("display init FAILED");
   if (!inputOk) Serial.println("input init FAILED");
   rp::wiring::scanI2c(Serial);  // before the sensor task starts using the bus

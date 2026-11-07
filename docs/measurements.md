@@ -63,3 +63,9 @@ LVGL sysmon overlay (`perf 1`), 30 FPS cap (LV_DEF_REFR_PERIOD 33 ms), SPI 40 MH
 | 2026-11-07 | same, only the title scrolls (30 px/s = 1 px per frame) | 30 (cap) | ~40 % | current. Remaining load is mostly waiting for SPI inside the flush. |
 
 Page switch: reported as instant on the hardware. Possible later optimization if needed: convert RGB565 to RGB666 into a separate DMA buffer and return from flush immediately, so the next strip renders while the previous one is on the wire.
+
+## USB (Phase 4)
+
+| Date | Commit | Result |
+|---|---|---|
+| 2026-11-07 | Phase 4 | Windows 11 enumerates "rez-pad" (303A:4005, serial RP-ACA704F47EDC) as USB Composite Device with COM6 (usbser) and a HID consumer control device, standard drivers only. Media keys from encoder 2 (play/pause, next, volume) work with no host app: 39 keys sent, 0 dropped. |

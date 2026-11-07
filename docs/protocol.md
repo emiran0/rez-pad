@@ -9,6 +9,22 @@ Both implementations are tested against the same vectors in [`protocol-test-vect
 
 Any breaking change bumps `PROTOCOL_VERSION`. Both sides report their version in the handshake and refuse incompatible peers with a clear message.
 
+## USB identity and discovery
+
+The native USB port is a composite device (TinyUSB):
+
+| Item | Value |
+|---|---|
+| VID / PID | `0x303A` / `0x4005` (Espressif VID; TinyUSB's pre-allocated PID for CDC + HID) |
+| Manufacturer / product | `rez-pad` / `rez-pad` (the composite device's bus-reported description) |
+| Serial number | `RP-` + the chip's 12 hex digit MAC, e.g. `RP-ACA704F47EDC` (stable per board) |
+| Interface 0 | HID consumer control (media keys, offline fallback) |
+| Interface 1 | CDC ACM, the protocol link (`USB\VID_303A&PID_4005&MI_01\...`, a normal COM port) |
+
+The host finds the COM port whose parent composite device has VID/PID 303A:4005 and product `rez-pad` (other TinyUSB CDC+HID devices share that PID).
+
+The firmware reboots into the ROM bootloader when it sees esptool's DTR/RTS reset sequence or a 1200 baud line coding, so the native port can be used for flashing. **The host must never open the port at 1200 baud**, and should open it with DTR on and leave DTR/RTS alone afterwards.
+
 ## Framing
 
 - Transport: USB CDC on the native USB port (baud setting is ignored). USB bulk transfers are reliable and flow-controlled, so there are no per-chunk ACKs.

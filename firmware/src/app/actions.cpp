@@ -5,6 +5,7 @@
 
 #include "config/defaults.h"
 #include "display/backlight.h"
+#include "hid/media_keys.h"
 #include "ui/ui.h"
 
 namespace rp {
@@ -110,6 +111,9 @@ void run(Action a, int value) {
     case Action::kSeek:
     case Action::kVolume:
     case Action::kMute:
+      // No host link yet (Phase 5): media actions go out as HID media keys, which is also the
+      // permanent offline fallback. The demo player on screen follows along.
+      hid::sendMediaAction(a, value);
       ui::mediaAction(a, value);
       break;
     case Action::kDisplayToggle:
