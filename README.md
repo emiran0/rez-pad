@@ -27,6 +27,16 @@ dotnet test --project tests/RezPad.Protocol.Tests
 dotnet run --project src/RezPad.Host   # tray app, config page at http://127.0.0.1:47800
 ```
 
+The tray app finds the board on its native USB port by itself (VID 303A, PID 4005, serial `RP-...`). Useful bits:
+
+- Tray menu: connection status, open config page, open log file.
+- `rez-pad.exe --exit` closes the running instance cleanly.
+- `GET http://127.0.0.1:47800/api/status` and `/api/log` for status and recent log lines.
+- Log file: `%LOCALAPPDATA%\rez-pad\host.log`.
+
+Firmware debug console (USB-UART port, 115200 baud): `help`, `link`, `usb`, `sensor`, `enc`, `perf 1`, `view debug`, `bench`, ...
+`tools/devconsole.py` sends commands from a script.
+
 ## Protocol test vectors
 
 `python tools/gen_protocol_vectors.py` regenerates `docs/protocol-test-vectors.json` and `firmware/test/test_protocol/vectors.h`. Both test suites use them.

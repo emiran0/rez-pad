@@ -45,6 +45,13 @@ void onUsbEvent(void*, esp_event_base_t base, int32_t id, void*) {
   }
 }
 
+void onCdcEvent(void*, esp_event_base_t base, int32_t id, void* data) {
+  if (base != ARDUINO_USB_CDC_EVENTS || id != ARDUINO_USB_CDC_LINE_STATE_EVENT) return;
+  const auto* e = static_cast<arduino_usb_cdc_event_data_t*>(data);
+  Serial.printf("[usb] %lu ms: CDC line state dtr=%d rts=%d\n", static_cast<unsigned long>(millis()),
+                e->line_state.dtr, e->line_state.rts);
+}
+
 }  // namespace
 
 bool begin() {
@@ -62,10 +69,15 @@ bool begin() {
   USB.onEvent(onUsbEvent);
 
   hid::begin();      // registers the HID consumer-control interface
+  gCdc.onEvent(ARDUINO_USB_CDC_LINE_STATE_EVENT, onCdcEvent);  // diagnostics: host opens/closes the port
   gCdc.begin();      // baud rate is ignored on USB CDC
-  // esptool's DTR/RTS reset sequence (and a 1200 baud "touch") reboots into the bootloader, so the
-  // native port can still be used for flashing. The host app must not open the port at 1200 baud.
-  gCdc.enableReboot(true);
+  gCdc.setRxBufferSize(4096);  // art and config chunks arrive in 4 KB bursts (Phase 6+)
+  gCdc.setTxTimeoutMs(50);     // never stall the link task for long if the host stops reading
+  // No reboot-to-bootloader on esptool's DTR/RTS sequence or a 1200 baud "touch": a normal port
+  // open/close by the host can produce the same line-state order (seen with .NET SerialPort, which
+  // raises RTS before DTR) and would drop the device into the ROM bootloader. Flash through the
+  // USB-UART port instead, or hold BOOT and tap RESET to flash through the native port.
+  gCdc.enableReboot(false);
   return USB.begin();
 }
 

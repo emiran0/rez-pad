@@ -23,7 +23,7 @@ The native USB port is a composite device (TinyUSB):
 
 The host finds the COM port whose parent composite device has VID/PID 303A:4005 and product `rez-pad` (other TinyUSB CDC+HID devices share that PID).
 
-The firmware reboots into the ROM bootloader when it sees esptool's DTR/RTS reset sequence or a 1200 baud line coding, so the native port can be used for flashing. **The host must never open the port at 1200 baud**, and should open it with DTR on and leave DTR/RTS alone afterwards.
+The host opens the port with DTR and RTS on (TinyUSB only sends while DTR is set) at any baud rate (ignored). The firmware does **not** reboot into the bootloader on esptool's DTR/RTS sequence or a 1200 baud "touch": a normal open/close from .NET produced part of that sequence, so it was disabled. Flash through the USB-UART port, or hold BOOT and tap RESET to flash through the native port.
 
 ## Framing
 
@@ -102,7 +102,7 @@ The firmware reboots into the ROM bootloader when it sees esptool's DTR/RTS rese
 
 | Type | Name | Body | Notes |
 |---|---|---|---|
-| 0x81 | HELLO_ACK | JSON `{proto, fw_ver, w, h, psram_free, cfg_crc, buttons}` | Reply to HELLO |
+| 0x81 | HELLO_ACK | JSON `{proto, fw_ver, w, h, psram_free, cfg_crc, buttons, serial}` | Reply to HELLO. `serial` is the USB serial number (added in v1, optional for readers) |
 | 0x82 | PONG | empty | Reply to PING |
 | 0x90 | ACTION | JSON `{action, value}` | Resolved from input map, see `config-schema.md` |
 | 0x91 | ART_REQUEST | JSON `{id}` | Device lost or never received art for current track |
@@ -112,11 +112,15 @@ The firmware reboots into the ROM bootloader when it sees esptool's DTR/RTS rese
 | 0xC2 | CONFIG_DATA_CHUNK | binary `[offset u32][data]` | |
 | 0xC3 | CONFIG_DATA_END | empty | |
 | 0xE0 | LOG | JSON `{lvl, msg}` | Mirrors important device logs to the host |
-| 0xE1 | ERROR | JSON `{code, msg}` | |
+| 0xE1 | ERROR | JSON `{code, msg}` | Codes: `proto_mismatch` (HELLO with another version), `need_hello` (PINGs without a HELLO, e.g. after a device reset; the host re-sends HELLO), `bad_json` |
 | 0xE2 | CMD_RESULT | JSON `{cmd, ok, data}` | |
 
 ## Connection rules
 
 - Host considers the device lost after 3 s without PONG. Device considers the host lost after 3 s without PING.
 - On (re)connect: HELLO -> HELLO_ACK -> TIME_SYNC -> config check (push if CRC differs) -> NOW_PLAYING -> art -> VOLUME -> WEATHER -> SYS_STATS stream.
+- The device replies to every PING with PONG, but only counts the host as connected after a HELLO. If it keeps getting PINGs without a HELLO for 1 s it sends ERROR `need_hello` once.
+- Before HELLO_ACK arrives, the host repeats HELLO every 500 ms (the device may still be booting).
+- TIME_SYNC sets the device's system clock (UTC) and keeps `tz_offset_min` for local time; the host re-sends it every 60 s, which also covers DST changes.
+- CMD implemented so far: `reboot` (replies CMD_RESULT ok, then restarts). Others reply `ok: false`.
 - If HELLO_ACK reports a different `proto`, the host shows "Firmware protocol vN, host expects v1: update firmware/host" in the tray and web UI and stops sending anything except HELLO.

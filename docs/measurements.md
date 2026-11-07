@@ -69,3 +69,18 @@ Page switch: reported as instant on the hardware. Possible later optimization if
 | Date | Commit | Result |
 |---|---|---|
 | 2026-11-07 | Phase 4 | Windows 11 enumerates "rez-pad" (303A:4005, serial RP-ACA704F47EDC) as USB Composite Device with COM6 (usbser) and a HID consumer control device, standard drivers only. Media keys from encoder 2 (play/pause, next, volume) work with no host app: 39 keys sent, 0 dropped. |
+
+## Host link (Phase 5)
+
+Windows 11, host app debug build, board on both USB cables (native + CH343).
+
+| Date | Scenario | Result |
+|---|---|---|
+| 2026-11-07 | Host start to connected (discovery, HELLO, HELLO_ACK, TIME_SYNC) | 0.7 to 0.8 s |
+| 2026-11-07 | Device reset (RTS pulse or CMD reboot) to host reconnected | 1.5 to 1.6 s, 6 of 6 runs (boot included) |
+| 2026-11-07 | Host app killed: device notices | ~3.1 s (PING timeout), device keeps running |
+| 2026-11-07 | Host restart to connected | 0.7 s |
+| 2026-11-07 | Native cable unplug/replug | host connected 0.2 s after COM6 reappeared |
+| 2026-11-07 | Clock | status bar shows the PC's local time after TIME_SYNC, keeps running when the host is gone |
+
+**Known issue, not resolved:** twice during heavy stress testing (many rapid resets through COM4, repeated force-kills of the host with reads in flight) Windows entered a state where *every* close of COM6 took 30.0 s, also with pyserial, so not specific to our host. The board kept working and never received the close's SET_CONTROL_LINE_STATE during those 30 s (matches https://esp32.com/viewtopic.php?p=155679). A full power cycle of the board cleared it both times. Not reproduced by: cold boot, software reboot, native-only cable replug, normal app exit/restart, force-kill on a healthy link. COM4 (CH343) also wedged ("Incorrect function") in the same episodes until replugged. Mitigations in place: the host releases its single-instance lock before closing the port, and a new instance retries a busy port every 0.5 s, so a restart connects as soon as Windows lets go. Revisit if it shows up in normal use (watch the host log for `link closed in 2000+ ms`).

@@ -1,5 +1,5 @@
 // Demo data for Phase 3 (no host link yet): tracks with non-ASCII titles, wandering system
-// stats, a fixed weather report and a clock that starts at 14:32. Media actions act on it.
+// stats and a fixed weather report. Media actions act on it. The clock is real (TIME_SYNC).
 #pragma once
 
 #include <stdint.h>
@@ -13,7 +13,7 @@ namespace mock {
 // Fills the model; returns the Changed bits.
 uint32_t begin(Model& m, uint32_t nowMs);
 
-// Advances the mock clock and stats (about once per second); returns the Changed bits.
+// Advances the mock stats and track (about once per second); returns the Changed bits.
 uint32_t update(Model& m, uint32_t nowMs);
 
 // Media actions applied to the mock player.

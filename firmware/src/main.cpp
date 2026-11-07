@@ -1,6 +1,7 @@
 // rez-pad firmware entry point.
-// Phase 4: native USB is a composite device (CDC for the host link, HID media keys). Media
-// actions go out as media keys while no host app is connected. LVGL UI with demo data (Phase 3).
+// Phase 5: host link over USB CDC (handshake, heartbeat, time sync). Native USB is a composite
+// device (CDC + HID media keys); media actions go to the host app when it is connected, otherwise
+// out as media keys. LVGL UI with demo data (Phase 3).
 // The Phase 2 debug view and Phase 1 display tools stay available from the debug console on UART0 (the USB-UART bridge port, 115200 baud); they pause LVGL while they draw.
 #include <Arduino.h>
 #include <esp_chip_info.h>
@@ -15,6 +16,7 @@
 #include "display/display.h"
 #include "hid/media_keys.h"
 #include "input/input.h"
+#include "link/link.h"
 #include "link/usb_device.h"
 #include "pins.h"
 #include "rezpad_protocol.h"
@@ -295,6 +297,23 @@ void cmdUsb(int, char**, Print& out) {
              static_cast<unsigned long>(rp::hid::droppedCount()));
 }
 
+void cmdLink(int, char**, Print& out) {
+  const auto s = rp::link::stats();
+  out.printf("host %s%s%s, time %s\n", rp::link::hostConnected() ? "connected (host " : "not connected",
+             rp::link::hostConnected() ? rp::link::hostVersion() : "", rp::link::hostConnected() ? ")" : "",
+             rp::link::timeSynced() ? "synced" : "not synced");
+  out.printf("rx %lu, tx %lu, tx dropped %lu, unknown types %lu, connects %lu\n",
+             static_cast<unsigned long>(s.rxPackets), static_cast<unsigned long>(s.txPackets),
+             static_cast<unsigned long>(s.txDropped), static_cast<unsigned long>(s.unknownTypes),
+             static_cast<unsigned long>(s.connects));
+  out.printf("frames bad: cobs %lu, short %lu, large %lu, version %lu, crc %lu\n",
+             static_cast<unsigned long>(s.decoder.badCobs), static_cast<unsigned long>(s.decoder.tooShort),
+             static_cast<unsigned long>(s.decoder.tooLarge), static_cast<unsigned long>(s.decoder.badVersion),
+             static_cast<unsigned long>(s.decoder.badCrc));
+  const int m = rp::link::localMinutes();
+  if (m >= 0) out.printf("local time %02d:%02d\n", m / 60, m % 60);
+}
+
 const rp::console::Command kCommands[] = {
     {"info", "", cmdInfo},
     {"i2c", "", cmdI2c},
@@ -311,6 +330,7 @@ const rp::console::Command kCommands[] = {
     {"page", "<index>", cmdPage},
     {"perf", "<0|1>", cmdPerf},
     {"usb", "", cmdUsb},
+    {"link", "", cmdLink},
     {"enc", "", cmdEnc},
     {"cpd", "<1|2> <counts per click>", cmdCpd},
     {"encinv", "<1|2> <0|1>", cmdEncInv},
@@ -328,6 +348,7 @@ void setup() {
   Serial.println("hello from rez-pad");
   // Start USB first so Windows can enumerate while the rest initializes.
   const bool usbOk = rp::usb::begin();
+  const bool linkOk = rp::link::begin();
 
   rp::backlight::begin();  // off while the panel initializes, avoids a white flash
   const bool lcdOk = rp::display::begin();
@@ -352,6 +373,7 @@ void setup() {
 
   printInfo(Serial);
   if (!usbOk) Serial.println("USB init FAILED");
+  if (!linkOk) Serial.println("link task FAILED");
   Serial.printf("USB %04X:%04X serial %s\n", rp::usb::kVid, rp::usb::kPid, rp::usb::serialNumber());
   if (!lcdOk) Serial.println("display init FAILED");
   if (!inputOk) Serial.println("input init FAILED");

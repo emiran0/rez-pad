@@ -35,8 +35,6 @@ const Track kTracks[] = {
 constexpr int kTrackCount = sizeof(kTracks) / sizeof(kTracks[0]);
 int gTrack = 0;
 
-uint32_t gClockBaseMs = 0;
-constexpr int kClockStartMin = 14 * 60 + 32;
 
 struct StatDef {
   const char* id;
@@ -74,8 +72,6 @@ void loadTrack(Model& m, uint32_t nowMs, bool keepState) {
 uint32_t begin(Model& m, uint32_t nowMs) {
   m.demo = true;
   m.hostConnected = false;
-  gClockBaseMs = nowMs;
-  m.clockMinutes = kClockStartMin;
 
   gTrack = 0;
   loadTrack(m, nowMs, false);
@@ -115,11 +111,6 @@ uint32_t begin(Model& m, uint32_t nowMs) {
 
 uint32_t update(Model& m, uint32_t nowMs) {
   uint32_t changed = kChangedStats;
-  const int minutes = kClockStartMin + static_cast<int>((nowMs - gClockBaseMs) / 60000);
-  if (minutes % 1440 != m.clockMinutes) {
-    m.clockMinutes = minutes % 1440;
-    changed |= kChangedClock;
-  }
   for (int i = 0; i < kStatCount; ++i) {
     const StatDef& d = kStats[i];
     Stat& s = m.stats[i];

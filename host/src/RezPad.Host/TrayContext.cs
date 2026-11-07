@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using RezPad.Host.Device;
 using RezPad.Host.Web;
 
 namespace RezPad.Host;
@@ -7,13 +8,23 @@ namespace RezPad.Host;
 internal sealed class TrayContext : ApplicationContext
 {
     private readonly NotifyIcon _icon;
+    private readonly ToolStripMenuItem _statusItem;
     private readonly WebServer _web;
+    private readonly SerialLink _link;
+    private readonly SynchronizationContext _ui;
 
-    public TrayContext(WebServer web)
+    public TrayContext(WebServer web, SerialLink link)
     {
         _web = web;
+        _link = link;
+        _ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
+
+        _statusItem = new ToolStripMenuItem("Looking for rez-pad...") { Enabled = false };
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Open config page", null, (_, _) => OpenConfigPage());
+        menu.Items.Add(_statusItem);
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Open config page", null, (_, _) => Open(_web.Url));
+        menu.Items.Add("Open log file", null, (_, _) => Open(Log.LogFile));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => ExitThread());
 
@@ -24,12 +35,36 @@ internal sealed class TrayContext : ApplicationContext
             ContextMenuStrip = menu,
             Visible = true,
         };
-        _icon.DoubleClick += (_, _) => OpenConfigPage();
+        _icon.DoubleClick += (_, _) => Open(_web.Url);
+
+        _link.StatusChanged += status => _ui.Post(_ => ShowStatus(status), null);
+        ShowStatus(_link.Status);
     }
 
-    private void OpenConfigPage()
+    private void ShowStatus(LinkStatus s)
     {
-        Process.Start(new ProcessStartInfo(_web.Url) { UseShellExecute = true });
+        var text = s.State switch
+        {
+            DeviceLinkState.Connected => $"Connected ({s.Port}, firmware {s.Device?.FwVer})",
+            DeviceLinkState.Connecting => $"Connecting ({s.Port})...",
+            DeviceLinkState.Incompatible => $"Incompatible firmware: {s.Error}",
+            _ => "Looking for rez-pad...",
+        };
+        _statusItem.Text = text;
+        var tip = $"rez-pad: {text}";
+        _icon.Text = tip.Length > 127 ? tip[..127] : tip;
+    }
+
+    private static void Open(string target)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or FileNotFoundException)
+        {
+            Log.Warn($"could not open {target}: {ex.Message}");
+        }
     }
 
     protected override void ExitThreadCore()

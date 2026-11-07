@@ -3,6 +3,7 @@
 #include <Arduino.h>
 
 #include "default_layout.h"
+#include "link/link.h"
 #include "lvgl_port.h"
 #include "mock.h"
 #include "model.h"
@@ -44,6 +45,22 @@ uint32_t pollRoom() {
   return kChangedRoom;
 }
 
+uint32_t pollLink() {
+  Model& m = model();
+  uint32_t changed = 0;
+  const bool host = link::hostConnected();
+  if (host != m.hostConnected) {
+    m.hostConnected = host;
+    changed |= kChangedHost;
+  }
+  const int minutes = link::localMinutes();
+  if (minutes != m.clockMinutes) {
+    m.clockMinutes = minutes;
+    changed |= kChangedClock;
+  }
+  return changed;
+}
+
 }  // namespace
 
 bool begin() {
@@ -79,6 +96,7 @@ void loop(uint32_t nowMs) {
     gPending |= mock::update(model(), nowMs);
   }
   gPending |= pollRoom();
+  gPending |= pollLink();
 
   if (gPending && !lvgl_port::paused()) {
     const uint32_t changed = gPending;
