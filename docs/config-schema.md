@@ -24,9 +24,9 @@ Schema changes bump `schema` and include a migration on the host.
   "stats": { "rate_hz": 1 },
   "inputs": {
     "buttons": 0,
-    "enc1": { "counts_per_detent": 4, "invert": false,
+    "enc1": { "counts_per_detent": 2, "invert": false,
               "rotate": "nav.page", "click": "nav.home", "double": "none", "long": "display.toggle" },
-    "enc2": { "counts_per_detent": 4, "invert": false,
+    "enc2": { "counts_per_detent": 2, "invert": false,
               "rotate": "media.volume", "click": "media.play_pause", "double": "media.next", "long": "media.mute" },
     "btn1": { "click": "media.prev", "long": "none" },
     "btn2": { "click": "media.next", "long": "none" }

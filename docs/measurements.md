@@ -4,13 +4,20 @@ Record real numbers from the hardware here. Include date, firmware commit and co
 
 ## SPI clock (ILI9488)
 
-| Date | Commit | SPI Hz | Full-screen fill (ms) | 200x200 region (ms) | Artifacts? | Notes |
-|---|---|---|---|---|---|---|
-| | | 40 MHz | | | | |
-| | | 60 MHz | | | | |
-| | | 80 MHz | | | | |
+The ESP32-S3 SPI clock is 80 MHz / n, so the only steps near the targets are 80, 40, 26.7 and 20 MHz. A 60 MHz request runs at 40 MHz.
 
-Chosen default: _TBD_ (Phase 1).
+`bench` console command, average of 5 runs. "Strips" pushes a full 480x320 frame as eight 480x40 RGB565 DMA strips, which is how LVGL will flush. "Ideal" is 480 x 320 x 24 bit / clock.
+
+| Date | Commit | Requested | Effective | Fill (ms) | Ideal (ms) | 200x200 (ms) | Strips frame (ms) | Artifacts? | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-07 | Phase 1 | 20 MHz | 20 MHz | 187.5 | 184.3 | 48.2 | 184.9 | not checked | Display was unpowered (5V pin issue), timings are bus-side only |
+| 2026-11-07 | Phase 1 | 40 MHz | 40 MHz | 95.4 | 92.2 | 24.2 | 92.7 | not checked | same |
+| 2026-11-07 | Phase 1 | 60 MHz | 40 MHz | 95.4 | 92.2 | 24.2 | 92.7 | not checked | same |
+| 2026-11-07 | Phase 1 | 80 MHz | 80 MHz | 48.8 | 46.1 | 12.3 | 46.7 | not checked | same |
+
+Bus throughput is within 1 to 3% of the theoretical limit at every clock. Breadboard jumper wires, 10 to 15 cm.
+
+Chosen default: _TBD after the visual check with the display powered_ (Phase 1).
 
 ## Performance targets
 

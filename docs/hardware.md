@@ -69,7 +69,7 @@ Pin assignments here are mirrored in `firmware/include/pins.h`. Change both or n
 
 - Encoders `+`: **3.3 V**.
 - Sensor VCC: 3.3 V.
-- Display VCC: **5 V** (the board's 5V/VBUS pin). The module has an onboard 3.3 V regulator (U1) with bypass jumper J1 open. Logic levels are 3.3 V in all cases; the ESP32-S3 drives them directly.
+- Display VCC: **5 V** (the board's 5V/VBUS pin). On this board the 5V pin only carries USB power after the `IN-OUT` solder pad is bridged (see open checks). Until then, use 3V3. The module has an onboard 3.3 V regulator (U1) with bypass jumper J1 open. Logic levels are 3.3 V in all cases; the ESP32-S3 drives them directly.
 - Display LED: driven through the module's own transistor (Q1), so GPIO21 PWM connects straight to the LED pin.
 - The final device is powered from the **native USB** port.
 
@@ -81,6 +81,8 @@ Pin assignments here are mirrored in `firmware/include/pins.h`. Change both or n
 | Onboard RGB LED GPIO (38 or 48) | unknown | Board silkscreen or seller page. Or flash a blink on 48, then 38. |
 | Display VCC: regulator / J1 jumper? | From a photo of the back (2026-11-06, board marked "SPI 480X320 V1.0"): U1 is a SOT-23 3.3 V regulator on VCC, and J1 next to it appears open (two separate pads, no solder bridge). **Power VCC from 5 V.** Only short J1 if VCC ever has to come from 3.3 V. | Look for a 3-pin regulator (often `662K` or `AMS1117`) and a `J1` pad near the VCC pin. If present and J1 open: 5 V on VCC. If J1 shorted or no regulator: 3.3 V. |
 | Backlight LED pin has a transistor? | Yes (2026-11-06 photo): the LED pin goes through R6 to transistor Q1, which switches the backlight. GPIO21 can drive LED directly with PWM, active high (high = on). No external MOSFET needed. | Look for a small SOT-23 transistor near the LED pin. If the LED pin is wired straight to the backlight, it may draw 40 to 80 mA: drive it through an N-MOSFET (e.g. AO3400) or NPN. Measure current at full brightness before connecting to a GPIO. |
-| Encoder counts per detent (2 or 4) | unknown | Phase 2 debug view prints raw PCNT counts; turn one detent and read the delta. |
+| Board 5V pin as an output | **No, not as shipped** (2026-11-07): the 5V/5Vin pin read 1.6 to 1.7 V while powered from USB, so the display got no power. Matches YD-ESP32-S3 style boards, where 5Vin is separated from USB VBUS by a diode unless the `IN-OUT` solder pad is bridged. Fix: bridge `IN-OUT` (then never feed 5V into that pin from another supply), or run the display VCC from 3V3. | Multimeter between 5V pin and GND with the board on USB: should read about 5 V. |
+| Sensor I2C addresses | AHT20 at 0x38, BMP280 at **0x77** (2026-11-07 I2C scan). | `i2c` console command |
+| Encoder counts per detent (2 or 4) | **2** for enc1 (2026-11-07): rests at CLK/DT LOW/LOW, one click moves to HIGH/HIGH (half-step detents). Wiring confirmed. Check enc2 when fitted. | Phase 2 debug view prints raw PCNT counts; turn one detent and read the delta. |
 | Physical buttons | undecided (0, 1 or 2) | Configurable in `inputs`. |
 | Enclosure / sensor placement | undecided | Affects self-heating offset and display orientation. |

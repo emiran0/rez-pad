@@ -377,3 +377,7 @@ Tracked in the "Open hardware checks" table in `docs/hardware.md` (native USB po
 - 2026-11-06: Host uses the `.slnx` solution format (.NET 10 default) and xUnit v3 on Microsoft.Testing.Platform (`host/global.json` opts in; `dotnet test --project tests/RezPad.Protocol.Tests`). The .NET 10 SDK no longer runs MTP-based tests through VSTest.
 - 2026-11-06: Volume control via direct Core Audio COM interop instead of NAudio (smaller, no extra dependency).
 - 2026-11-06: Project renamed from "DeskHub" to **rez-pad**. C# projects/namespaces `RezPad.*`, host exe `rez-pad.exe`, C++ library `rezpad_protocol` in namespace `rp::proto`, PlatformIO env `rezpad`, config folder `%APPDATA%\rez-pad`.
+- 2026-11-07: SPI display clock steps are 80 MHz / n on the ESP32-S3 (80, 40, 26.7, 20 MHz). "60 MHz" in the Phase 1 plan is not reachable; it runs at 40 MHz. The benchmark reports requested and effective clocks.
+- 2026-11-07: LovyanGFX pinned to 1.2.36. 1.3.0 was released 2026-11-06 with breaking DMA/sprite changes; revisit when integrating LVGL (Phase 3).
+- 2026-11-07: Debug console on UART0 (`firmware/src/debug/`) with `tools/devconsole.py` to drive it. Used for bring-up and measurements until the protocol CMD message exists (Phase 5).
+- 2026-11-07: Default `counts_per_detent` is 2 (measured on the fitted KY-040), not 4.
