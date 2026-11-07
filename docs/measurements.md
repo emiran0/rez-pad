@@ -23,14 +23,14 @@ Chosen default: **40 MHz** (2026-11-07). Full frame 92.7 ms, within the < 120 ms
 
 | Metric | Target | Measured | Date |
 |---|---|---|---|
-| Track change to text on screen | < 150 ms | | |
-| Track change to album art on screen | < 600 ms | | |
-| Encoder input to host action executed | < 100 ms | | |
+| Track change to text on screen | < 150 ms | 23 to 36 ms host send to widget update, plus GSMTC event (~15 ms) and one frame (33 ms) | 2026-11-07 |
+| Track change to album art on screen | < 600 ms | about 400 to 550 ms (200 ms debounce on the host, encode, 100 to 170 ms transfer, 14 to 18 ms decode) | 2026-11-07 |
+| Encoder input to host action executed | < 100 ms | ACTION to Spotify state change 41 ms (host log) | 2026-11-07 |
 | Full page redraw at 40 MHz SPI | < 120 ms | 92.7 ms (480x40 DMA strips) | 2026-11-07 |
 | Device recovers after host restart | < 3 s | | |
 | Host recovers after device unplug/replug | < 3 s | | |
-| Host average CPU | < 1% | | |
-| Host memory | < 150 MB | | |
+| Host average CPU | < 1% | 0.07 % of 12 cores, idle link with a playing Brave tab, 30 s | 2026-11-07 |
+| Host memory | < 150 MB | 90 MB working set, 21 MB private (debug build) | 2026-11-07 |
 
 ## Boot log
 
@@ -83,4 +83,23 @@ Windows 11, host app debug build, board on both USB cables (native + CH343).
 | 2026-11-07 | Native cable unplug/replug | host connected 0.2 s after COM6 reappeared |
 | 2026-11-07 | Clock | status bar shows the PC's local time after TIME_SYNC, keeps running when the host is gone |
 
-**Known issue, not resolved:** twice during heavy stress testing (many rapid resets through COM4, repeated force-kills of the host with reads in flight) Windows entered a state where *every* close of COM6 took 30.0 s, also with pyserial, so not specific to our host. The board kept working and never received the close's SET_CONTROL_LINE_STATE during those 30 s (matches https://esp32.com/viewtopic.php?p=155679). A full power cycle of the board cleared it both times. Not reproduced by: cold boot, software reboot, native-only cable replug, normal app exit/restart, force-kill on a healthy link. COM4 (CH343) also wedged ("Incorrect function") in the same episodes until replugged. Mitigations in place: the host releases its single-instance lock before closing the port, and a new instance retries a busy port every 0.5 s, so a restart connects as soon as Windows lets go. Revisit if it shows up in normal use (watch the host log for `link closed in 2000+ ms`).
+**Known issue, likely cause found in Phase 6 (see below):** twice during heavy stress testing (many rapid resets through COM4, repeated force-kills of the host with reads in flight) Windows entered a state where *every* close of COM6 took 30.0 s, also with pyserial, so not specific to our host. The board kept working and never received the close's SET_CONTROL_LINE_STATE during those 30 s (matches https://esp32.com/viewtopic.php?p=155679). A full power cycle of the board cleared it both times. Not reproduced by: cold boot, software reboot, native-only cable replug, normal app exit/restart, force-kill on a healthy link. COM4 (CH343) also wedged ("Incorrect function") in the same episodes until replugged. Mitigations in place: the host releases its single-instance lock before closing the port, and a new instance retries a busy port every 0.5 s, so a restart connects as soon as Windows lets go. Revisit if it shows up in normal use (watch the host log for `link closed in 2000+ ms`).
+
+## Now Playing (Phase 6)
+
+Windows 11, host debug build, Spotify desktop and a Brave tab (YouTube). Art 192 px (the default layout's album_art card asks for 192 in HELLO_ACK).
+
+| Date | Item | Result |
+|---|---|---|
+| 2026-11-07 | NOW_PLAYING to widget update | 23 to 36 ms after the host sampled it (device log, synced clock) |
+| 2026-11-07 | Art size and transfer | Spotify 145 KB thumbnail to 7.7 KB JPEG; YouTube thumbnail to 9.1 KB. Sent in 100 to 170 ms |
+| 2026-11-07 | Art decode (JPEGDEC 1.8.5, 192x192 RGB565 into PSRAM) | 14 to 18 ms |
+| 2026-11-07 | Art on screen after the track text | 135 to 304 ms |
+| 2026-11-07 | Actions through the device console (same path as the knobs) | volume +/-3 detents (40 to 46 to 40), mute/unmute, play/pause, seek +30 s / -20 s on Spotify: all correct |
+| 2026-11-07 | Device reboot while the host runs | reconnected 1.6 s later, art pushed again |
+| 2026-11-07 | Host CPU / memory | 0.07 % / 90 MB working set |
+
+**Art transfer rate is about 80 KB/s.** Arduino's `USBCDC` passes every received byte through a FreeRTOS queue (`xQueueSend` per byte in the USB callback, `xQueueReceive` per byte in `read()`), roughly 12 us per byte. Fine for art (8 to 20 KB) and config; replacing the Arduino CDC class with direct TinyUSB reads would lift it if ever needed.
+
+**Hub finding for the 30 s close issue.** It came back on the first runs with Phase 6 (host closes taking 2 s, then 30.0 s, and COM4 "Incorrect function", COM4 and COM6 both wedged until a power cycle). Both cables were plugged into the same Genesys Logic USB 2.0 hub (`VID_05E3&PID_0610`). Both board USB devices are full speed, so behind that hub they share one transaction translator, which explains why two independent chips always wedged together. After moving the native cable to a PC port directly (CH343 still on the hub), the same workload (host start, art transfer, actions, host exit with the debug console open on COM4) closed cleanly (34 ms, DTR and RTS changes reached the device 3 ms apart). Only a few runs so far; keep the native cable off that hub, and record it here if it ever happens on a direct connection. The final device only uses the native port.
+

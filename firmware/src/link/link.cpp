@@ -12,6 +12,7 @@
 
 #include "config/defaults.h"
 #include "link_monitor.h"
+#include "media/media.h"
 #include "usb_device.h"
 
 #ifndef FW_VERSION
@@ -100,6 +101,7 @@ void onHello(const Packet& p, uint32_t now) {
   out["cfg_crc"] = 0;  // config store arrives in Phase 9
   out["buttons"] = defaults::kButtons;
   out["serial"] = usb::serialNumber();
+  if (media::artSize() > 0) out["art"] = media::artSize();  // album art edge the layout wants
   writeJson(proto::kHelloAck, out);
 }
 
@@ -144,8 +146,14 @@ void dispatch(const Packet& p, uint32_t now) {
       break;
     case proto::kTimeSync: onTimeSync(p); break;
     case proto::kCmd: onCmd(p); break;
+    case proto::kNowPlaying: media::onNowPlaying(p.body, p.bodyLen); break;
+    case proto::kVolume: media::onVolume(p.body, p.bodyLen); break;
+    case proto::kArtBegin: media::onArtBegin(p.body, p.bodyLen); break;
+    case proto::kArtChunk: media::onArtChunk(p.body, p.bodyLen); break;
+    case proto::kArtEnd: media::onArtEnd(p.body, p.bodyLen); break;
+    case proto::kArtNone: media::onArtNone(p.body, p.bodyLen); break;
     default:
-      gStats.unknownTypes++;  // NOW_PLAYING, ART, ... handled from Phase 6 on
+      gStats.unknownTypes++;  // SYS_STATS, WEATHER, CONFIG_*: later phases
       break;
   }
 }
@@ -170,6 +178,7 @@ void task(void*) {
     if (gMonitor.update(now)) {
       gConnected = gMonitor.connected();
       if (gConnected) gStats.connects++;
+      else media::onHostLost();
       Serial.printf("[link] host %s\n", gConnected ? "connected" : "lost");
     }
     if (gMonitor.takeNeedHello(now)) writeError("need_hello", "device restarted, send HELLO");
@@ -189,7 +198,7 @@ void task(void*) {
 bool begin() {
   gTxQueue = xQueueCreate(8, sizeof(TxItem));
   if (!gTxQueue) return false;
-  return xTaskCreatePinnedToCore(task, "link", 6144, nullptr, 4, nullptr, 0) == pdPASS;
+  return xTaskCreatePinnedToCore(task, "link", 8192, nullptr, 4, nullptr, 0) == pdPASS;
 }
 
 bool hostConnected() { return gConnected; }

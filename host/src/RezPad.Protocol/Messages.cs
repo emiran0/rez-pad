@@ -10,6 +10,9 @@ public static class ProtocolJson
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        // Raw UTF-8 for non-ASCII text (track titles): the default escapes it as \uXXXX, up to 6x
+        // the bytes. The device is the only reader, never a browser, so HTML-safe escaping is moot.
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
     public static byte[] Serialize<T>(T body) => JsonSerializer.SerializeToUtf8Bytes(body, Options);
@@ -45,10 +48,41 @@ public sealed record TimeSyncMsg(long UnixMs, int TzOffsetMin)
 
 public sealed record CmdMsg(string Cmd, JsonElement? Args = null);
 
+/// <summary>NOW_PLAYING (0x10). <c>State</c> is playing, paused, stopped or none.</summary>
+public sealed record NowPlayingMsg(
+    string State,
+    uint TrackId,
+    string Title,
+    string Artist,
+    string Album,
+    string App,
+    long PosMs,
+    long DurMs,
+    long Ts,
+    bool CanSeek,
+    bool CanNext,
+    bool CanPrev)
+{
+    public static NowPlayingMsg None(long ts) => new("none", 0, "", "", "", "", 0, 0, ts, false, false, false);
+}
+
+/// <summary>ART_BEGIN (0x11).</summary>
+public sealed record ArtBeginMsg(uint Id, int W, int H, string Fmt, int Size, uint Crc32);
+
+/// <summary>ART_END (0x13), ART_NONE (0x14) and ART_REQUEST (0x91).</summary>
+public sealed record ArtIdMsg(uint Id);
+
+/// <summary>VOLUME (0x15). Level 0 to 100.</summary>
+public sealed record VolumeMsg(int Level, bool Muted);
+
 // ---- Device -> Host ----
 
+/// <summary>
+/// HELLO_ACK. <c>Serial</c> and <c>Art</c> (album art edge in px the device's layout wants) are
+/// optional additions within v1.
+/// </summary>
 public sealed record HelloAckMsg(int Proto, string FwVer, int W, int H, long PsramFree, uint CfgCrc, int Buttons,
-    string? Serial = null);
+    string? Serial = null, int? Art = null);
 
 public sealed record ActionMsg(string Action, int Value);
 

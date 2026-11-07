@@ -4,13 +4,15 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging;
+using RezPad.Host.Audio;
 using RezPad.Host.Device;
+using RezPad.Host.Media;
 using RezPad.Protocol;
 
 namespace RezPad.Host.Web;
 
 /// <summary>Kestrel bound to 127.0.0.1 only. Serves web/ and the /api endpoints (docs/config-schema.md).</summary>
-internal sealed class WebServer(int port, SerialLink link)
+internal sealed class WebServer(int port, SerialLink link, MediaService media, AudioService audio)
 {
     private WebApplication? _app;
 
@@ -49,6 +51,18 @@ internal sealed class WebServer(int port, SerialLink link)
                 BadFrames: stats is null ? 0 : stats.BadCobs + stats.BadCrc + stats.TooShort + stats.TooLarge + stats.BadVersion));
         });
         app.MapGet("/api/log", () => Results.Json(Log.Recent()));
+        // What the host sends as NOW_PLAYING and VOLUME right now (debugging aid).
+        app.MapGet("/api/media", () =>
+        {
+            var art = media.Art;
+            var vol = audio.State;
+            return Results.Json(new
+            {
+                now_playing = media.Current.ToMessage(DateTimeOffset.UtcNow),
+                art = new { track_id = art.TrackId, source_bytes = art.Source?.Length ?? 0 },
+                volume = new { level = vol.Level, muted = vol.Muted, available = vol.Available },
+            }, ProtocolJson.Options);
+        });
         // Debug/maintenance commands for the device (docs/protocol.md, CMD 0x60), e.g. {"cmd":"reboot"}.
         app.MapPost("/api/device/cmd", async (HttpRequest req) =>
         {

@@ -46,7 +46,7 @@ The host opens the port with DTR and RTS on (TinyUSB only sends while DTR is set
 | 0x02 | PING | empty | Every 1 s |
 | 0x03 | TIME_SYNC | JSON `{unix_ms, tz_offset_min}` | On connect, then every 60 s |
 | 0x10 | NOW_PLAYING | JSON, see below | On change, plus resync every 5 s |
-| 0x11 | ART_BEGIN | JSON `{id, w, h, fmt:"jpeg", size, crc32}` | New `id` aborts any transfer in progress |
+| 0x11 | ART_BEGIN | JSON `{id, w, h, fmt:"jpeg", size, crc32}` | Any ART_BEGIN (same or new `id`) drops a transfer in progress |
 | 0x12 | ART_CHUNK | binary `[id u32][offset u32][data]` | |
 | 0x13 | ART_END | JSON `{id}` | Device verifies CRC32, decodes, swaps image |
 | 0x14 | ART_NONE | JSON `{id}` | Track has no art, show placeholder |
@@ -81,7 +81,17 @@ The host opens the port with DTR and RTS on (TinyUSB only sends while DTR is set
 
 - `state` is one of `playing`, `paused`, `stopped`, `none`.
 - `track_id` is a 32-bit hash (CRC32 of UTF-8 `title + "\n" + artist + "\n" + album`).
-- `ts` is the host unix time in ms when `pos_ms` was sampled. The device interpolates position locally from `pos_ms`, `ts` and its synced clock.
+- `ts` is the host unix time in ms when `pos_ms` was sampled. The device interpolates position locally from `pos_ms`, `ts` and its synced clock (an age above 10 s is treated as clock skew and clamped).
+- Text is raw UTF-8 in the JSON (not `\uXXXX` escapes). The device cuts fields that do not fit its buffers (title 127 bytes, artist and album 95, app 31) at a character boundary.
+- The host sends NOW_PLAYING when the track, state or controls change, when the position jumps by more than 1.5 s (seek), and every 5 s.
+
+### Album art
+
+- `id` is the `track_id` the image belongs to. The host sends a square baseline JPEG (quality 85) of the size from HELLO_ACK `art` (config `media.art_size`, default 200, when the device does not say).
+- ART_CHUNK offsets must be contiguous from 0; anything else drops the transfer. ART_END checks size and CRC32, then the device decodes into RGB565 and shows it once `id` matches the current track.
+- ART_NONE: the track has no art (or it could not be converted); the device shows its placeholder.
+- The host skips art the device already has (same `id` and JPEG CRC) and sends it again after every (re)connect.
+- ART_REQUEST: the device sends it once per track when the current track still has no art 2.5 s after it started showing (lost transfer, bad CRC). The host answers with the art or ART_NONE.
 
 ### WEATHER body
 
@@ -102,7 +112,7 @@ The host opens the port with DTR and RTS on (TinyUSB only sends while DTR is set
 
 | Type | Name | Body | Notes |
 |---|---|---|---|
-| 0x81 | HELLO_ACK | JSON `{proto, fw_ver, w, h, psram_free, cfg_crc, buttons, serial}` | Reply to HELLO. `serial` is the USB serial number (added in v1, optional for readers) |
+| 0x81 | HELLO_ACK | JSON `{proto, fw_ver, w, h, psram_free, cfg_crc, buttons, serial, art}` | Reply to HELLO. `serial` is the USB serial number; `art` is the album art edge in px the device's layout wants (omitted when the layout has no `album_art`). Both added within v1, optional for readers |
 | 0x82 | PONG | empty | Reply to PING |
 | 0x90 | ACTION | JSON `{action, value}` | Resolved from input map, see `config-schema.md` |
 | 0x91 | ART_REQUEST | JSON `{id}` | Device lost or never received art for current track |

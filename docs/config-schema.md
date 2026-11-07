@@ -20,7 +20,7 @@ Schema changes bump `schema` and include a migration on the host.
   "units": { "temp": "c", "pressure": "hpa", "wind": "kmh" },
   "weather": { "lat": 0.0, "lon": 0.0, "name": "Example City", "refresh_min": 15 },
   "sensor": { "temp_offset_c": -1.5, "hum_offset_pct": 0, "trend_threshold_hpa": 1.0 },
-  "media": { "app_priority": ["Spotify", "*"], "art_size": 200, "volume_step": 2 },
+  "media": { "app_priority": ["Spotify", "*"], "art_size": 200, "volume_step": 2, "seek_step_s": 5 },
   "stats": { "rate_hz": 1 },
   "inputs": {
     "buttons": 0,
@@ -76,6 +76,8 @@ Encoder gestures: `rotate`, `rotate_pressed` (turned while the knob is held down
 Pages may still carry `inputs_override` (same shape as `inputs`, only the keys to change) for page-specific mappings. The default config uses none: an override of `enc1.rotate` would make it impossible to leave that page by turning.
 
 `inputs.buttons` (0 to 2) is the number of physical buttons fitted. `btn1`/`btn2` mappings are kept but ignored when the button is not fitted. Default is 0 until the hardware is decided.
+
+`media`: `app_priority` orders media sessions by app (matched case-insensitively against the app name or its AppUserModelId, `*` matches any); a playing session always wins over paused ones, then the list decides. `art_size` is the album art edge in px when the device does not ask for one in HELLO_ACK. `volume_step` is percent per detent, `seek_step_s` seconds per detent.
 
 ## Widget catalog (firmware implements, web editor offers)
 

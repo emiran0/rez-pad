@@ -1,7 +1,7 @@
 // rez-pad firmware entry point.
-// Phase 5: host link over USB CDC (handshake, heartbeat, time sync). Native USB is a composite
-// device (CDC + HID media keys); media actions go to the host app when it is connected, otherwise
-// out as media keys. LVGL UI with demo data (Phase 3).
+// Phase 6: Now Playing from the host (track, progress, album art, volume). Native USB is a
+// composite device (CDC + HID media keys); media actions go to the host app when it is connected,
+// otherwise out as media keys. System stats and weather still show demo data (Phases 7 and 8).
 // The Phase 2 debug view and Phase 1 display tools stay available from the debug console on UART0 (the USB-UART bridge port, 115200 baud); they pause LVGL while they draw.
 #include <Arduino.h>
 #include <esp_chip_info.h>
@@ -18,6 +18,7 @@
 #include "input/input.h"
 #include "link/link.h"
 #include "link/usb_device.h"
+#include "media/media.h"
 #include "pins.h"
 #include "rezpad_protocol.h"
 #include "sensors/sensors.h"
@@ -314,6 +315,16 @@ void cmdLink(int, char**, Print& out) {
   if (m >= 0) out.printf("local time %02d:%02d\n", m / 60, m % 60);
 }
 
+void cmdMedia(int, char**, Print& out) {
+  const auto s = rp::media::stats();
+  out.printf("NOW_PLAYING received %lu, art ok %lu failed %lu, bad json %lu\n", static_cast<unsigned long>(s.nowPlaying),
+             static_cast<unsigned long>(s.artOk), static_cast<unsigned long>(s.artFailed),
+             static_cast<unsigned long>(s.badJson));
+  out.printf("last art %lu bytes, decoded in %lu us, art size %d px, transfer %s\n",
+             static_cast<unsigned long>(s.lastArtBytes), static_cast<unsigned long>(s.lastDecodeUs),
+             rp::media::artSize(), rp::media::artTransferActive() ? "in progress" : "idle");
+}
+
 const rp::console::Command kCommands[] = {
     {"info", "", cmdInfo},
     {"i2c", "", cmdI2c},
@@ -331,6 +342,7 @@ const rp::console::Command kCommands[] = {
     {"perf", "<0|1>", cmdPerf},
     {"usb", "", cmdUsb},
     {"link", "", cmdLink},
+    {"media", "", cmdMedia},
     {"enc", "", cmdEnc},
     {"cpd", "<1|2> <counts per click>", cmdCpd},
     {"encinv", "<1|2> <0|1>", cmdEncInv},
@@ -348,6 +360,7 @@ void setup() {
   Serial.println("hello from rez-pad");
   // Start USB first so Windows can enumerate while the rest initializes.
   const bool usbOk = rp::usb::begin();
+  const bool mediaOk = rp::media::begin();  // before the link task, which feeds it
   const bool linkOk = rp::link::begin();
 
   rp::backlight::begin();  // off while the panel initializes, avoids a white flash
@@ -374,6 +387,7 @@ void setup() {
   printInfo(Serial);
   if (!usbOk) Serial.println("USB init FAILED");
   if (!linkOk) Serial.println("link task FAILED");
+  if (!mediaOk) Serial.println("media buffers FAILED");
   Serial.printf("USB %04X:%04X serial %s\n", rp::usb::kVid, rp::usb::kPid, rp::usb::serialNumber());
   if (!lcdOk) Serial.println("display init FAILED");
   if (!inputOk) Serial.println("input init FAILED");

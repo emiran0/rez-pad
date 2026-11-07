@@ -19,6 +19,7 @@ struct NowPlaying {
   uint32_t posMs = 0;      // position when sampled
   uint32_t durMs = 0;
   uint32_t sampledAtMs = 0;  // device millis() when posMs was valid (for local interpolation)
+  uint32_t trackSinceMs = 0;  // device millis() when trackId last changed (UI sets it)
   bool canSeek = false, canNext = false, canPrev = false;
 
   // Interpolated position now.
@@ -32,6 +33,15 @@ struct NowPlaying {
 struct Volume {
   uint8_t level = 0;  // 0..100
   bool muted = false;
+  bool valid = false;  // only known while the host is connected
+};
+
+// Album art for track `id` (RGB565, w x h), or `px == nullptr` when that track has none.
+// The pixels belong to the media module and stay valid until the next art is taken.
+struct Art {
+  uint32_t id = 0;
+  uint16_t w = 0, h = 0;
+  const uint16_t* px = nullptr;
 };
 
 constexpr int kMaxStats = 16;
@@ -70,6 +80,7 @@ struct Room {
 struct Model {
   NowPlaying np;
   Volume volume;
+  Art art;
   Stat stats[kMaxStats];
   Weather weather;
   Room room;

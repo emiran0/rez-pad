@@ -1,4 +1,5 @@
 using System.Reflection;
+using RezPad.Host.Audio;
 using RezPad.Host.Device;
 using RezPad.Host.Media;
 using RezPad.Host.Web;
@@ -43,9 +44,21 @@ internal static class Program
         AppDomain.CurrentDomain.UnhandledException += (_, e) => Log.Error($"unhandled: {e.ExceptionObject}");
 
         using var link = new SerialLink(Version);
-        link.PacketReceived += packet => OnPacket(packet);
+        var mediaOptions = MediaOptions.Default;
+        using var audio = new AudioService();
+        using var media = new MediaService(mediaOptions);
+        using var bridge = new MediaBridge(link, media, audio, mediaOptions);
+        link.PacketReceived += packet =>
+        {
+            if (!bridge.HandlePacket(packet))
+            {
+                OnPacket(packet);
+            }
+        };
 
-        var web = new WebServer(port, link);
+        audio.Start();
+        media.Start();
+        var web = new WebServer(port, link, media, audio);
         web.Start();
         link.Start();
 
@@ -72,15 +85,6 @@ internal static class Program
     {
         switch (packet.Type)
         {
-            case MsgType.Action:
-                var action = ProtocolJson.Deserialize<ActionMsg>(packet.Body);
-                if (action is null)
-                {
-                    return;
-                }
-                var handled = MediaKeyFallback.Execute(action.Action, action.Value);
-                Log.Info($"action {action.Action} {action.Value}{(handled ? "" : " (not supported yet)")}");
-                break;
             case MsgType.Log:
                 var log = ProtocolJson.Deserialize<LogMsg>(packet.Body);
                 Log.Info($"device {log?.Lvl}: {log?.Msg}");

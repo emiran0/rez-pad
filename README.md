@@ -31,10 +31,11 @@ The tray app finds the board on its native USB port by itself (VID 303A, PID 400
 
 - Tray menu: connection status, open config page, open log file.
 - `rez-pad.exe --exit` closes the running instance cleanly.
-- `GET http://127.0.0.1:47800/api/status` and `/api/log` for status and recent log lines.
+- `GET http://127.0.0.1:47800/api/status`, `/api/log` and `/api/media` for status, recent log lines and the current Now Playing / volume.
+- Plug the board's native USB port straight into the PC, not through a USB 2.0 hub shared with the UART cable (see `docs/measurements.md`).
 - Log file: `%LOCALAPPDATA%\rez-pad\host.log`.
 
-Firmware debug console (USB-UART port, 115200 baud): `help`, `link`, `usb`, `sensor`, `enc`, `perf 1`, `view debug`, `bench`, ...
+Firmware debug console (USB-UART port, 115200 baud): `help`, `link`, `media`, `usb`, `sensor`, `enc`, `perf 1`, `view debug`, `bench`, ...
 `tools/devconsole.py` sends commands from a script.
 
 ## Protocol test vectors

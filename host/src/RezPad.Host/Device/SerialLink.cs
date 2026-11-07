@@ -40,7 +40,11 @@ internal sealed class SerialLink : IDisposable
     public event Action<LinkStatus>? StatusChanged;
     public event Action<Packet>? PacketReceived;
 
+    /// <summary>Raised on the link thread after HELLO_ACK and TIME_SYNC; handlers push the full state.</summary>
+    public event Action<HelloAckMsg>? Connected;
+
     public LinkStatus Status => _status;
+    public bool IsConnected => _status.State == DeviceLinkState.Connected;
     public DecoderStats? Stats { get; private set; }
 
     public void Start()
@@ -201,6 +205,7 @@ internal sealed class SerialLink : IDisposable
                             heartbeat.Start();
                             SendJson(MsgType.TimeSync, TimeSyncMsg.Now());
                             SetStatus(new LinkStatus(DeviceLinkState.Connected, found.Port, found.Serial, ack));
+                            Connected?.Invoke(ack);
                             break;
                         case MsgType.Error:
                             var err = ProtocolJson.Deserialize<ErrorMsg>(packet.Body);

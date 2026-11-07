@@ -13,9 +13,14 @@ class AlbumArt : public Widget {
   void refresh(const ui::Model& m, uint32_t changed, uint32_t nowMs) override;
 
  private:
-  lv_obj_t* box_ = nullptr;
+  void showPlaceholder(const ui::Model& m);
+  lv_obj_t* box_ = nullptr;   // placeholder: gradient tinted by the track, music icon
   lv_obj_t* icon_ = nullptr;
-  uint32_t shownTrack_ = 0xFFFFFFFFu;
+  lv_obj_t* img_ = nullptr;   // decoded album art
+  lv_image_dsc_t dsc_ = {};
+  const uint16_t* shownPx_ = nullptr;  // art currently on screen (nullptr = placeholder)
+  uint32_t shownId_ = 0;
+  uint32_t tint_ = 0xFFFFFFFFu;        // track the placeholder is tinted for
 };
 
 class TrackInfo : public Widget {

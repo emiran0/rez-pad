@@ -1,5 +1,6 @@
 // Now Playing widgets: album_art, track_info, media_controls, progress, volume.
 #include "common.h"
+#include "media/media.h"
 #include "media_widgets.h"
 
 namespace rp {
@@ -10,10 +11,19 @@ using ui::Model;
 using ui::PlayState;
 
 // ---- album_art ----
-// Placeholder square until album art arrives over USB (Phase 6). Its tint follows the track.
+// Album art from the host (decoded by the media module). Until it arrives, or for tracks without
+// art, a placeholder square tinted by the track.
+
+namespace {
+// After a track change keep the previous image this long while the new one is on its way, so the
+// card does not flash to the placeholder for a few hundred ms.
+constexpr uint32_t kArtGraceMs = 1000;
+}  // namespace
 
 void AlbumArt::build(lv_obj_t* card, int w, int h) {
-  const int side = w < h ? w : h;
+  // Use the card's padding too (7 px each side), keeping a 2 px margin inside the border.
+  const int side = (w < h ? w : h) + 14 - 4;
+  media::setArtSize(side);
   box_ = lv_obj_create(card);
   lv_obj_remove_style_all(box_);
   lv_obj_set_size(box_, side, side);
@@ -23,18 +33,59 @@ void AlbumArt::build(lv_obj_t* card, int w, int h) {
   lv_obj_set_style_bg_grad_dir(box_, LV_GRAD_DIR_VER, 0);
   icon_ = makeLabel(box_, ui::font::large(), ui::color::text(), LV_SYMBOL_AUDIO);
   lv_obj_center(icon_);
+
+  img_ = lv_image_create(card);
+  lv_obj_set_size(img_, side, side);
+  lv_obj_center(img_);
+  lv_image_set_inner_align(img_, LV_IMAGE_ALIGN_CENTER);  // a different size is centered and cropped
+  lv_obj_set_style_radius(img_, 6, 0);
+  lv_obj_set_style_clip_corner(img_, true, 0);
+  lv_obj_set_hidden(img_, true);
 }
 
-uint32_t AlbumArt::interests() const { return ui::kChangedMedia | ui::kChangedArt; }
+uint32_t AlbumArt::interests() const { return ui::kChangedMedia | ui::kChangedArt | ui::kChangedTick; }
 
-void AlbumArt::refresh(const Model& m, uint32_t, uint32_t) {
-  if (m.np.trackId == shownTrack_ && m.np.state != PlayState::kNone) return;
-  shownTrack_ = m.np.trackId;
+void AlbumArt::showPlaceholder(const Model& m) {
+  if (shownPx_) {
+    lv_obj_set_hidden(img_, true);
+    lv_obj_set_hidden(box_, false);
+    shownPx_ = nullptr;
+  }
   const bool none = m.np.state == PlayState::kNone;
+  const uint32_t tint = none ? 0 : m.np.trackId;
+  if (tint == tint_) return;
+  tint_ = tint;
   const uint16_t hue = static_cast<uint16_t>(m.np.trackId % 360);
   lv_obj_set_style_bg_color(box_, none ? ui::color::faint() : lv_color_hsv_to_rgb(hue, 55, 55), 0);
   lv_obj_set_style_bg_grad_color(box_, none ? ui::color::card() : lv_color_hsv_to_rgb((hue + 40) % 360, 70, 25), 0);
   lv_obj_set_style_text_color(icon_, none ? ui::color::dim() : ui::color::text(), 0);
+}
+
+void AlbumArt::refresh(const Model& m, uint32_t, uint32_t nowMs) {
+  const bool playing = m.np.state != PlayState::kNone;
+  const bool match = playing && m.art.id == m.np.trackId;
+  const bool grace = playing && !match && shownPx_ && shownPx_ == m.art.px && nowMs - m.np.trackSinceMs < kArtGraceMs;
+  if (!m.art.px || !(match || grace)) {
+    showPlaceholder(m);
+    return;
+  }
+  if (shownPx_ == m.art.px && shownId_ == m.art.id) return;
+  dsc_.header.magic = LV_IMAGE_HEADER_MAGIC;
+  dsc_.header.cf = LV_COLOR_FORMAT_RGB565;
+  dsc_.header.w = m.art.w;
+  dsc_.header.h = m.art.h;
+  dsc_.header.stride = m.art.w * 2;
+  dsc_.data = reinterpret_cast<const uint8_t*>(m.art.px);
+  dsc_.data_size = static_cast<uint32_t>(m.art.w) * m.art.h * 2;
+  // Same descriptor, new pixels: clear the source first so LVGL re-reads the header and redraws.
+  // (No image cache to drop: LV_CACHE_DEF_SIZE is 0, raw RGB565 is drawn straight from PSRAM.)
+  lv_image_set_src(img_, nullptr);
+  lv_image_set_src(img_, &dsc_);
+  lv_obj_set_hidden(img_, false);
+  lv_obj_set_hidden(box_, true);
+  shownPx_ = m.art.px;
+  shownId_ = m.art.id;
+  tint_ = 0xFFFFFFFFu;
 }
 
 // ---- track_info ----
@@ -55,7 +106,7 @@ uint32_t TrackInfo::interests() const { return ui::kChangedMedia | ui::kChangedH
 
 void TrackInfo::refresh(const Model& m, uint32_t, uint32_t) {
   if (m.np.state == PlayState::kNone) {
-    setText(title_, m.hostConnected || m.demo ? "Nothing playing" : "No host connected");
+    setText(title_, m.hostConnected ? "Nothing playing" : "No host connected");
     setText(artist_, "");
     if (album_) setText(album_, "");
     setText(app_, "");
@@ -140,6 +191,13 @@ void VolumeWidget::build(lv_obj_t* card, int w, int h) {
 uint32_t VolumeWidget::interests() const { return ui::kChangedVolume; }
 
 void VolumeWidget::refresh(const Model& m, uint32_t, uint32_t) {
+  if (!m.volume.valid) {
+    // Offline the PC's volume is unknown; the knob still sends volume keys.
+    lv_arc_set_value(arc_, 0);
+    setText(value_, "--");
+    setText(icon_, LV_SYMBOL_VOLUME_MAX);
+    return;
+  }
   lv_arc_set_value(arc_, m.volume.level);
   lv_obj_set_style_arc_color(arc_, m.volume.muted ? ui::color::dim() : ui::color::accent(), LV_PART_INDICATOR);
   char buf[8];
