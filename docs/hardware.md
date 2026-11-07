@@ -69,7 +69,7 @@ Pin assignments here are mirrored in `firmware/include/pins.h`. Change both or n
 
 - Encoders `+`: **3.3 V**.
 - Sensor VCC: 3.3 V.
-- Display VCC: **5 V** (the board's 5V/VBUS pin). On this board the 5V pin only carries USB power after the `IN-OUT` solder pad is bridged (see open checks). Until then, use 3V3. The module has an onboard 3.3 V regulator (U1) with bypass jumper J1 open. Logic levels are 3.3 V in all cases; the ESP32-S3 drives them directly.
+- Display VCC: **5 V** (the board's 5V/VBUS pin). On this board the 5V pin only carries USB power after the `IN-OUT` solder pad is bridged (see open checks). Until then, use 3V3. **Current breadboard setup (2026-11-07): display VCC on 3V3, J1 still open; image and backlight work.** The module has an onboard 3.3 V regulator (U1) with bypass jumper J1 open. Logic levels are 3.3 V in all cases; the ESP32-S3 drives them directly.
 - Display LED: driven through the module's own transistor (Q1), so GPIO21 PWM connects straight to the LED pin.
 - The final device is powered from the **native USB** port.
 

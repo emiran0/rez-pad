@@ -10,14 +10,14 @@ The ESP32-S3 SPI clock is 80 MHz / n, so the only steps near the targets are 80,
 
 | Date | Commit | Requested | Effective | Fill (ms) | Ideal (ms) | 200x200 (ms) | Strips frame (ms) | Artifacts? | Notes |
 |---|---|---|---|---|---|---|---|---|---|
-| 2026-11-07 | Phase 1 | 20 MHz | 20 MHz | 187.5 | 184.3 | 48.2 | 184.9 | not checked | Display was unpowered (5V pin issue), timings are bus-side only |
-| 2026-11-07 | Phase 1 | 40 MHz | 40 MHz | 95.4 | 92.2 | 24.2 | 92.7 | not checked | same |
-| 2026-11-07 | Phase 1 | 60 MHz | 40 MHz | 95.4 | 92.2 | 24.2 | 92.7 | not checked | same |
-| 2026-11-07 | Phase 1 | 80 MHz | 80 MHz | 48.8 | 46.1 | 12.3 | 46.7 | not checked | same |
+| 2026-11-07 | Phase 1 | 20 MHz | 20 MHz | 187.5 | 184.3 | 48.2 | 184.9 | not checked | Timings measured while the display was still unpowered (5V pin issue); bus-side only, valid for throughput |
+| 2026-11-07 | Phase 1 | 40 MHz | 40 MHz | 95.4 | 92.2 | 24.2 | 92.7 | **clean** | Visual check with display on 3V3: colors, orientation, edges, ramps, checkerboard all correct |
+| 2026-11-07 | Phase 1 | 60 MHz | 40 MHz | 95.4 | 92.2 | 24.2 | 92.7 | clean | Same clock as 40 MHz |
+| 2026-11-07 | Phase 1 | 80 MHz | 80 MHz | 48.8 | 46.1 | 12.3 | 46.7 | **glitches** | Visible pixel errors over breadboard jumpers. Retest with short soldered wiring in the final build. |
 
 Bus throughput is within 1 to 3% of the theoretical limit at every clock. Breadboard jumper wires, 10 to 15 cm.
 
-Chosen default: _TBD after the visual check with the display powered_ (Phase 1).
+Chosen default: **40 MHz** (2026-11-07). Full frame 92.7 ms, within the < 120 ms target. 80 MHz glitches on the breadboard; worth retesting once the wiring is short and soldered.
 
 ## Performance targets
 
@@ -26,7 +26,7 @@ Chosen default: _TBD after the visual check with the display powered_ (Phase 1).
 | Track change to text on screen | < 150 ms | | |
 | Track change to album art on screen | < 600 ms | | |
 | Encoder input to host action executed | < 100 ms | | |
-| Full page redraw at 40 MHz SPI | < 120 ms | | |
+| Full page redraw at 40 MHz SPI | < 120 ms | 92.7 ms (480x40 DMA strips) | 2026-11-07 |
 | Device recovers after host restart | < 3 s | | |
 | Host recovers after device unplug/replug | < 3 s | | |
 | Host average CPU | < 1% | | |
