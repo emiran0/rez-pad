@@ -17,7 +17,9 @@ The ESP32-S3 SPI clock is 80 MHz / n, so the only steps near the targets are 80,
 
 Bus throughput is within 1 to 3% of the theoretical limit at every clock. Breadboard jumper wires, 10 to 15 cm.
 
-Chosen default: **40 MHz** (2026-11-07). Full frame 92.7 ms, within the < 120 ms target. 80 MHz glitches on the breadboard; worth retesting once the wiring is short and soldered.
+| 2026-11-08 | 81af607 | 80 MHz | 80 MHz | | | | | **glitches** | Retest with display VCC on 5V (IN-OUT bridged), same breadboard jumpers: test pattern still shows pixel errors. Not the supply; the wiring |
+
+Chosen default: **40 MHz** (2026-11-07, confirmed 2026-11-08). Full frame 92.7 ms, within the < 120 ms target. 80 MHz glitches on the breadboard; worth retesting once the wiring is short and soldered.
 
 ## Performance targets
 
