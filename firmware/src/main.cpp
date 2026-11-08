@@ -315,12 +315,12 @@ void cmdEncInv(int argc, char** argv, Print& out) {
 
 void cmdButtons(int argc, char** argv, Print& out) {
   long n = 0;
-  if (argc == 2 && parseUint(argv[1], 0, 2, n)) {
+  if (argc == 2 && parseUint(argv[1], 0, rp::input::kMaxButtons, n)) {
     auto c = rp::input::config();
     c.buttons = static_cast<uint8_t>(n);
     rp::input::setConfig(c);
   } else {
-    out.println("usage: buttons <0-2>");
+    out.println("usage: buttons <0-4>");
   }
   cmdEnc(1, argv, out);
 }
@@ -328,7 +328,7 @@ void cmdButtons(int argc, char** argv, Print& out) {
 void cmdUsb(int, char**, Print& out) {
   out.printf("USB %04X:%04X serial %s, %s%s\n", rp::usb::kVid, rp::usb::kPid, rp::usb::serialNumber(),
              rp::usb::mounted() ? "connected" : "not connected", rp::usb::suspended() ? " (suspended)" : "");
-  out.printf("HID media keys sent %lu, dropped %lu\n", static_cast<unsigned long>(rp::hid::sentCount()),
+  out.printf("HID keys sent %lu (media keys and shortcuts), dropped %lu\n", static_cast<unsigned long>(rp::hid::sentCount()),
              static_cast<unsigned long>(rp::hid::droppedCount()));
 }
 
@@ -393,6 +393,26 @@ void cmdConfig(int, char**, Print& out) {
   }
 }
 
+// Sends a key shortcut from the device's USB keyboard (test without wired buttons).
+void cmdKeys(int argc, char** argv, Print& out) {
+  uint8_t mods = 0, key = 0;
+  if (argc != 2 || !rp::actions::parseKeys(argv[1], mods, key)) {
+    out.println("usage: keys <shortcut>   e.g. keys ctrl+shift+m, keys f13");
+    return;
+  }
+  out.printf("keys %s: mods 0x%02X usage 0x%02X %s\n", argv[1], mods, key,
+             rp::hid::sendKeys(mods, key) ? "sent" : "NOT sent (USB not connected)");
+}
+
+// Asks the host to run a macro from the config.
+void cmdMacro(int argc, char** argv, Print& out) {
+  if (argc != 2) {
+    out.println("usage: macro <id>");
+    return;
+  }
+  out.printf("macro %s %s\n", argv[1], rp::link::sendMacro(argv[1]) ? "sent to the host" : "NOT sent (host not connected)");
+}
+
 const rp::console::Command kCommands[] = {
     {"info", "", cmdInfo},
     {"i2c", "", cmdI2c},
@@ -416,7 +436,9 @@ const rp::console::Command kCommands[] = {
     {"enc", "", cmdEnc},
     {"cpd", "<1|2> <counts per click>", cmdCpd},
     {"encinv", "<1|2> <0|1>", cmdEncInv},
-    {"buttons", "<0-2>", cmdButtons},
+    {"buttons", "<0-4>", cmdButtons},
+    {"keys", "<shortcut>", cmdKeys},
+    {"macro", "<id>", cmdMacro},
     {"sensor", "", cmdSensor},
     {"offset", "[<temp C> <hum %>]", cmdOffset},
 };

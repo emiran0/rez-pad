@@ -3,6 +3,7 @@ using RezPad.Host.Assets;
 using RezPad.Host.Audio;
 using RezPad.Host.Config;
 using RezPad.Host.Device;
+using RezPad.Host.Input;
 using RezPad.Host.Media;
 using RezPad.Host.Stats;
 using RezPad.Host.Weather;
@@ -74,8 +75,15 @@ internal static class Program
         using var media = new MediaService(() => config.Media);
         using var bridge = new MediaBridge(link, media, audio, () => config.Media);
         configSync.Applied += bridge.OnConfigApplied;
+        using var macros = new MacroRunner(config);
         link.PacketReceived += packet =>
         {
+            if (packet.Type == MsgType.Action && ProtocolJson.Deserialize<ActionMsg>(packet.Body) is { Action: "macro" } m)
+            {
+                Log.Info($"button: macro \"{m.Id}\"");
+                macros.Run(m.Id ?? "");
+                return;
+            }
             if (!bridge.HandlePacket(packet) && !configSync.HandlePacket(packet))
             {
                 OnPacket(packet, room);

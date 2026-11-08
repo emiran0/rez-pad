@@ -13,7 +13,7 @@ Pin assignments here are mirrored in `firmware/include/pins.h`. Change both or n
 | Raspberry Pi Pico 2 W | Backup MCU. Not used in the main build. |
 | 2.0" ST7789V 240x320 TFT | Bench/test display, or a future "mini" variant. Not used in the main build. |
 | Raspberry Pi Zero 2 W | Not used. |
-| Optional: 1 to 2 tactile buttons | Not yet purchased. Firmware works with zero, one or two buttons (configurable). |
+| Optional: up to 4 tact switches (macro buttons) | Not yet purchased. Wired from the GPIO to GND, no resistor (internal pull-up, 20 ms debounce in firmware). Firmware works with 0 to 4 (configurable). |
 
 ## Hardware facts that drive the design
 
@@ -61,9 +61,11 @@ Pin assignments here are mirrored in `firmware/include/pins.h`. Change both or n
 | Encoder 2 A | CLK | 7 | PCNT unit 1 |
 | Encoder 2 B | DT | 15 | |
 | Encoder 2 switch | SW | 16 | Internal pull-up |
-| Button 1 (optional) | | 17 | Active low, internal pull-up |
-| Button 2 (optional) | | 18 | Active low, internal pull-up |
-| Spare | | 8, 13, 47 | |
+| Button 1 (optional) | | 17 | Tact switch to GND, internal pull-up |
+| Button 2 (optional) | | 18 | Tact switch to GND, internal pull-up |
+| Button 3 (optional) | | 8 | Tact switch to GND, internal pull-up |
+| Button 4 (optional) | | 13 | Tact switch to GND, internal pull-up |
+| Spare | | 47 | |
 
 ## Power
 
@@ -85,5 +87,5 @@ Pin assignments here are mirrored in `firmware/include/pins.h`. Change both or n
 | Board 5V pin as an output | **Yes, after bridging `IN-OUT`** (2026-11-07): about 4.8 V on USB, same with one or both cables. As shipped it read 1.6 to 1.7 V (YD-ESP32-S3 style board: 5Vin separated from USB VBUS by a diode unless `IN-OUT` is bridged). Since the bridge, never feed 5 V into that pin from another supply. | Multimeter between 5Vin and GND with the board on USB. |
 | Sensor I2C addresses | AHT20 at 0x38, BMP280 at **0x77** (2026-11-07 I2C scan). | `i2c` console command |
 | Encoder counts per detent (2 or 4) | **4** for enc1 and on enc2's pins (2026-11-07, same encoder moved to GPIO 7/15/16): 10 slow clicks gave 40 PCNT counts; a fast back-and-forth spin returned to exactly 0 (no lost counts). An earlier static pin reading suggested 2, which was wrong. Wiring confirmed. Check enc2 when fitted. | Phase 2 debug view prints raw PCNT counts; turn one detent and read the delta. |
-| Physical buttons | undecided (0, 1 or 2) | Configurable in `inputs`. |
+| Physical buttons | 2 to 4 planned (macro buttons), not wired yet | GPIO 17, 18, 8, 13. Configurable in `inputs.buttons`. |
 | Enclosure / sensor placement | undecided | Affects self-heating offset and display orientation. |

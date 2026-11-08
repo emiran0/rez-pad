@@ -34,23 +34,38 @@ bool parse(const char* s, Action& out);
 // Actions that take a detent count (allowed on rotate gestures only; the others on presses only).
 bool isRotate(Action a);
 
+// What a press gesture does: a built-in action, a key shortcut sent by the device's USB keyboard
+// (works without the host), or a macro the host runs (docs/config-schema.md, "Buttons and macros").
+struct Binding {
+  enum class Kind : uint8_t { kAction, kKeys, kMacro };
+  Kind kind = Kind::kAction;
+  Action action = Action::kNone;
+  uint8_t mods = 0;   // kKeys: HID modifier bits (ctrl 0x01, shift 0x02, alt 0x04, win 0x08, altgr 0x40)
+  uint8_t key = 0;    // kKeys: HID keyboard usage, 0 for modifiers only
+  int8_t macro = -1;  // kMacro: index into Config::macroIds
+  bool none() const { return kind == Kind::kAction && action == Action::kNone; }
+};
+
+constexpr int kMaxButtons = 4;
+
 struct EncoderMap {
   Action rotate = Action::kNone;
   Action rotatePressed = Action::kNone;  // turned while the knob is held down
-  Action click = Action::kNone;
-  Action dbl = Action::kNone;
-  Action lng = Action::kNone;
+  Binding click, dbl, lng;
 };
 
 struct ButtonMap {
-  Action click = Action::kNone;
-  Action lng = Action::kNone;
+  Binding click, dbl, lng;
 };
 
 struct Map {
   EncoderMap enc[2];
-  ButtonMap btn[2];
+  ButtonMap btn[kMaxButtons];
 };
+
+// "ctrl+shift+m", "f13", "win+altgr+e": modifiers and at most one key, names as in
+// docs/config-schema.md. False for unknown names or an empty combination.
+bool parseKeys(const char* s, uint8_t& mods, uint8_t& key);
 
 }  // namespace actions
 
@@ -62,6 +77,7 @@ constexpr int kMaxWidgets = 16;  // per page
 constexpr int kMaxGrid = 8;      // cols and rows
 constexpr size_t kMaxConfigBytes = 32768;
 constexpr int kMaxSources = 16;  // different data sources over all pages (SYS_STATS keeps 16)
+constexpr int kMaxMacros = 32;   // the host runs them; the device only needs their ids
 
 // Screen geometry the sizes are checked against (firmware/src/ui/pages.cpp uses the same numbers).
 constexpr int kScreenW = 480;
@@ -128,8 +144,11 @@ struct Config {
   float tempOffsetC = 0, humOffsetPct = 0, trendThresholdHpa = 1.0f;
   // media (the device moves its display optimistically by the same steps as the host)
   uint8_t volumeStep = 2, seekStepS = 5;
+  // macros (ids only; the steps are the host's)
+  uint8_t macroCount = 0;
+  char macroIds[kMaxMacros][24] = {};
   // inputs
-  uint8_t buttons = 0;
+  uint8_t buttons = 0;  // 0 to actions::kMaxButtons fitted
   uint8_t countsPerDetent[2] = {4, 4};
   bool invert[2] = {false, false};
   actions::Map inputs;

@@ -5,24 +5,11 @@
 import { state, on, get, set, change, h, api, postJson, toast } from "./state.js";
 import { THEMES, ACCENTS } from "./preview.js";
 import { icon } from "./icons.js";
+import { ACTION_NAMES, bindingControl, keysRecorder } from "./bindings.js";
 
 const $ = (id) => document.getElementById(id);
 
-export const ACTION_NAMES = {
-  none: "Nothing",
-  "nav.page": "Change page",
-  "nav.next_page": "Next page",
-  "nav.prev_page": "Previous page",
-  "nav.home": "First page",
-  "media.play_pause": "Play / pause",
-  "media.next": "Next track",
-  "media.prev": "Previous track",
-  "media.seek": "Seek in the track",
-  "media.volume": "Volume",
-  "media.mute": "Mute",
-  "display.toggle": "Screen off / on",
-  "display.brightness": "Brightness",
-};
+export { ACTION_NAMES };
 
 /** Action dropdown; turn gestures only get turn actions and presses only press actions. */
 export function actionSelect(rotate, value, emptyLabel, onChange) {
@@ -126,25 +113,121 @@ function screen() {
     check("Screen off while the PC sleeps", "display.sleep_on_pc_sleep", true));
 }
 
+const ENC_PRESSES = [["click", "Click"], ["double", "Double click"], ["long", "Long press"]];
+
 function knobs() {
   const buttons = get("inputs.buttons", 0);
-  const gestures = [["rotate", "Turn", true], ["rotate_pressed", "Press and turn", true], ["click", "Click", false], ["double", "Double click", false], ["long", "Long press", false]];
+  const turns = [["rotate", "Turn"], ["rotate_pressed", "Press and turn"]];
+  const press = (dev, g, label) => field(label, bindingControl(get(["inputs", dev, g]) ?? "none", (v) => set(["inputs", dev, g], v ?? "none")));
   const enc = (dev, title) => h("div", {}, h("h3", { text: title }),
-    ...gestures.map(([g, label, rotate]) => field(label, actionSelect(rotate, get(["inputs", dev, g], "none"), null, (v) => set(["inputs", dev, g], v)))),
+    ...turns.map(([g, label]) => field(label, actionSelect(true, get(["inputs", dev, g], "none"), null, (v) => set(["inputs", dev, g], v)))),
+    ...ENC_PRESSES.map(([g, label]) => press(dev, g, label)),
     field("Steps per click", choice(["inputs", dev, "counts_per_detent"], [[1, "1"], [2, "2"], [4, "4 (KY-040)"], [8, "8"]], 4)),
     check("Reverse direction", ["inputs", dev, "invert"]));
-  const btn = (dev, title) => h("div", {}, h("h3", { text: title }),
-    field("Click", actionSelect(false, get(["inputs", dev, "click"], "none"), null, (v) => set(["inputs", dev, "click"], v))),
-    field("Long press", actionSelect(false, get(["inputs", dev, "long"], "none"), null, (v) => set(["inputs", dev, "long"], v))));
-  return panel("Knobs and buttons", "What they do on every page; a page can change single gestures in Layout. A double click makes single clicks wait 0.3 s for a second one.",
+  const btn = (i) => h("div", {}, h("h3", { text: `Button ${i}` }), ...ENC_PRESSES.map(([g, label]) => press(`btn${i}`, g, label)));
+  return panel("Knobs and buttons", "What they do on every page; a page can change single gestures in Layout. A press can run an action, send a key shortcut (the device types it itself, also without this app) or run a macro. A double click makes single clicks wait 0.3 s for a second one.",
     h("div", { class: "knob-grid" },
       enc("enc1", "Knob 1"),
       enc("enc2", "Knob 2"),
-      h("div", {}, h("h3", { text: "Extra buttons" }),
+      h("div", {}, h("h3", { text: "Buttons" }),
         field("Buttons fitted", h("select", { onchange: (e) => { set("inputs.buttons", Number(e.target.value)); renderSettings(); } },
-          ...[0, 1, 2].map((n) => h("option", { value: n, text: String(n), selected: n === buttons }))))),
-      buttons >= 1 ? btn("btn1", "Button 1") : null,
-      buttons >= 2 ? btn("btn2", "Button 2") : null));
+          ...[0, 1, 2, 3, 4].map((n) => h("option", { value: n, text: String(n), selected: n === buttons }))),
+        "Tact switches to GND on GPIO 17, 18, 8 and 13")),
+      ...Array.from({ length: buttons }, (_, k) => btn(k + 1))));
+}
+
+// ---- macros ----
+
+const STEP_KINDS = [["keys", "Keys"], ["text", "Type text"], ["wait_ms", "Wait"], ["open", "Open"]];
+
+function macroUses(id) {
+  const uses = [];
+  const scan = (inputs, where) => {
+    for (const [dev, m] of Object.entries(inputs || {})) {
+      for (const [g, v] of Object.entries(m || {})) {
+        if (v && typeof v === "object" && v.macro === id) uses.push({ inputs, dev, g, where });
+      }
+    }
+  };
+  scan(state.cfg.inputs, "inputs");
+  state.cfg.pages.forEach((p, i) => scan(p.inputs_override, `page ${i}`));
+  return uses;
+}
+
+function macroId(name) {
+  const base = (name.normalize("NFKD").replace(/[^\w\s-]/g, "").trim().toLowerCase().replace(/[\s-]+/g, "_") || "macro").slice(0, 18);
+  const ids = (state.cfg.macros || []).map((m) => m.id);
+  let id = base;
+  for (let n = 2; ids.includes(id); n++) id = `${base}_${n}`;
+  return id;
+}
+
+function stepControl(mi, si, step) {
+  const kind = Object.keys(step)[0];
+  const upd = (v) => change((cfg) => { cfg.macros[mi].steps[si] = { [kind]: v }; }, `m${mi}s${si}`);
+  if (kind === "keys") return keysRecorder(step.keys, (k) => { upd(k); });
+  if (kind === "text") return h("textarea", { rows: 2, maxlength: 500, placeholder: "Text to type (new lines press Enter)", oninput: (e) => upd(e.target.value) }, step.text ?? "");
+  if (kind === "wait_ms") {
+    return h("div", { class: "row" }, h("input", { type: "number", min: 1, max: 10000, value: step.wait_ms, style: { width: "120px" }, oninput: (e) => upd(Number(e.target.value)) }), h("span", { class: "dim", text: "ms" }));
+  }
+  return h("input", { type: "text", value: step.open ?? "", maxlength: 260, placeholder: "Program, file, folder or https:// address", oninput: (e) => upd(e.target.value) });
+}
+
+function macros() {
+  const list = state.cfg.macros || [];
+  const cards = list.map((m, mi) => {
+    const steps = m.steps || [];
+    return h("div", { class: "macro" },
+      h("div", { class: "macro-head" },
+        h("input", {
+          type: "text", value: m.name ?? m.id, maxlength: 31, "aria-label": "Macro name",
+          oninput: (e) => change((cfg) => { cfg.macros[mi].name = e.target.value; }, `m${mi}name`),
+        }),
+        h("button", {
+          type: "button", class: "icon-btn danger", title: "Delete macro", "aria-label": "Delete macro",
+          onclick: () => {
+            const uses = macroUses(m.id);
+            if (!confirm(uses.length ? `Delete "${m.name || m.id}"? ${uses.length} button press(es) use it and will be set to Nothing.` : `Delete "${m.name || m.id}"?`)) return;
+            change((cfg) => {
+              for (const u of macroUses(m.id)) u.inputs[u.dev][u.g] = "none";
+              cfg.macros.splice(mi, 1);
+              if (!cfg.macros.length) delete cfg.macros;
+            });
+            renderSettings();
+          },
+        }, icon("trash", 16))),
+      ...steps.map((s, si) => {
+        const kind = Object.keys(s)[0];
+        return h("div", { class: "step" },
+          h("select", {
+            "aria-label": "Step type",
+            onchange: (e) => {
+              const k = e.target.value;
+              change((cfg) => { cfg.macros[mi].steps[si] = { [k]: k === "wait_ms" ? 100 : k === "keys" ? "ctrl+c" : "" }; });
+              renderSettings();
+            },
+          }, ...STEP_KINDS.map(([k, label]) => h("option", { value: k, text: label, selected: k === kind }))),
+          h("div", { class: "step-value" }, stepControl(mi, si, s)),
+          h("div", { class: "step-tools" },
+            h("button", { type: "button", class: "icon-btn", title: "Move up", "aria-label": "Move step up", disabled: si === 0, onclick: () => { change((cfg) => { const st = cfg.macros[mi].steps; [st[si - 1], st[si]] = [st[si], st[si - 1]]; }); renderSettings(); } }, icon("up", 16)),
+            h("button", { type: "button", class: "icon-btn", title: "Move down", "aria-label": "Move step down", disabled: si === steps.length - 1, onclick: () => { change((cfg) => { const st = cfg.macros[mi].steps; [st[si + 1], st[si]] = [st[si], st[si + 1]]; }); renderSettings(); } }, icon("down", 16)),
+            h("button", { type: "button", class: "icon-btn", title: "Remove step", "aria-label": "Remove step", disabled: steps.length <= 1, onclick: () => { change((cfg) => cfg.macros[mi].steps.splice(si, 1)); renderSettings(); } }, icon("close", 16))));
+      }),
+      h("div", { class: "row" }, ...STEP_KINDS.map(([k, label]) => h("button", {
+        type: "button", class: "ghost", disabled: steps.length >= 32,
+        onclick: () => { change((cfg) => cfg.macros[mi].steps.push({ [k]: k === "wait_ms" ? 100 : "" })); renderSettings(); },
+      }, icon("plus", 14), label))));
+  });
+  return panel("Macros", "Run by this app when a knob press or button asks for one: key shortcuts, typed text (right on any keyboard layout), waits, and opening a program, folder or web address. Pick them for a press under Knobs and buttons.",
+    ...cards,
+    h("button", {
+      type: "button", disabled: list.length >= 32,
+      onclick: () => {
+        const name = `Macro ${list.length + 1}`;
+        change((cfg) => { (cfg.macros ??= []).push({ id: macroId(name), name, steps: [{ keys: "ctrl+c" }] }); });
+        renderSettings();
+      },
+    }, icon("plus", 16), "New macro"));
 }
 
 function weather() {
@@ -215,7 +298,7 @@ function sensorMedia() {
 export function renderSettings() {
   if (!state.cfg) return;
   const scroll = window.scrollY;
-  $("view-settings").replaceChildren(appearance(), screen(), knobs(), weather(), ...sensorMedia());
+  $("view-settings").replaceChildren(appearance(), screen(), knobs(), macros(), weather(), ...sensorMedia());
   window.scrollTo(0, scroll);
   renderLive();
 }

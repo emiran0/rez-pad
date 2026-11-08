@@ -24,6 +24,8 @@ bool send(uint8_t type, const char* json);
 
 // ACTION {"action": name, "value": value}.
 bool sendAction(const char* action, int value);
+// ACTION {"action": "macro", "value": 1, "id": id}: the host runs the macro.
+bool sendMacro(const char* id);
 
 // Wall clock from TIME_SYNC (kept by the ESP32 system clock afterwards).
 bool timeSynced();

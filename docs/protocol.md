@@ -153,7 +153,7 @@ Added within v1 (unreleased; older firmware ignores the unknown types). The host
 |---|---|---|---|
 | 0x81 | HELLO_ACK | JSON `{proto, fw_ver, w, h, psram_free, cfg_crc, buttons, serial, art}` | Reply to HELLO. `serial` is the USB serial number; `art` is the album art edge in px the device's layout wants (omitted when the layout has no `album_art`). Both added within v1, optional for readers |
 | 0x82 | PONG | empty | Reply to PING |
-| 0x90 | ACTION | JSON `{action, value}` | Resolved from input map, see `config-schema.md` |
+| 0x90 | ACTION | JSON `{action, value, id}` | Resolved from input map, see `config-schema.md`. `id` only for `action` `"macro"` (the macro to run; added within v1) |
 | 0x91 | ART_REQUEST | JSON `{id}` | Device lost or never received art for current track |
 | 0xA0 | SENSOR | JSON `{temp_c, hum_pct, press_hpa, trend, delta_3h}` | Every 10 s while connected. Values after offsets and filtering, always metric; a missing reading is `null`. `trend` is `rising`, `falling`, `steady` or `unknown` |
 | 0xC0 | CONFIG_ACK | JSON `{ok, crc32, error, art}` | See "Config transfer". `art` (album art edge of the new layout, 0 = none) added within v1, optional for readers |

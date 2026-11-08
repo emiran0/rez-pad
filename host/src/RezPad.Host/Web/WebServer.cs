@@ -48,7 +48,13 @@ internal sealed class WebServer(int port, WebServices services)
         {
             var files = new PhysicalFileProvider(webRoot);
             app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
-            app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
+            // no-cache: the browser revalidates (cheap on localhost), so an updated host never runs
+            // with editor scripts left over from the previous version.
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = files,
+                OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache",
+            });
         }
 
         app.MapGet("/api/status", () =>

@@ -32,6 +32,14 @@ Quick check on a new PC: run the host, then save `http://127.0.0.1:47800/api/sou
 - **Night dimming and "screen off while the PC sleeps"** are in the config and the editor but not applied by the firmware until Phase 11.
 - **Unexplained restart on 2026-11-08 around 01:21**: seen afterwards from the sensor sample count; the host log showed no link drop (the host was being restarted at that time) and the reset reason was not recorded yet. `info` now prints the reset reason; check it if the device restarts again. The AHT20 has had a loose contact before.
 
+## Buttons and macros
+
+- **Device shortcuts are key positions**, like a physical keyboard: on a Turkish Q layout `ctrl+i` presses the key where `i` is on a US keyboard (which is `ı` there). The editor records positions too, so recording a shortcut gives what was pressed. Typed text belongs in a macro (the host types characters, layout-independent).
+- **Macros cannot type into the Windows secure desktop** (UAC prompts, the login and lock screen): SendInput does not reach it. Device shortcuts (USB keyboard) do.
+- **"Open" steps lose their arguments while the host runs elevated** (started through Explorer so programs do not inherit administrator rights). A shortcut file (`.lnk`) with arguments works.
+- **Windows may keep the old USB descriptor** after the keyboard was added; if the shortcuts do nothing, unplug and replug the native port once.
+- **The editor cannot record F13 to F24, Win shortcuts Windows grabs (Win+L, Win+D), or Print Screen** in every browser; F13 to F24 have buttons under the recorder.
+
 ## USB and development setup
 
 - **30 s COM close / COM4 wedge** behind the Genesys USB 2.0 hub (`05E3:0610`). Plug the native port straight into the PC. Details in `measurements.md`.

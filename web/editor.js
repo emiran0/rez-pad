@@ -10,6 +10,7 @@ import {
 import { state, on, emit, get, change, h, api, toast, openPopover, closePopover } from "./state.js";
 import { icon } from "./icons.js";
 import { actionSelect, ACTION_NAMES, swatches, themeCards } from "./settings.js";
+import { bindingControl, bindingText } from "./bindings.js";
 
 const $ = (id) => document.getElementById(id);
 const FRAME = 10;  // px of black bezel around the preview
@@ -249,33 +250,41 @@ function knobsPopover(panel) {
   const i = state.page;
   const ov = p.inputs_override || {};
   const buttons = get("inputs.buttons", 0);
+  const presses = [["click", "Click"], ["double", "Double click"], ["long", "Long press"]];
+  const devices = [
+    ["enc1", "Knob 1", true], ["enc2", "Knob 2", true],
+    ...Array.from({ length: buttons }, (_, k) => [`btn${k + 1}`, `Button ${k + 1}`, false]),
+  ];
+  const setOverride = (dev, g, v) => {
+    change((cfg) => {
+      const po = cfg.pages[i];
+      po.inputs_override ??= {};
+      po.inputs_override[dev] ??= {};
+      if (v === undefined) delete po.inputs_override[dev][g];
+      else po.inputs_override[dev][g] = v;
+      if (!Object.keys(po.inputs_override[dev]).length) delete po.inputs_override[dev];
+      if (!Object.keys(po.inputs_override).length) delete po.inputs_override;
+    });
+    renderStageHead();
+  };
   const rows = [];
-  for (const [dev, label, gestures] of [
-    ["enc1", "Knob 1", [["rotate", "Turn", true], ["rotate_pressed", "Press and turn", true], ["click", "Click", false], ["double", "Double click", false], ["long", "Long press", false]]],
-    ["enc2", "Knob 2", [["rotate", "Turn", true], ["rotate_pressed", "Press and turn", true], ["click", "Click", false], ["double", "Double click", false], ["long", "Long press", false]]],
-    ["btn1", "Button 1", [["click", "Click", false], ["long", "Long press", false]]],
-    ["btn2", "Button 2", [["click", "Click", false], ["long", "Long press", false]]],
-  ]) {
-    if ((dev === "btn1" && buttons < 1) || (dev === "btn2" && buttons < 2)) continue;
+  for (const [dev, label, isKnob] of devices) {
     rows.push(h("div", { class: "group-title", text: label }));
-    for (const [g, gl, rotate] of gestures) {
-      const global = get(["inputs", dev, g], "none");
-      const sel = actionSelect(rotate, ov[dev]?.[g], `Default: ${ACTION_NAMES[global] || global}`, (v) => {
-        change((cfg) => {
-          const po = cfg.pages[i];
-          po.inputs_override ??= {};
-          po.inputs_override[dev] ??= {};
-          if (v === "") delete po.inputs_override[dev][g];
-          else po.inputs_override[dev][g] = v;
-          if (!Object.keys(po.inputs_override[dev]).length) delete po.inputs_override[dev];
-          if (!Object.keys(po.inputs_override).length) delete po.inputs_override;
-        });
-      });
-      rows.push(h("label", { class: "field" }, h("span", { text: gl }), sel));
+    if (isKnob) {
+      for (const [g, gl] of [["rotate", "Turn"], ["rotate_pressed", "Press and turn"]]) {
+        const global = get(["inputs", dev, g], "none");
+        rows.push(h("label", { class: "field" }, h("span", { text: gl }),
+          actionSelect(true, ov[dev]?.[g], `Default: ${ACTION_NAMES[global] || global}`, (v) => setOverride(dev, g, v === "" ? undefined : v))));
+      }
+    }
+    for (const [g, gl] of presses) {
+      const global = get(["inputs", dev, g]) ?? "none";
+      rows.push(h("label", { class: "field" }, h("span", { text: gl }),
+        bindingControl(ov[dev]?.[g], (v) => setOverride(dev, g, v), `Default: ${bindingText(global)}`)));
     }
   }
-  panel.style.width = "360px";
-  panel.append(h("h4", { text: "Knobs on this page" }), h("p", { class: "hint", text: "Only while this page is shown. The defaults are in Settings." }), ...rows);
+  panel.style.width = "380px";
+  panel.append(h("h4", { text: "Knobs and buttons on this page" }), h("p", { class: "hint", text: "Only while this page is shown. The defaults are in Settings." }), ...rows);
 }
 
 function morePopover(panel) {

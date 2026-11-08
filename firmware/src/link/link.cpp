@@ -422,6 +422,12 @@ bool sendAction(const char* action, int value) {
   return send(proto::kAction, buf);
 }
 
+bool sendMacro(const char* id) {
+  char buf[96];
+  snprintf(buf, sizeof(buf), "{\"action\":\"macro\",\"value\":1,\"id\":\"%s\"}", id);
+  return send(proto::kAction, buf);
+}
+
 bool timeSynced() { return gTimeSynced; }
 
 int localMinutes() {

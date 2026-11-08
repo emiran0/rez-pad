@@ -26,12 +26,13 @@ struct EncoderHw {
 
 EncoderHw gEnc[2] = {{nullptr, pins::kEnc1A, pins::kEnc1B, pins::kEnc1Sw},
                      {nullptr, pins::kEnc2A, pins::kEnc2B, pins::kEnc2Sw}};
-const int8_t kBtnPins[2] = {pins::kBtn1, pins::kBtn2};
+const int8_t kBtnPins[kMaxButtons] = {pins::kBtn1, pins::kBtn2, pins::kBtn3, pins::kBtn4};
+const Source kBtnSources[kMaxButtons] = {Source::kBtn1, Source::kBtn2, Source::kBtn3, Source::kBtn4};
 
 Config gCfg;
 DetentAccumulator gDetent[2];
 GestureDetector gEncSw[2];
-GestureDetector gBtn[2];
+GestureDetector gBtn[kMaxButtons];
 QueueHandle_t gQueue = nullptr;
 esp_timer_handle_t gTimer = nullptr;
 portMUX_TYPE gLock = portMUX_INITIALIZER_UNLOCKED;
@@ -40,7 +41,7 @@ portMUX_TYPE gLock = portMUX_INITIALIZER_UNLOCKED;
 volatile int32_t gRaw[2] = {0, 0};
 volatile int32_t gDetentTotal[2] = {0, 0};
 volatile bool gSwDown[2] = {false, false};
-volatile bool gBtnDown[2] = {false, false};
+volatile bool gBtnDown[kMaxButtons] = {};
 volatile uint32_t gDropped = 0;
 volatile bool gConfigDirty = false;
 
@@ -105,8 +106,10 @@ void applyConfigLocked() {
     GestureConfig gc;
     gc.doubleEnabled = gCfg.enc[i].doubleEnabled;
     gEncSw[i].setConfig(gc);
+  }
+  for (int i = 0; i < kMaxButtons; ++i) {
     GestureConfig bc;
-    bc.doubleEnabled = gCfg.btnDoubleEnabled;
+    bc.doubleEnabled = gCfg.btnDoubleEnabled[i];
     gBtn[i].setConfig(bc);
   }
 }
@@ -139,13 +142,13 @@ void tick(void*) {
     gSwDown[i] = gEncSw[i].pressed();
   }
 
-  for (int i = 0; i < 2; ++i) {
+  for (int i = 0; i < kMaxButtons; ++i) {
     if (i >= gCfg.buttons) {
       gBtnDown[i] = false;
       continue;
     }
     const bool down = digitalRead(kBtnPins[i]) == LOW;
-    pushGesture(i == 0 ? Source::kBtn1 : Source::kBtn2, gBtn[i].update(down, now), now);
+    pushGesture(kBtnSources[i], gBtn[i].update(down, now), now);
     gBtnDown[i] = gBtn[i].pressed();
   }
 }
@@ -158,6 +161,8 @@ const char* sourceName(Source s) {
     case Source::kEnc2: return "enc2";
     case Source::kBtn1: return "btn1";
     case Source::kBtn2: return "btn2";
+    case Source::kBtn3: return "btn3";
+    case Source::kBtn4: return "btn4";
   }
   return "?";
 }
@@ -211,8 +216,8 @@ Snapshot snapshot() {
     s.rawCount[i] = gRaw[i];
     s.detents[i] = gDetentTotal[i];
     s.switchDown[i] = gSwDown[i];
-    s.buttonDown[i] = gBtnDown[i];
   }
+  for (int i = 0; i < kMaxButtons; ++i) s.buttonDown[i] = gBtnDown[i];
   s.dropped = gDropped;
   return s;
 }

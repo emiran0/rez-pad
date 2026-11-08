@@ -423,3 +423,16 @@ td.id { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-si
 .lib-item img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; background: #000; }
 .lib-item .meta { padding: 6px 8px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; gap: 4px; }
 .lib-item .meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* bindings, recorder, macros */
+.binding { display: grid; gap: 6px; }
+.recorder { display: grid; gap: 6px; }
+.recorder input { cursor: pointer; font-variant-numeric: tabular-nums; }
+.recorder input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.chips.small button { padding: 2px 7px; font-size: 11.5px; }
+.macro { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 12px; background: var(--surface-2); display: grid; gap: 8px; }
+.macro-head { display: flex; gap: 8px; align-items: center; }
+.macro-head input { font-weight: 600; }
+.step { display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+.step-tools { display: flex; }
+@media (max-width: 600px) { .step { grid-template-columns: 1fr; } }

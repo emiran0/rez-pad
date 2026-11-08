@@ -9,7 +9,9 @@
 namespace rp {
 namespace input {
 
-enum class Source : uint8_t { kEnc1, kEnc2, kBtn1, kBtn2 };
+enum class Source : uint8_t { kEnc1, kEnc2, kBtn1, kBtn2, kBtn3, kBtn4 };
+
+constexpr int kMaxButtons = 4;
 // kRotatePressed: turned while the encoder's own switch is held (press-and-turn).
 enum class Kind : uint8_t { kRotate, kRotatePressed, kClick, kDouble, kLong };
 
@@ -31,8 +33,8 @@ struct EncoderConfig {
 
 struct Config {
   EncoderConfig enc[2];
-  uint8_t buttons = 0;  // 0..2 fitted
-  bool btnDoubleEnabled = false;
+  uint8_t buttons = 0;  // 0..kMaxButtons fitted
+  bool btnDoubleEnabled[kMaxButtons] = {};  // only when a double click is mapped (else clicks fire at once)
 };
 
 bool begin(const Config& cfg);
@@ -46,7 +48,7 @@ struct Snapshot {
   int32_t rawCount[2];   // accumulated PCNT counts
   int32_t detents[2];    // total detents since boot (after invert)
   bool switchDown[2];
-  bool buttonDown[2];
+  bool buttonDown[kMaxButtons];
   uint32_t dropped;      // events lost because the queue was full
 };
 Snapshot snapshot();

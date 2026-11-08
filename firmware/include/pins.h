@@ -42,10 +42,12 @@ constexpr int8_t kEnc2A = 7;   // CLK, PCNT unit 1
 constexpr int8_t kEnc2B = 15;  // DT
 constexpr int8_t kEnc2Sw = 16; // internal pull-up
 
-// Optional buttons, active low with internal pull-up.
+// Optional buttons (0 to 4 fitted, config inputs.buttons): tact switch to GND, internal pull-up.
 constexpr int8_t kBtn1 = 17;
 constexpr int8_t kBtn2 = 18;
+constexpr int8_t kBtn3 = 8;
+constexpr int8_t kBtn4 = 13;
 
-// Spare: 8, 13, 47.
+// Spare: 47.
 
 }  // namespace pins

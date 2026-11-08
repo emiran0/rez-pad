@@ -108,7 +108,8 @@ public sealed record VolumeMsg(int Level, bool Muted);
 public sealed record HelloAckMsg(int Proto, string FwVer, int W, int H, long PsramFree, uint CfgCrc, int Buttons,
     string? Serial = null, int? Art = null);
 
-public sealed record ActionMsg(string Action, int Value);
+/// <summary>ACTION. <c>Id</c> names the macro for action "macro" (added within v1).</summary>
+public sealed record ActionMsg(string Action, int Value, string? Id = null);
 
 /// <summary>SENSOR (0xA0): the device's room sensor, metric, null when a reading is missing.</summary>
 public sealed record SensorMsg(

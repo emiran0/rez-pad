@@ -13,9 +13,14 @@ input::Config inputConfig(const cfg::Config& c) {
     in.enc[i].invert = c.invert[i];
     // With no double-click mapped on any page, clicks fire on release instead of waiting for a
     // possible second click.
-    bool dbl = c.inputs.enc[i].dbl != actions::Action::kNone;
-    for (int p = 0; p < c.pageCount; ++p) dbl = dbl || c.pages[p].inputs.enc[i].dbl != actions::Action::kNone;
+    bool dbl = !c.inputs.enc[i].dbl.none();
+    for (int p = 0; p < c.pageCount; ++p) dbl = dbl || !c.pages[p].inputs.enc[i].dbl.none();
     in.enc[i].doubleEnabled = dbl;
+  }
+  for (int i = 0; i < actions::kMaxButtons && i < input::kMaxButtons; ++i) {
+    bool dbl = !c.inputs.btn[i].dbl.none();
+    for (int p = 0; p < c.pageCount; ++p) dbl = dbl || !c.pages[p].inputs.btn[i].dbl.none();
+    in.btnDoubleEnabled[i] = dbl;
   }
   in.buttons = c.buttons;
   return in;

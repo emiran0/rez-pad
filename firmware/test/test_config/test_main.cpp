@@ -73,8 +73,8 @@ void test_default_config() {
   TEST_ASSERT_EQUAL_STRING("Weather & Room", c.pages[2].name);
   TEST_ASSERT_EQUAL(8, c.pages[1].widgetCount);
   TEST_ASSERT_TRUE(c.inputs.enc[0].rotate == Action::kNavPage);
-  TEST_ASSERT_TRUE(c.inputs.enc[1].dbl == Action::kNext);
-  TEST_ASSERT_TRUE(c.pages[0].inputs.enc[1].click == Action::kPlayPause);  // no override: global map
+  TEST_ASSERT_TRUE(c.inputs.enc[1].dbl.action == Action::kNext);
+  TEST_ASSERT_TRUE(c.pages[0].inputs.enc[1].click.action == Action::kPlayPause);  // no override: global map
   TEST_ASSERT_EQUAL_STRING("daily", c.pages[2].widgets[2].mode);
 }
 
@@ -97,9 +97,9 @@ void test_page_override_merges() {
       "{\"schema\":1,\"inputs\":{\"enc1\":{\"rotate\":\"nav.page\",\"click\":\"nav.home\"}},"
       "\"pages\":[{\"id\":\"a\",\"inputs_override\":{\"enc1\":{\"click\":\"media.mute\"}}},{\"id\":\"b\"}]}";
   TEST_ASSERT_TRUE_MESSAGE(parseText(json), gErr);
-  TEST_ASSERT_TRUE(gCfg->pages[0].inputs.enc[0].click == Action::kMute);
+  TEST_ASSERT_TRUE(gCfg->pages[0].inputs.enc[0].click.action == Action::kMute);
   TEST_ASSERT_TRUE(gCfg->pages[0].inputs.enc[0].rotate == Action::kNavPage);
-  TEST_ASSERT_TRUE(gCfg->pages[1].inputs.enc[0].click == Action::kNavHome);
+  TEST_ASSERT_TRUE(gCfg->pages[1].inputs.enc[0].click.action == Action::kNavHome);
   TEST_ASSERT_EQUAL_STRING("a", gCfg->pages[0].name);  // name defaults to the id
 }
 
@@ -164,6 +164,49 @@ void test_shared_vectors() {
   TEST_ASSERT_TRUE(count > 30);
 }
 
+void test_parse_keys() {
+  uint8_t m = 0, k = 0;
+  TEST_ASSERT_TRUE(rp::actions::parseKeys("ctrl+shift+m", m, k));
+  TEST_ASSERT_EQUAL_HEX8(0x03, m);
+  TEST_ASSERT_EQUAL_HEX8(0x10, k);  // 'm'
+  TEST_ASSERT_TRUE(rp::actions::parseKeys("F13", m, k));
+  TEST_ASSERT_EQUAL_HEX8(0x00, m);
+  TEST_ASSERT_EQUAL_HEX8(0x68, k);
+  TEST_ASSERT_TRUE(rp::actions::parseKeys("win+altgr+e", m, k));
+  TEST_ASSERT_EQUAL_HEX8(0x48, m);
+  TEST_ASSERT_EQUAL_HEX8(0x08, k);
+  TEST_ASSERT_TRUE(rp::actions::parseKeys("alt+f4", m, k));
+  TEST_ASSERT_EQUAL_HEX8(0x3D, k);
+  TEST_ASSERT_TRUE(rp::actions::parseKeys("0", m, k));
+  TEST_ASSERT_EQUAL_HEX8(0x27, k);
+  TEST_ASSERT_TRUE(rp::actions::parseKeys("num0", m, k));
+  TEST_ASSERT_EQUAL_HEX8(0x62, k);
+  TEST_ASSERT_TRUE(rp::actions::parseKeys("f24", m, k));
+  TEST_ASSERT_EQUAL_HEX8(0x73, k);
+  TEST_ASSERT_FALSE(rp::actions::parseKeys("", m, k));
+  TEST_ASSERT_FALSE(rp::actions::parseKeys("f25", m, k));
+  TEST_ASSERT_FALSE(rp::actions::parseKeys("ctrl+", m, k));
+  TEST_ASSERT_FALSE(rp::actions::parseKeys("a+b", m, k));
+}
+
+void test_bindings() {
+  const char* json =
+      "{\"schema\":1,\"macros\":[{\"id\":\"one\"},{\"id\":\"two\"}],\"inputs\":{\"buttons\":4,"
+      "\"btn4\":{\"click\":{\"keys\":\"ctrl+c\"},\"double\":{\"macro\":\"two\"},\"long\":\"media.mute\"}},"
+      "\"pages\":[{\"id\":\"a\"}]}";
+  TEST_ASSERT_TRUE_MESSAGE(parseText(json), gErr);
+  const auto& b = gCfg->inputs.btn[3];
+  TEST_ASSERT_TRUE(b.click.kind == rp::actions::Binding::Kind::kKeys);
+  TEST_ASSERT_EQUAL_HEX8(0x01, b.click.mods);
+  TEST_ASSERT_EQUAL_HEX8(0x06, b.click.key);
+  TEST_ASSERT_TRUE(b.dbl.kind == rp::actions::Binding::Kind::kMacro);
+  TEST_ASSERT_EQUAL(1, b.dbl.macro);
+  TEST_ASSERT_EQUAL_STRING("two", gCfg->macroIds[1]);
+  TEST_ASSERT_TRUE(b.lng.action == Action::kMute);
+  TEST_ASSERT_TRUE(gCfg->pages[0].inputs.btn[3].dbl.kind == rp::actions::Binding::Kind::kMacro);
+  TEST_ASSERT_EQUAL(4, gCfg->buttons);
+}
+
 void test_actions() {
   Action a;
   TEST_ASSERT_TRUE(rp::actions::parse("media.seek", a));
@@ -182,6 +225,8 @@ int main(int, char**) {
   RUN_TEST(test_invalid_json);
   RUN_TEST(test_too_large);
   RUN_TEST(test_shared_vectors);
+  RUN_TEST(test_parse_keys);
+  RUN_TEST(test_bindings);
   RUN_TEST(test_actions);
   return UNITY_END();
 }

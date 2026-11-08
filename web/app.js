@@ -116,19 +116,28 @@ function scheduleValidate() {
   }, 250);
 }
 
-// "pages[2].widgets[1].source: ..." -> {page: 2, widget: 1}
+// "pages[2].widgets[1].source: ..." -> {page: 2, widget: 1}; macros and inputs -> a Settings panel.
 function errorTarget(error) {
   const m = /^pages\[(\d+)\](?:\.widgets\[(\d+)\])?/.exec(error || "");
-  return m ? { page: Number(m[1]), widget: m[2] === undefined ? -1 : Number(m[2]) } : null;
+  if (m) return { page: Number(m[1]), widget: m[2] === undefined ? -1 : Number(m[2]) };
+  if (/^macros/.test(error || "")) return { panel: "Macros" };
+  if (/^inputs/.test(error || "")) return { panel: "Knobs and buttons" };
+  return null;
 }
 
-// Plain words for the start of a validator path.
+// Plain words for the start of a validator path: "pages[1].widgets[2].source: x" becomes
+// "\"System\", metric gauge 3 (source): x".
 function friendly(error) {
-  return error.replace(/^pages\[(\d+)\]\.widgets\[(\d+)\]/, (_, p, w) => {
+  const field = (f) => (f ? ` (${f.replace(/_/g, " ")})` : "");
+  return error.replace(/^pages\[(\d+)\]\.widgets\[(\d+)\](?:\.(\w+))?/, (_, p, w, f) => {
     const page = state.cfg.pages[Number(p)];
     const wd = page?.widgets?.[Number(w)];
-    return `"${page?.name || page?.id}", ${wd?.type?.replace(/_/g, " ") || "widget"} ${Number(w) + 1}`;
-  }).replace(/^pages\[(\d+)\]/, (_, p) => `"${state.cfg.pages[Number(p)]?.name || "page " + (Number(p) + 1)}"`);
+    return `"${page?.name || page?.id}", ${wd?.type?.replace(/_/g, " ") || "widget"} ${Number(w) + 1}${field(f)}`;
+  }).replace(/^pages\[(\d+)\]/, (_, p) => `"${state.cfg.pages[Number(p)]?.name || "page " + (Number(p) + 1)}"`)
+    .replace(/^macros\[(\d+)\](?:\.steps\[(\d+)\])?(?:\.(\w+))?/, (_, m, st, f) => {
+      const mac = state.cfg.macros?.[Number(m)];
+      return `macro "${mac?.name || mac?.id || Number(m) + 1}"${st === undefined ? "" : `, step ${Number(st) + 1}`}${field(f)}`;
+    });
 }
 
 function updateBar() {
@@ -138,8 +147,8 @@ function updateBar() {
   const banner = $("banner");
   if (state.error) {
     const t = errorTarget(state.error);
-    banner.replaceChildren(icon("warn", 18), h("span", { class: "msg", text: `Can't save yet: ${friendly(state.error)}` }),
-      t ? h("button", { type: "button", class: "ghost", onclick: () => showTarget(t) }, "Show me") : null);
+    banner.replaceChildren(...[icon("warn", 18), h("span", { class: "msg", text: `Can't save yet: ${friendly(state.error)}` }),
+      t ? h("button", { type: "button", class: "ghost", onclick: () => showTarget(t) }, "Show me") : null].filter(Boolean));
     banner.hidden = false;
   } else {
     banner.hidden = true;
@@ -148,6 +157,11 @@ function updateBar() {
 }
 
 function showTarget(t) {
+  if (t.panel) {
+    showView("settings");
+    [...document.querySelectorAll(".panel h2")].find((x) => x.textContent === t.panel)?.scrollIntoView({ behavior: "smooth" });
+    return;
+  }
   showView("layout");
   selectPage(t.page);
   if (t.widget >= 0) {

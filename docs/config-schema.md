@@ -29,11 +29,11 @@ Style fields a metric widget leaves out come from its source: temperatures `°C`
 - `Device/ConfigSync.cs` pushes those bytes when HELLO_ACK `cfg_crc` differs and after every saved change, and waits for CONFIG_ACK (docs/protocol.md, "Config transfer").
 - Device: `src/config/store.cpp` keeps the file in LittleFS (`/config.json`, written as `/config.tmp`, read back, renamed). At boot it loads and validates it; when it is missing it uses the built-in default, when it is invalid it uses the default and shows a warning in the status bar (the stored CRC stays, so the host pushes a good one). A pushed config is validated and saved on the link task, then the UI task rebuilds every page and applies inputs, sensor offsets, brightness, units, accent color and SPI clock.
 
-Encoder gestures: `rotate`, `rotate_pressed` (turned while the knob is held down; that press then produces no click/double/long), `click`, `double` (when `none`, clicks fire on release without waiting for a second click), `long`. Buttons: `click`, `long`.
+Encoder gestures: `rotate`, `rotate_pressed` (turned while the knob is held down; that press then produces no click/double/long), `click`, `double` (when `none`, clicks fire on release without waiting for a second click), `long`. Buttons: `click`, `double`, `long`. Rotate gestures take an action name; press gestures (`click`, `double`, `long` of knobs and buttons) also take a key shortcut or a macro, see "Buttons and macros".
 
 Pages may still carry `inputs_override` (same shape as `inputs`, only the keys to change) for page-specific mappings. The default config uses none: an override of `enc1.rotate` would make it impossible to leave that page by turning.
 
-`inputs.buttons` (0 to 2) is the number of physical buttons fitted. `btn1`/`btn2` mappings are kept but ignored when the button is not fitted. Default is 0 until the hardware is decided.
+`inputs.buttons` (0 to 4) is the number of physical buttons fitted (tact switches to GND on GPIO 17, 18, 8, 13, docs/hardware.md). `btn1` to `btn4` mappings are kept but ignored when the button is not fitted. Default is 0.
 
 `weather`: no location by default (`lat`/`lon` null): the user picks a city on the web page (Open-Meteo geocoding), and the host fetches nothing until then. `refresh_min` 5 to 180. `units`: `temp` `c`/`f`, `wind` `kmh`/`ms`/`mph`, `pressure` `hpa`/`inhg`; weather values are converted by Open-Meteo (pressure by the host), and the device shows its room sensor in the same units.
 
@@ -96,6 +96,25 @@ Stable dotted IDs. The host publishes the catalog of what exists on this PC (`GE
 ## Actions
 
 `none`, `nav.page` (rotate), `nav.next_page`, `nav.prev_page`, `nav.home`, `media.play_pause`, `media.next`, `media.prev`, `media.seek` (rotate, seconds per detent configurable), `media.volume` (rotate), `media.mute`, `display.toggle`, `display.brightness` (rotate).
+
+## Buttons and macros
+
+A press gesture is one of:
+
+- an action name (above), e.g. `"media.mute"`;
+- `{"keys": "ctrl+shift+m"}`: a key shortcut the **device** types through its own USB keyboard (a second HID device next to the media keys). Works without the host app, on any PC. Keys are positions, like a physical keyboard: the same shortcut does the same as pressing those keys on the PC's keyboard;
+- `{"macro": "<id>"}`: a macro from the `macros` list, run by the **host** (needs the app running; offline the press does nothing).
+
+Key names, case-insensitive, joined with `+`: modifiers `ctrl`, `shift`, `alt`, `win`, `altgr` (right Alt), then at most one key: `a` to `z`, `0` to `9`, `f1` to `f24` (`f13` to `f24` are not on most keyboards, so apps can bind them without clashing), `enter`, `esc`, `backspace`, `tab`, `space`, `minus`, `equal`, `lbracket`, `rbracket`, `backslash`, `semicolon`, `quote`, `grave`, `comma`, `period`, `slash`, `capslock`, `printscreen`, `scrolllock`, `pause`, `insert`, `home`, `pgup`, `delete`, `end`, `pgdn`, `up`, `down`, `left`, `right`, `numlock`, `num0` to `num9`, `numdiv`, `nummul`, `numsub`, `numadd`, `numenter`, `numdot`, `intl` (the extra key next to left Shift on ISO keyboards, e.g. `<` on Turkish Q), `menu`. Modifiers alone (`"ctrl+shift"`) are allowed. Parsed by `actions::parseKeys` (firmware) and `KeyCombo` (host) with the same table.
+
+`macros` (host, up to 32): `{"id": "obs", "name": "OBS scene", "steps": [...]}`. `id` 1 to 23 bytes, unique; `name` up to 31 bytes. 1 to 32 steps, each one of:
+
+- `{"keys": "ctrl+f1"}`: a shortcut, sent with SendInput;
+- `{"text": "..."}`: types the text (up to 500 bytes) as Unicode characters, right on any keyboard layout; a new line presses Enter;
+- `{"wait_ms": 200}`: 1 to 10000 ms;
+- `{"open": "..."}`: a program, file, folder or web address (up to 260 bytes). When the host runs elevated it starts it through Explorer, so it gets normal user rights (no arguments in that case).
+
+The device only reads the macro ids (validation of `{"macro"}` references); the steps are checked by the host. Macros run one at a time in the order the presses arrived. The device sends ACTION `{"action": "macro", "value": 1, "id": "<id>"}`.
 
 ## Web config editor
 

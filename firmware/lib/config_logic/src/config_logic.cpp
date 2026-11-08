@@ -4,6 +4,7 @@
 #include <new>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 namespace rp {
@@ -54,6 +55,99 @@ bool parse(const char* s, Action& out) {
 
 bool isRotate(Action a) {
   return a == Action::kNavPage || a == Action::kSeek || a == Action::kVolume || a == Action::kDisplayBrightness;
+}
+
+namespace {
+
+struct Key {
+  const char* name;
+  uint8_t usage;
+};
+
+// HID keyboard usages (USB HID Usage Tables, page 0x07). Letters and digits are generated.
+const Key kKeys[] = {
+    {"enter", 0x28}, {"esc", 0x29}, {"backspace", 0x2A}, {"tab", 0x2B}, {"space", 0x2C},
+    {"minus", 0x2D}, {"equal", 0x2E}, {"lbracket", 0x2F}, {"rbracket", 0x30}, {"backslash", 0x31},
+    {"semicolon", 0x33}, {"quote", 0x34}, {"grave", 0x35}, {"comma", 0x36}, {"period", 0x37},
+    {"slash", 0x38}, {"capslock", 0x39}, {"printscreen", 0x46}, {"scrolllock", 0x47}, {"pause", 0x48},
+    {"insert", 0x49}, {"home", 0x4A}, {"pgup", 0x4B}, {"delete", 0x4C}, {"end", 0x4D},
+    {"pgdn", 0x4E}, {"right", 0x4F}, {"left", 0x50}, {"down", 0x51}, {"up", 0x52},
+    {"numlock", 0x53}, {"numdiv", 0x54}, {"nummul", 0x55}, {"numsub", 0x56}, {"numadd", 0x57},
+    {"numenter", 0x58}, {"numdot", 0x63}, {"intl", 0x64}, {"menu", 0x65},
+};
+
+struct Mod {
+  const char* name;
+  uint8_t bit;
+};
+const Mod kMods[] = {{"ctrl", 0x01}, {"shift", 0x02}, {"alt", 0x04}, {"win", 0x08}, {"altgr", 0x40}};
+
+bool keyUsage(const char* n, uint8_t& usage) {
+  const size_t len = strlen(n);
+  if (len == 1 && n[0] >= 'a' && n[0] <= 'z') {
+    usage = static_cast<uint8_t>(0x04 + (n[0] - 'a'));
+    return true;
+  }
+  if (len == 1 && n[0] >= '1' && n[0] <= '9') {
+    usage = static_cast<uint8_t>(0x1E + (n[0] - '1'));
+    return true;
+  }
+  if (len == 1 && n[0] == '0') {
+    usage = 0x27;
+    return true;
+  }
+  if (n[0] == 'f' && len >= 2 && len <= 3) {
+    const int f = atoi(n + 1);
+    if (f >= 1 && f <= 12) usage = static_cast<uint8_t>(0x3A + f - 1);
+    else if (f >= 13 && f <= 24) usage = static_cast<uint8_t>(0x68 + f - 13);
+    else return false;
+    return true;
+  }
+  if (len == 4 && strncmp(n, "num", 3) == 0 && n[3] >= '0' && n[3] <= '9') {
+    usage = n[3] == '0' ? 0x62 : static_cast<uint8_t>(0x59 + (n[3] - '1'));
+    return true;
+  }
+  for (const auto& k : kKeys) {
+    if (strcmp(k.name, n) == 0) {
+      usage = k.usage;
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
+bool parseKeys(const char* s, uint8_t& mods, uint8_t& key) {
+  mods = 0;
+  key = 0;
+  if (!s || !s[0] || strlen(s) > 63) return false;
+  char buf[64];
+  size_t n = 0;
+  for (const char* p = s;; ++p) {
+    if (*p == '+' || *p == '\0') {
+      buf[n] = '\0';
+      if (n == 0) return false;  // "ctrl++", leading or trailing '+'
+      bool isMod = false;
+      for (const auto& m : kMods) {
+        if (strcmp(m.name, buf) == 0) {
+          mods |= m.bit;
+          isMod = true;
+        }
+      }
+      if (!isMod) {
+        uint8_t u = 0;
+        if (key != 0 || !keyUsage(buf, u)) return false;  // unknown, or a second key
+        key = u;
+      }
+      n = 0;
+      if (*p == '\0') break;
+    } else {
+      if (n >= sizeof(buf) - 1) return false;
+      buf[n++] = static_cast<char>(*p >= 'A' && *p <= 'Z' ? *p - 'A' + 'a' : *p);
+    }
+  }
+  return mods != 0 || key != 0;
 }
 
 }  // namespace actions
@@ -244,6 +338,44 @@ bool getAction(JsonObjectConst o, const char* key, const char* path, bool rotate
   return true;
 }
 
+// A press gesture: an action name (not a rotate action), {"keys": "..."} or {"macro": "<id>"}.
+bool getBinding(JsonObjectConst o, const char* key, const char* path, const Config& cfg, actions::Binding& out,
+                Ctx& c) {
+  JsonVariantConst v = o[key];
+  if (v.isNull()) return true;
+  actions::Binding b;
+  if (v.is<const char*>()) {
+    Action a;
+    if (!actions::parse(v.as<const char*>(), a)) return c.fail(Path(path, key).s, "unknown action");
+    if (a != Action::kNone && actions::isRotate(a)) {
+      return c.fail(Path(path, key).s, "%s needs a rotation, not a press", actions::name(a));
+    }
+    b.action = a;
+    out = b;
+    return true;
+  }
+  if (!v.is<JsonObjectConst>()) return c.fail(Path(path, key).s, "must be an action name or {keys} or {macro}");
+  JsonObjectConst ob = v.as<JsonObjectConst>();
+  Path p(path, key);
+  const bool hasKeys = !ob["keys"].isNull();
+  const bool hasMacro = !ob["macro"].isNull();
+  if (hasKeys == hasMacro) return c.fail(p.s, "needs exactly one of keys or macro");
+  if (hasKeys) {
+    const char* s = ob["keys"].is<const char*>() ? ob["keys"].as<const char*>() : "";
+    if (!actions::parseKeys(s, b.mods, b.key)) return c.fail(Path(p.s, "keys").s, "unknown keys \"%s\"", s);
+    b.kind = actions::Binding::Kind::kKeys;
+  } else {
+    const char* s = ob["macro"].is<const char*>() ? ob["macro"].as<const char*>() : "";
+    for (int i = 0; i < cfg.macroCount && b.macro < 0; ++i) {
+      if (strcmp(cfg.macroIds[i], s) == 0) b.macro = static_cast<int8_t>(i);
+    }
+    if (b.macro < 0) return c.fail(Path(p.s, "macro").s, "no macro \"%s\"", s);
+    b.kind = actions::Binding::Kind::kMacro;
+  }
+  out = b;
+  return true;
+}
+
 // ---- sections ----
 
 bool parseDisplay(JsonObjectConst root, Config& cfg, Ctx& c) {
@@ -332,10 +464,10 @@ bool parseMedia(JsonObjectConst root, Config& cfg, Ctx& c) {
          getInt(m, "seek_step_s", "media", 1, 60, cfg.seekStepS, c);
 }
 
-// Gesture keys of enc1/enc2/btn1/btn2 (used by "inputs" and by a page's "inputs_override").
-bool parseGestures(JsonObjectConst inputs, const char* path, actions::Map& map, Ctx& c) {
+// Gesture keys of enc1/enc2/btn1..btn4 (used by "inputs" and by a page's "inputs_override").
+bool parseGestures(JsonObjectConst inputs, const char* path, const Config& cfg, actions::Map& map, Ctx& c) {
   static const char* const kEnc[] = {"enc1", "enc2"};
-  static const char* const kBtn[] = {"btn1", "btn2"};
+  static const char* const kBtn[] = {"btn1", "btn2", "btn3", "btn4"};
   for (int i = 0; i < 2; ++i) {
     JsonObjectConst e;
     if (!getObject(inputs, kEnc[i], path, e, c)) return false;
@@ -344,21 +476,46 @@ bool parseGestures(JsonObjectConst inputs, const char* path, actions::Map& map, 
     actions::EncoderMap& m = map.enc[i];
     if (!getAction(e, "rotate", p.s, true, m.rotate, c) ||
         !getAction(e, "rotate_pressed", p.s, true, m.rotatePressed, c) ||
-        !getAction(e, "click", p.s, false, m.click, c) || !getAction(e, "double", p.s, false, m.dbl, c) ||
-        !getAction(e, "long", p.s, false, m.lng, c)) {
+        !getBinding(e, "click", p.s, cfg, m.click, c) || !getBinding(e, "double", p.s, cfg, m.dbl, c) ||
+        !getBinding(e, "long", p.s, cfg, m.lng, c)) {
       return false;
     }
   }
-  for (int i = 0; i < 2; ++i) {
+  for (int i = 0; i < actions::kMaxButtons; ++i) {
     JsonObjectConst b;
     if (!getObject(inputs, kBtn[i], path, b, c)) return false;
     if (b.isNull()) continue;
     Path p(path, kBtn[i]);
-    if (!getAction(b, "click", p.s, false, map.btn[i].click, c) ||
-        !getAction(b, "long", p.s, false, map.btn[i].lng, c)) {
+    if (!getBinding(b, "click", p.s, cfg, map.btn[i].click, c) || !getBinding(b, "double", p.s, cfg, map.btn[i].dbl, c) ||
+        !getBinding(b, "long", p.s, cfg, map.btn[i].lng, c)) {
       return false;
     }
   }
+  return true;
+}
+
+// "macros": the device keeps the ids, so buttons can name them; the steps are checked by the host.
+bool parseMacros(JsonObjectConst root, Config& cfg, Ctx& c) {
+  JsonVariantConst ms = root["macros"];
+  if (ms.isNull()) return true;
+  if (!ms.is<JsonArrayConst>()) return c.fail("macros", "must be an array");
+  JsonArrayConst arr = ms.as<JsonArrayConst>();
+  if (arr.size() > static_cast<size_t>(kMaxMacros)) return c.fail("macros", "at most %d macros", kMaxMacros);
+  int i = 0;
+  for (JsonVariantConst m : arr) {
+    char path[16];
+    snprintf(path, sizeof(path), "macros[%d]", i);
+    if (!m.is<JsonObjectConst>()) return c.fail(path, "must be an object");
+    bool set = false;
+    char* id = cfg.macroIds[i];
+    if (!getString(m.as<JsonObjectConst>(), "id", path, id, sizeof(cfg.macroIds[i]), set, c)) return false;
+    if (!id[0]) return c.fail(Path(path, "id").s, "required, must not be empty");
+    for (int k = 0; k < i; ++k) {
+      if (strcmp(cfg.macroIds[k], id) == 0) return c.fail(Path(path, "id").s, "duplicate macro id \"%s\"", id);
+    }
+    ++i;
+  }
+  cfg.macroCount = static_cast<uint8_t>(i);
   return true;
 }
 
@@ -366,7 +523,7 @@ bool parseInputs(JsonObjectConst root, Config& cfg, Ctx& c) {
   JsonObjectConst in;
   if (!getObject(root, "inputs", "", in, c)) return false;
   if (in.isNull()) return true;
-  if (!getInt(in, "buttons", "inputs", 0, 2, cfg.buttons, c)) return false;
+  if (!getInt(in, "buttons", "inputs", 0, actions::kMaxButtons, cfg.buttons, c)) return false;
   static const char* const kEnc[] = {"enc1", "enc2"};
   for (int i = 0; i < 2; ++i) {
     JsonObjectConst e;
@@ -376,7 +533,7 @@ bool parseInputs(JsonObjectConst root, Config& cfg, Ctx& c) {
     if (!getInt(e, "counts_per_detent", p.s, 1, 8, cfg.countsPerDetent[i], c)) return false;
     if (!getBool(e, "invert", p.s, cfg.invert[i], c)) return false;
   }
-  return parseGestures(in, "inputs", cfg.inputs, c);
+  return parseGestures(in, "inputs", cfg, cfg.inputs, c);
 }
 
 bool parseWidget(JsonVariantConst v, const char* path, const Page& page, bool used[kMaxGrid][kMaxGrid],
@@ -511,7 +668,7 @@ bool parsePage(JsonVariantConst v, int index, Config& cfg, Ctx& c) {
   if (!getObject(o, "inputs_override", path, ov, c)) return false;
   if (!ov.isNull()) {
     Path p(path, "inputs_override");
-    if (!parseGestures(ov, p.s, page.inputs, c)) return false;
+    if (!parseGestures(ov, p.s, cfg, page.inputs, c)) return false;
   }
   return true;
 }
@@ -595,7 +752,7 @@ bool parse(const char* json, size_t len, Config& out, char* err, size_t errLen) 
 
   return parseDisplay(root, out, c) && parseGrid(root, out, c) && parseTheme(root, out, c) &&
          parseUnits(root, out, c) && parseSensor(root, out, c) && parseMedia(root, out, c) &&
-         parseInputs(root, out, c) && parsePages(root, out, c);
+         parseMacros(root, out, c) && parseInputs(root, out, c) && parsePages(root, out, c);
 }
 
 }  // namespace cfg

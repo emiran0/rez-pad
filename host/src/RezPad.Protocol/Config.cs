@@ -21,6 +21,10 @@ public static class ConfigCatalog
     /// <summary>Different data sources over all pages (the device keeps 16 SYS_STATS values).</summary>
     public const int MaxSources = 16;
 
+    public const int MaxButtons = 4;
+    public const int MaxMacros = 32;
+    public const int MaxMacroSteps = 32;
+
     // Screen geometry the sizes are checked against (firmware/src/ui/pages.cpp uses the same numbers).
     public const int ScreenW = 480;
     public const int GridH = 300;
@@ -281,9 +285,11 @@ public static class ConfigValidator
             Range(st, "rate_hz", "stats", 0.2, 4);
         }
 
+        var macroIds = Macros(o, host);
+
         if (Obj(o, "inputs", "") is { } inputs)
         {
-            Int(inputs, "buttons", "inputs", 0, 2);
+            Int(inputs, "buttons", "inputs", 0, ConfigCatalog.MaxButtons);
             foreach (var enc in new[] { "enc1", "enc2" })
             {
                 if (Obj(inputs, enc, "inputs") is { } e)
@@ -292,7 +298,7 @@ public static class ConfigValidator
                     Bool(e, "invert", P("inputs", enc));
                 }
             }
-            Gestures(inputs, "inputs");
+            Gestures(inputs, "inputs", macroIds);
         }
 
         if (o["pages"] is not JsonArray pages)
@@ -306,7 +312,7 @@ public static class ConfigValidator
         var ids = new List<string>();
         for (var i = 0; i < pages.Count; i++)
         {
-            Page(pages[i], $"pages[{i}]", cols, rows, ids);
+            Page(pages[i], $"pages[{i}]", cols, rows, ids, macroIds);
         }
         if (ConfigCatalog.ReferencedSources(o).Count > ConfigCatalog.MaxSources)
         {
@@ -314,7 +320,7 @@ public static class ConfigValidator
         }
     }
 
-    private static void Page(JsonNode? node, string path, int cols, int rows, List<string> ids)
+    private static void Page(JsonNode? node, string path, int cols, int rows, List<string> ids, List<string> macroIds)
     {
         if (node is not JsonObject p)
         {
@@ -360,7 +366,7 @@ public static class ConfigValidator
 
         if (Obj(p, "inputs_override", path) is { } ov)
         {
-            Gestures(ov, P(path, "inputs_override"));
+            Gestures(ov, P(path, "inputs_override"), macroIds);
         }
     }
 
@@ -462,7 +468,7 @@ public static class ConfigValidator
         }
     }
 
-    private static void Gestures(JsonObject inputs, string path)
+    private static void Gestures(JsonObject inputs, string path, List<string> macroIds)
     {
         foreach (var enc in new[] { "enc1", "enc2" })
         {
@@ -471,20 +477,155 @@ public static class ConfigValidator
                 var p = P(path, enc);
                 Action(e, "rotate", p, rotate: true);
                 Action(e, "rotate_pressed", p, rotate: true);
-                Action(e, "click", p, rotate: false);
-                Action(e, "double", p, rotate: false);
-                Action(e, "long", p, rotate: false);
+                Binding(e, "click", p, macroIds);
+                Binding(e, "double", p, macroIds);
+                Binding(e, "long", p, macroIds);
             }
         }
-        foreach (var btn in new[] { "btn1", "btn2" })
+        foreach (var btn in new[] { "btn1", "btn2", "btn3", "btn4" })
         {
             if (Obj(inputs, btn, path) is { } b)
             {
                 var p = P(path, btn);
-                Action(b, "click", p, rotate: false);
-                Action(b, "long", p, rotate: false);
+                Binding(b, "click", p, macroIds);
+                Binding(b, "double", p, macroIds);
+                Binding(b, "long", p, macroIds);
             }
         }
+    }
+
+    // A press gesture: an action name, {"keys": "..."} or {"macro": "<id>"}.
+    private static void Binding(JsonObject o, string key, string path, List<string> macroIds)
+    {
+        var n = o[key];
+        if (n is null)
+        {
+            return;
+        }
+        if (n is JsonValue)
+        {
+            Action(o, key, path, rotate: false);
+            return;
+        }
+        if (n is not JsonObject b)
+        {
+            throw Fail(P(path, key), "must be an action name or {keys} or {macro}");
+        }
+        var p = P(path, key);
+        var hasKeys = b["keys"] is not null;
+        var hasMacro = b["macro"] is not null;
+        if (hasKeys == hasMacro)
+        {
+            throw Fail(p, "needs exactly one of keys or macro");
+        }
+        if (hasKeys)
+        {
+            var s = b["keys"] is JsonValue kv && kv.TryGetValue<string>(out var ks) ? ks : "";
+            if (KeyCombo.Parse(s) is null)
+            {
+                throw Fail(P(p, "keys"), $"unknown keys \"{s}\"");
+            }
+        }
+        else
+        {
+            var s = b["macro"] is JsonValue mv && mv.TryGetValue<string>(out var ms) ? ms : "";
+            if (!macroIds.Contains(s))
+            {
+                throw Fail(P(p, "macro"), $"no macro \"{s}\"");
+            }
+        }
+    }
+
+    // "macros": ids (shared with the device) and, on the host, the steps.
+    private static List<string> Macros(JsonObject root, bool host)
+    {
+        var ids = new List<string>();
+        if (root["macros"] is not { } mn)
+        {
+            return ids;
+        }
+        if (mn is not JsonArray arr)
+        {
+            throw Fail("macros", "must be an array");
+        }
+        if (arr.Count > ConfigCatalog.MaxMacros)
+        {
+            throw Fail("macros", $"at most {ConfigCatalog.MaxMacros} macros");
+        }
+        for (var i = 0; i < arr.Count; i++)
+        {
+            var path = $"macros[{i}]";
+            if (arr[i] is not JsonObject m)
+            {
+                throw Fail(path, "must be an object");
+            }
+            var id = Str(m, "id", path, 24) ?? "";
+            if (id.Length == 0)
+            {
+                throw Fail(P(path, "id"), "required, must not be empty");
+            }
+            if (ids.Contains(id))
+            {
+                throw Fail(P(path, "id"), $"duplicate macro id \"{id}\"");
+            }
+            ids.Add(id);
+        }
+        if (!host)
+        {
+            return ids;
+        }
+        for (var i = 0; i < arr.Count; i++)
+        {
+            var path = $"macros[{i}]";
+            var m = (JsonObject)arr[i]!;
+            Str(m, "name", path, 32);
+            if (m["steps"] is not JsonArray steps || steps.Count is 0 or > ConfigCatalog.MaxMacroSteps)
+            {
+                throw Fail(P(path, "steps"), $"required, 1 to {ConfigCatalog.MaxMacroSteps} steps");
+            }
+            for (var k = 0; k < steps.Count; k++)
+            {
+                var sp = $"{path}.steps[{k}]";
+                if (steps[k] is not JsonObject step || step.Count != 1)
+                {
+                    throw Fail(sp, "must be one of {keys}, {text}, {wait_ms}, {open}");
+                }
+                if (step["keys"] is { } kn)
+                {
+                    var s = kn is JsonValue v && v.TryGetValue<string>(out var ks) ? ks : "";
+                    if (KeyCombo.Parse(s) is null)
+                    {
+                        throw Fail(P(sp, "keys"), $"unknown keys \"{s}\"");
+                    }
+                }
+                else if (step.ContainsKey("text"))
+                {
+                    if ((Str(step, "text", sp, 501) ?? "").Length == 0)
+                    {
+                        throw Fail(P(sp, "text"), "must not be empty");
+                    }
+                }
+                else if (step.ContainsKey("wait_ms"))
+                {
+                    if (Int(step, "wait_ms", sp, 1, 10000) is null)
+                    {
+                        throw Fail(P(sp, "wait_ms"), "must be a whole number from 1 to 10000");
+                    }
+                }
+                else if (step.ContainsKey("open"))
+                {
+                    if ((Str(step, "open", sp, 261) ?? "").Length == 0)
+                    {
+                        throw Fail(P(sp, "open"), "must not be empty");
+                    }
+                }
+                else
+                {
+                    throw Fail(sp, "must be one of {keys}, {text}, {wait_ms}, {open}");
+                }
+            }
+        }
+        return ids;
     }
 
     // ---- typed getters: a missing or null key is fine and returns null ----
