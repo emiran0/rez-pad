@@ -29,6 +29,7 @@ export const WIDGETS = {
   media_controls: { name: "Media controls", group: "Media", desc: "Play, skip and progress", size: [2, 1] },
   progress: { name: "Progress bar", group: "Media", desc: "Position in the track", size: [2, 1] },
   volume: { name: "Volume", group: "Media", desc: "PC volume and mute", size: [1, 1] },
+  spectrum: { name: "Spectrum", group: "Media", desc: "Bars that move with the sound", size: [4, 1] },
   metric_gauge: { name: "Gauge", group: "System", desc: "A value on a ring", size: [1, 1] },
   metric_value: { name: "Value", group: "System", desc: "A number with its label", size: [1, 1] },
   metric_bar: { name: "Bar", group: "System", desc: "A value as a bar", size: [2, 1] },
@@ -546,6 +547,24 @@ const RENDER = {
     align(box, t, "CENTER", 0, top / 2);
   },
 
+  spectrum(box, w, h, ctx) {
+    // Same layout as firmware/src/widgets/spectrum_widget.cpp.
+    const n = Math.min(Math.max(ctx.widget.bars || Math.floor(w / 10), 4), 32);
+    const slot = Math.floor(w / n);
+    const gap = slot >= 6 ? 2 : 1;
+    const barW = Math.max(slot - gap, 1);
+    const x0 = Math.floor((w - slot * n + gap) / 2);
+    const holder = el("div", "spec");
+    holder.dataset.h = h;
+    for (let i = 0; i < n; i++) {
+      const b = el("div", "spec-bar");
+      Object.assign(b.style, { left: x0 + i * slot + "px", width: barW + "px", background: ctx.pal.accent, borderRadius: barW >= 6 ? "2px" : "0" });
+      holder.append(b);
+    }
+    at(box, holder, 0, 0, w, h);
+    setSpectrumBars(holder, ctx.data.spectrum);
+  },
+
   image(box, w, h, ctx) {
     const wd = ctx.widget;
     if (!wd.asset) {
@@ -594,6 +613,32 @@ function gauge(side, thick, frac, color, pal) {
   path(arc(135, 405), pal.faint);
   if (frac !== null && frac > 0.001) path(arc(135, 135 + 270 * Math.min(frac, 0.9999)), color);
   return svg;
+}
+
+// Without live sound the bars show a fixed, faded shape so the widget is recognizable.
+const SPECTRUM_DEMO = Array.from({ length: 32 }, (_, i) => Math.round(150 + 70 * Math.sin(i / 3.2) - i * 3));
+
+function setSpectrumBars(holder, bins) {
+  const bars = holder.children;
+  const h = Number(holder.dataset.h);
+  const live = Array.isArray(bins) && bins.some((b) => b > 0);
+  const src = live ? bins : SPECTRUM_DEMO;
+  holder.style.opacity = live ? "1" : "0.35";
+  for (let i = 0; i < bars.length; i++) {
+    // Loudest of this bar's group of the 32 bins, like the firmware.
+    const from = Math.floor((i * src.length) / bars.length);
+    const to = Math.max(Math.floor(((i + 1) * src.length) / bars.length), from + 1);
+    let level = 0;
+    for (let k = from; k < to && k < src.length; k++) level = Math.max(level, src[k]);
+    const px = 2 + Math.floor((level * (h - 2)) / 255);
+    bars[i].style.top = h - px + "px";
+    bars[i].style.height = px + "px";
+  }
+}
+
+/** Updates every spectrum preview on the page in place (called about 15 times a second). */
+export function updateSpectrum(bins) {
+  for (const holder of document.querySelectorAll(".spec")) setSpectrumBars(holder, bins);
 }
 
 /** Renders one widget into a card element sized for it (also used by the widget gallery). */

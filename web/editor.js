@@ -5,7 +5,7 @@
 
 import {
   renderScreen, renderWidget, cardRect, bigEnough, pageGrid, pageTheme, effectiveStyle,
-  WIDGETS, THEMES, SCREEN_W, SCREEN_H,
+  WIDGETS, THEMES, SCREEN_W, SCREEN_H, CELL_GAP, PAD,
 } from "./preview.js";
 import { state, on, emit, get, change, h, api, toast, openPopover, closePopover } from "./state.js";
 import { icon } from "./icons.js";
@@ -753,6 +753,9 @@ function renderProps(box) {
   } else if (w.type === "label") {
     content.push(field("Text", textInput(w, "text", "", 63)));
     content.push(field("Small title", textInput(w, "label", "optional", 31)));
+  } else if (w.type === "spectrum") {
+    const auto = Math.min(Math.max(Math.floor((w.w * Math.floor(SCREEN_W / grid().cols) - CELL_GAP - 2 * PAD) / 10), 4), 32);
+    content.push(field("Bars", numberInput(w, "bars", `${auto} (automatic), 4 to 32`), "What the PC plays, in 32 bands from 50 Hz to 16 kHz. Moves once the layout is saved to the device."));
   } else if (w.type === "image") {
     content.push(field("Picture", imagePicker(w), "PNG, JPEG, GIF (animated too) or BMP. Converted to this card's exact size."));
     content.push(field("Fit", segmented([["cover", "Fill the card"], ["contain", "Show it whole"]], w.fit || "cover", (v) => setWidget({ fit: v === "cover" ? undefined : v }))));

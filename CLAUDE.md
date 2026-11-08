@@ -348,11 +348,13 @@ Work phase by phase. At the end of each phase, list what was done and what the u
 - Optional: ESP Web Tools page for flashing firmware from the browser.
 - Check: fresh Windows machine setup in under 5 minutes.
 
-**Stretch**
-- `spectrum` widget (WASAPI loopback capture + FFT on host, 16 to 32 bins at ~30 Hz).
-- SD card on SPI3 for an art cache or large icon/font packs.
-- Optional device Wi-Fi mode for standalone weather.
+**Phase 12: Extras** (the former stretch list, without the SD card)
+- `spectrum` widget (WASAPI loopback capture + FFT on host, 32 bins at ~30 Hz).
 - Per-app volume control.
+- Optional device Wi-Fi mode for standalone weather (last, only if still wanted).
+- Check: the spectrum follows the music without stutter and costs the host < 1 % CPU; per-app volume works from a knob.
+
+Dropped: SD card on SPI3 (decided with the user 2026-11-08; the 16 MB flash is enough for art, images and fonts).
 
 ---
 
@@ -447,4 +449,6 @@ Tracked in the "Open hardware checks" table in `docs/hardware.md` (native USB po
 - 2026-11-08: Phase 11 screen power: pure policy in `firmware/lib/screen_logic` (native tests), applied by `src/display/screen.cpp` with 300 ms fades. Night window from the synced clock (unknown time = day). The brightness knob changes the current period's level (day or night) until the next config. Dark when the PC sleeps (USB suspend, if `sleep_on_pc_sleep`), after `display.toggle`, or at night brightness 0; the first input only wakes it, and a screen woken while it should be dark stays on 30 s after the last input (night level 0 wakes at 10 %). While the backlight is off, LVGL does not render (`lvgl_port::setSleeping`); on wake one full frame is drawn before the fade-in.
 - 2026-11-08: Packaging: the web editor is embedded in the exe (`EmbeddedFileProvider`, resource names `RezPad.Host.web.<path with dots>`) instead of copied next to it; the host publishes as one self-contained win-x64 file (`tools/package.ps1`), symbols embedded. Installer is a per-user PowerShell script (`setup/install.ps1`, no admin except the optional startup task through the existing `--register-startup` helper); uninstall leaves a startup task that points to another copy (e.g. a dev build). An unelevated `rez-pad.exe --exit` closes an elevated instance (checked). ESP Web Tools page not built (optional); the zip carries the factory image and esptool instructions.
 - 2026-11-08: Open source under MIT (`LICENSE`, copyright rez-lab), bundled components listed in `THIRD-PARTY-NOTICES.md` (keep it current when adding a library or NuGet package); both ship in the release zip. Exe version info names rez-lab as company. README rewritten for people building their own.
+- 2026-11-08: Phase 12 spectrum: host `Audio/LoopbackCapture.cs` (WASAPI shared loopback on the default render device, polled every 10 ms, follows default device changes) and `Audio/SpectrumBridge.cs` (capture only while connected and the saved layout has a `spectrum` widget; pauses after 1 s of silence); analysis in `RezPad.Protocol/Spectrum.cs` (2048-point FFT, Hann, 32 log bands 50 Hz to 16 kHz, -70 to 0 dBFS, +3 dB/octave tilt, instant rise and 0.6 s fall), unit-tested. Device: `src/audio/spectrum.*` (falls by itself 300 ms after the last frame), `widgets/spectrum_widget.*` (one object drawing all bars in LV_EVENT_DRAW_MAIN, marking only the strips between old and new bar tops, merged into at most 8 dirty areas: one LVGL object per bar overflowed LVGL's 32 dirty areas and redrew the full screen, 5 FPS; now 29 FPS at 11 % SPI; hidden pages skip spectrum updates). `GET /api/spectrum` feeds the editor preview. SPECTRUM body as already reserved in protocol v1.
+- 2026-11-08: Host serial reads no longer wait (COMMTIMEOUTS return immediately, the read thread sleeps 1 ms when idle): a waiting read on the synchronous handle held every write back about 31 ms. Since such reads do not fail when the device resets, a failed write ends the session (plus a COM port presence check every 250 ms while idle).
 - 2026-11-08: App icon is original artwork from `tools/gen_app_icon.py`; the tray shows a grey-screen variant while the device is not connected.

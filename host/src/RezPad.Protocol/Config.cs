@@ -53,6 +53,7 @@ public static class ConfigCatalog
         ["weather_forecast"] = (90, 46),
         ["label"] = (16, 14),
         ["image"] = (16, 16),
+        ["spectrum"] = (60, 30),
     };
 
     /// <summary>Theme presets, in the firmware's order.</summary>
@@ -143,6 +144,22 @@ public static class ConfigCatalog
             }
         }
         return list;
+    }
+
+    /// <summary>True when any page has a widget of <paramref name="type"/>.</summary>
+    public static bool HasWidget(JsonNode? root, string type)
+    {
+        foreach (var page in (root?["pages"] as JsonArray) ?? [])
+        {
+            foreach (var w in (page?["widgets"] as JsonArray) ?? [])
+            {
+                if (w?["type"] is JsonValue t && t.TryGetValue<string>(out var value) && value == type)
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }
 
@@ -442,6 +459,10 @@ public static class ConfigValidator
                 throw Fail(P(path, "asset"), "required for image");
             }
             Choice(w, "fit", path, "cover", "contain");
+        }
+        if (type == "spectrum")
+        {
+            Int(w, "bars", path, 4, 32);
         }
         var def = ConfigCatalog.SourceDefaults(source);
         var min = Num(w, "min", path) ?? def.Min;

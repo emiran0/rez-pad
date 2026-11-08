@@ -94,12 +94,13 @@ internal static class Program
         _ = new StatsBridge(link, stats, config);
         using var weather = new WeatherService(config);
         _ = new WeatherBridge(link, weather);
+        using var spectrum = new SpectrumBridge(link, config);
 
         audio.Start();
         media.Start();
         stats.Start();
         weather.Start();
-        var web = new WebServer(port, new WebServices(link, media, audio, stats, config, weather, room, configSync, assets));
+        var web = new WebServer(port, new WebServices(link, media, audio, stats, config, weather, room, configSync, assets, spectrum));
         web.Start();
         link.Start();
 

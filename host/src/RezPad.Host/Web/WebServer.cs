@@ -17,7 +17,8 @@ namespace RezPad.Host.Web;
 
 /// <summary>Kestrel bound to 127.0.0.1 only. Serves web/ and the /api endpoints (docs/config-schema.md).</summary>
 internal sealed record WebServices(SerialLink Link, MediaService Media, AudioService Audio, SystemStatsService Stats,
-    ConfigService Config, WeatherService Weather, RoomSensor Room, ConfigSync ConfigSync, AssetStore Assets);
+    ConfigService Config, WeatherService Weather, RoomSensor Room, ConfigSync ConfigSync, AssetStore Assets,
+    SpectrumBridge Spectrum);
 
 internal sealed class WebServer(int port, WebServices services)
 {
@@ -30,6 +31,7 @@ internal sealed class WebServer(int port, WebServices services)
     private readonly AssetStore assets = services.Assets;
     private readonly WeatherService weather = services.Weather;
     private readonly RoomSensor room = services.Room;
+    private readonly SpectrumBridge spectrum = services.Spectrum;
 
     private WebApplication? _app;
 
@@ -75,6 +77,15 @@ internal sealed class WebServer(int port, WebServices services)
                 BadFrames: decoder is null ? 0 : decoder.BadCobs + decoder.BadCrc + decoder.TooShort + decoder.TooLarge + decoder.BadVersion));
         });
         app.MapGet("/api/log", () => Results.Json(Log.Recent()));
+        // Live spectrum for the editor preview: 32 levels 0 to 255, all zero while capture is off.
+        app.MapGet("/api/spectrum", () => Results.Json(new
+        {
+            capturing = spectrum.Capturing,
+            sent = spectrum.Sent,
+            frames = spectrum.Frames,
+            send_ms = Math.Round(spectrum.SendMs, 1),
+            bins = spectrum.Latest.Select(b => (int)b).ToArray(),
+        }));
 
         // Weather location, units and the latest forecast the device got.
         app.MapGet("/api/weather", () =>

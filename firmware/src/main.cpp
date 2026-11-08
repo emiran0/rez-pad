@@ -254,8 +254,27 @@ void cmdPage(int argc, char** argv, Print& out) {
 
 void cmdPerf(int argc, char** argv, Print& out) {
   long v = 0;
-  if (argc == 2 && parseUint(argv[1], 0, 1, v)) rp::lvgl_port::showPerfMonitor(v != 0);
-  else out.println("usage: perf <0|1>  (LVGL FPS/CPU overlay)");
+  if (argc == 2 && parseUint(argv[1], 0, 1, v)) {
+    rp::lvgl_port::showPerfMonitor(v != 0);
+    return;
+  }
+  if (argc != 1) {
+    out.println("usage: perf [0|1]  (no argument: measure 3 s; 0/1: LVGL FPS/CPU overlay)");
+    return;
+  }
+  // Measures while the UI keeps running (this runs on the UI task, so let it loop meanwhile).
+  const auto a = rp::lvgl_port::renderStats();
+  const uint32_t t0 = millis();
+  while (millis() - t0 < 3000) {
+    rp::screen::tick(millis());
+    rp::ui::loop(millis());
+    delay(2);
+  }
+  const auto b = rp::lvgl_port::renderStats();
+  const float s = (millis() - t0) / 1000.0f;
+  out.printf("%.1f frames/s, %.1f strips/s, %.0f px/frame, SPI busy %.0f %%\n", (b.frames - a.frames) / s,
+             (b.flushes - a.flushes) / s, b.frames > a.frames ? double(b.pixels - a.pixels) / (b.frames - a.frames) : 0.0,
+             (b.flushMs - a.flushMs) / (s * 10.0f));
 }
 
 void cmdSensor(int, char**, Print& out) {
@@ -437,7 +456,7 @@ const rp::console::Command kCommands[] = {
     {"view", "<ui|debug|pattern>", cmdView},
     {"action", "<name> [value]", cmdAction},
     {"page", "<index>", cmdPage},
-    {"perf", "<0|1>", cmdPerf},
+    {"perf", "[0|1]", cmdPerf},
     {"usb", "", cmdUsb},
     {"link", "", cmdLink},
     {"media", "", cmdMedia},

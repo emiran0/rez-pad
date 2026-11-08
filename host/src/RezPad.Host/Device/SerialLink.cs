@@ -24,6 +24,9 @@ internal sealed record LinkStatus(
 internal sealed class SerialLink : IDisposable
 {
     private static readonly TimeSpan HelloRetry = TimeSpan.FromMilliseconds(500);
+    private const int IdleReadSleepMs = 1;
+    private volatile bool _writeFailed;
+    private static readonly TimeSpan PresenceCheck = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan SearchInterval = TimeSpan.FromMilliseconds(400);
 
     private readonly string _hostVersion;
@@ -70,6 +73,9 @@ internal sealed class SerialLink : IDisposable
             }
             catch (Exception ex) when (ex is IOException or ObjectDisposedException)
             {
+                // The device reset or went away: reads do not wait, so they may not notice; the read
+                // loop ends the session on this flag.
+                _writeFailed = true;
                 return false;
             }
         }
@@ -161,11 +167,13 @@ internal sealed class SerialLink : IDisposable
         {
             _port = port;
             _seq = 0;
+            _writeFailed = false;
         }
         var decoder = new FrameDecoder();
         var heartbeat = new HeartbeatMonitor();
         var buffer = new byte[4096];
         var helloSent = DateTime.MinValue;
+        var presenceChecked = DateTime.UtcNow;
         HelloAckMsg? device = null;
         try
         {
@@ -178,7 +186,25 @@ internal sealed class SerialLink : IDisposable
                     helloSent = DateTime.UtcNow;
                 }
 
-                var n = port.Read(buffer);  // returns 0 after Win32Serial.ReadTimeoutMs
+                var n = port.Read(buffer);  // never waits
+                if (_writeFailed)
+                {
+                    return "write failed";
+                }
+                if (n == 0)
+                {
+                    Thread.Sleep(IdleReadSleepMs);  // wakes on the next system timer tick, about 15.6 ms
+                    // A read that does not wait does not fail when the device resets or is unplugged
+                    // either; the port leaving Windows' COM port list shows it.
+                    if (DateTime.UtcNow - presenceChecked > PresenceCheck)
+                    {
+                        presenceChecked = DateTime.UtcNow;
+                        if (!Win32Serial.PresentPorts().Contains(found.Port))
+                        {
+                            return "port removed";
+                        }
+                    }
+                }
 
                 for (var i = 0; i < n; i++)
                 {

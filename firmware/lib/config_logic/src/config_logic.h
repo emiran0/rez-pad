@@ -107,6 +107,7 @@ struct WidgetSpec {
   char text[64] = "";  // label widget
   char asset[40] = ""; // image widget: asset id
   Fit fit = Fit::kCover;
+  uint8_t bars = 0;    // spectrum: bar count, 0 = automatic (one per 10 px)
   float min = 0, max = 100;
   float warn = NAN, crit = NAN;  // color thresholds (NAN = none)
   int8_t decimals = -1;          // -1 = automatic

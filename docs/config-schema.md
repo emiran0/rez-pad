@@ -61,7 +61,7 @@ A widget may have any size (in cells) whose content area is at least the type's 
 | `weather_forecast` | 90 x 46 | `daily` or `hourly`, one column per 48 px (up to 5) |
 | `label` | 16 x 14 | static `text`, optional small `label` above it |
 | `image` | 16 x 16 | uploaded picture or animated GIF (`asset`, `fit` `cover` or `contain`), edge to edge in the card |
-| `spectrum` | | stretch goal, not in the validators yet |
+| `spectrum` | 60 x 30 | audio spectrum bars of what the PC plays (SPECTRUM). `bars` 4 to 32 (default: one per 10 px of width, at most 32) |
 
 Widgets may have optional style fields (`label`, `unit`, `min`, `max`, `warn`, `crit`, `decimals`); see "Validation" for the rules and defaults.
 

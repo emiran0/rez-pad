@@ -18,6 +18,7 @@
 #include "config_logic.h"
 #include "link_monitor.h"
 #include "media/media.h"
+#include "audio/spectrum.h"
 #include "sysstats/sysstats.h"
 #include "weather/weather.h"
 #include "usb_device.h"
@@ -337,6 +338,7 @@ void dispatch(const Packet& p, uint32_t now) {
     case proto::kArtEnd: media::onArtEnd(p.body, p.bodyLen); break;
     case proto::kArtNone: media::onArtNone(p.body, p.bodyLen); break;
     case proto::kSysStats: sysstats::onSysStats(p.body, p.bodyLen); break;
+    case proto::kSpectrum: spectrum::onSpectrum(p.body, p.bodyLen); break;
     case proto::kWeather: weather::onWeather(p.body, p.bodyLen); break;
     case proto::kConfigBegin: onConfigBegin(p); break;
     case proto::kConfigChunk: onConfigChunk(p); break;
@@ -347,7 +349,7 @@ void dispatch(const Packet& p, uint32_t now) {
     case proto::kAssetEnd: onAssetEnd(); break;
     case proto::kAssetList: onAssetList(); break;
     default:
-      gStats.unknownTypes++;  // SPECTRUM: stretch goal
+      gStats.unknownTypes++;
       break;
   }
 }

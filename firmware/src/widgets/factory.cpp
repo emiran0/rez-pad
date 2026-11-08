@@ -3,6 +3,7 @@
 #include "media_widgets.h"
 #include "metric_widgets.h"
 #include "image_widget.h"
+#include "spectrum_widget.h"
 #include "text_widgets.h"
 #include "weather_widgets.h"
 #include "widget.h"
@@ -28,7 +29,8 @@ Widget* create(const Spec& s) {
   if (strcmp(t, "clock") == 0) return new Clock(s);
   if (strcmp(t, "label") == 0) return new Label(s);
   if (strcmp(t, "image") == 0) return new ImageWidget(s);
-  return nullptr;  // spectrum (stretch)
+  if (strcmp(t, "spectrum") == 0) return new SpectrumWidget(s);
+  return nullptr;
 }
 
 }  // namespace widgets

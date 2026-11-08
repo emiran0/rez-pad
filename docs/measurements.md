@@ -197,3 +197,18 @@ Not checked on the screen yet: icon placement and readability, the `clock` widge
 | Cold plug-in, native cable first | 1 of 1 white/grey screen until RST | 5 of 5 normal |
 | Device health after the change | | Host link, sensors (AHT20 + BMP280, 0 errors), PSRAM all normal |
 
+## Spectrum and host serial writes (Phase 12, 2026-11-08)
+
+| Measurement | Result |
+|---|---|
+| Host serial write, before | about 31 ms per frame, whatever its size: the port handle is synchronous, so Windows held each write until the read thread's pending 20 ms read timed out (plus timer rounding). Spectrum ran at 20 frames/s instead of 30 |
+| Host serial write, after (reads no longer wait; the read thread sleeps 1 ms, about 15.6 ms, when idle) | 0.31 ms per SPECTRUM frame |
+| SPECTRUM rate while sound plays | 30.0 frames/s sent (30.7 produced) |
+| Album art 10742 bytes (192 px) | sent in 63 to 76 ms (was about 130 ms at 80 KB/s) |
+| Host CPU, spectrum capture with sound | 0.34 % of all 12 cores (4 % of one core) |
+| Host CPU, capture on, silence (sending paused) | 0.16 % of all cores |
+| Device reset to host reconnected (RTS pulse), after the change | about 1.5 s, 3 of 3; the failed write on the old handle ends the session within 0.1 to 0.4 s |
+| Device, 4x2 spectrum (32 bars), first version (one LVGL object per bar) | 5 to 6 FPS, UI core 96 to 97 % (`perf 1` overlay, measured by the user): every bar move invalidated up to 4 areas, LVGL's 32-area list overflowed and it redrew the whole screen each frame |
+| Device, 4x2 spectrum, one custom-drawn object, dirty strips merged into 8 areas | tone sweep: 28.7 frames/s, 5900 px/frame, SPI busy 9 %; pulsing pink noise (all bars moving): 28.9 frames/s, 9200 px/frame, 231 strips/s, SPI busy 11 % (`perf`) |
+| Test sweep 60 Hz to 12 kHz at -26 dBFS | peak band followed the sweep from band 3 to band 28, levels 121 to 168 (tilt applied) |
+

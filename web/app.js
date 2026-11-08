@@ -6,6 +6,7 @@ import { state, on, emit, dirty, reset, api, postJson, h, toast, undo, redo, can
 import { initEditor, renderAll, selectPage, loadAssets } from "./editor.js";
 import { initSettings, renderSettings, renderDevice, linkText } from "./settings.js";
 import { icon } from "./icons.js";
+import { updateSpectrum } from "./preview.js";
 
 const $ = (id) => document.getElementById(id);
 const HISTORY = 120;
@@ -43,6 +44,7 @@ async function start() {
   setInterval(() => !document.hidden && pollLive(), 1000);
   setInterval(() => !document.hidden && pollStatus(), 1500);
   setInterval(() => !document.hidden && pollSlow(), 5000);
+  pollSpectrum();
 }
 
 // ---- live data ----
@@ -91,6 +93,19 @@ async function pollLive() {
     }
   }
   emit("live");
+}
+
+// Live spectrum for spectrum previews, only while one is on screen (the host captures only when the
+// saved layout has a spectrum widget and the device is connected).
+async function pollSpectrum() {
+  if (!document.hidden && document.querySelector(".spec")) {
+    const r = await api("/api/spectrum").catch(() => null);
+    if (r?.ok) {
+      state.data.spectrum = r.body.capturing ? r.body.bins : null;
+      updateSpectrum(state.data.spectrum);
+    }
+  }
+  setTimeout(pollSpectrum, 66);
 }
 
 async function pollSlow() {

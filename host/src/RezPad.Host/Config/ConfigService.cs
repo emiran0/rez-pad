@@ -181,6 +181,14 @@ internal sealed class ConfigService
         }
     }
 
+    public bool HasWidget(string type)
+    {
+        lock (_lock)
+        {
+            return ConfigCatalog.HasWidget(_root, type);
+        }
+    }
+
     /// <summary>Data sources the layout shows (metric widgets on any page).</summary>
     public IReadOnlyList<string> ReferencedSources
     {

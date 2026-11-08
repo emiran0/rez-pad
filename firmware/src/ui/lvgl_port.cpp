@@ -15,6 +15,8 @@ constexpr int kBufLines = 40;
 lv_display_t* gDisp = nullptr;
 bool gPaused = false;
 bool gSleeping = false;
+uint32_t gFrames = 0, gFlushes = 0, gFlushMs = 0;
+uint64_t gPixels = 0;
 
 uint32_t tick() { return millis(); }
 
@@ -23,7 +25,12 @@ void flush(lv_display_t* disp, const lv_area_t* area, uint8_t* px) {
   const int32_t h = lv_area_get_height(area);
   // LVGL RGB565 is native-endian; rgb565_t tells LovyanGFX not to byte-swap. LovyanGFX converts
   // to RGB666 into its own DMA buffers, so `px` can be reused as soon as this call returns.
+  const uint32_t t0 = millis();
   display::lcd().pushImageDMA(area->x1, area->y1, w, h, reinterpret_cast<const lgfx::rgb565_t*>(px));
+  gFlushMs += millis() - t0;
+  gFlushes++;
+  gPixels += static_cast<uint64_t>(w) * h;
+  if (lv_display_flush_is_last(disp)) gFrames++;
   lv_display_flush_ready(disp);
 }
 
@@ -89,6 +96,15 @@ void refreshNow() {
 
 void invalidateAll() {
   if (gDisp) lv_obj_invalidate(lv_display_get_screen_active(gDisp));
+}
+
+RenderStats renderStats() {
+  RenderStats s;
+  s.frames = gFrames;
+  s.flushes = gFlushes;
+  s.pixels = gPixels;
+  s.flushMs = gFlushMs;
+  return s;
 }
 
 void showPerfMonitor(bool on) {

@@ -32,11 +32,10 @@ internal sealed class Win32Serial : IDisposable
     private Win32Serial(SafeFileHandle handle)
     {
         _handle = handle;
-        // Synchronous handle: reads return after ReadTimeoutMs at most (COMMTIMEOUTS below).
+        // Synchronous handle. Reads never wait (COMMTIMEOUTS below): Windows serializes synchronous
+        // I/O on one handle, so a waiting read would hold every write back until it times out.
         _stream = new FileStream(handle, FileAccess.ReadWrite, bufferSize: 0, isAsync: false);
     }
-
-    public const int ReadTimeoutMs = 20;
 
     /// <summary>Opens the port with DTR and RTS on. Throws UnauthorizedAccessException when busy.</summary>
     public static Win32Serial Open(string portName)
@@ -66,12 +65,14 @@ internal sealed class Win32Serial : IDisposable
             dcb.Flags = 1u | (1u << 4) | (1u << 12);
             Check(SetCommState(handle, ref dcb), "SetCommState");
 
-            // Return immediately with whatever is buffered; if nothing, wait up to ReadTimeoutMs.
+            // Reads return immediately with whatever is buffered, 0 bytes when nothing is (the caller
+            // sleeps). A read that waited would block writes from other threads for that long: with a
+            // 20 ms read timeout every write took about 30 ms (measured 2026-11-08).
             var timeouts = new CommTimeouts
             {
                 ReadIntervalTimeout = uint.MaxValue,
-                ReadTotalTimeoutMultiplier = uint.MaxValue,
-                ReadTotalTimeoutConstant = ReadTimeoutMs,
+                ReadTotalTimeoutMultiplier = 0,
+                ReadTotalTimeoutConstant = 0,
                 WriteTotalTimeoutMultiplier = 0,
                 WriteTotalTimeoutConstant = 500,
             };
@@ -86,7 +87,7 @@ internal sealed class Win32Serial : IDisposable
         }
     }
 
-    /// <summary>Reads available bytes; returns 0 after the read timeout. Throws IOException when the device is gone.</summary>
+    /// <summary>Reads the bytes already received, 0 when there are none (never waits). Throws IOException when the device is gone.</summary>
     public int Read(byte[] buffer) => _stream.Read(buffer, 0, buffer.Length);
 
     public void Write(byte[] data) => _stream.Write(data, 0, data.Length);

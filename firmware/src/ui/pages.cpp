@@ -146,8 +146,9 @@ void refresh(const Model& m, uint32_t changed, uint32_t nowMs) {
       widgets::Widget* w = gPages[p].widgets[i];
       const uint32_t mine = w->interests() & changed;
       if (!mine) continue;
-      // Hidden pages only need state that accumulates (graph history); skip the per-tick work.
-      if (p != gCurrent && mine == kChangedTick) continue;
+      // Hidden pages only need state that accumulates (graph history); skip the per-tick work and
+      // the spectrum.
+      if (p != gCurrent && (mine & ~(kChangedTick | kChangedSpectrum)) == 0) continue;
       w->refresh(m, mine, nowMs);
     }
   }

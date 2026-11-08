@@ -172,7 +172,7 @@ const TypeInfo kTypes[] = {
     {"metric_value", 50, 30},   {"metric_bar", 60, 30},   {"metric_gauge", 44, 44},
     {"metric_graph", 80, 40},   {"clock", 50, 26},        {"room_climate", 60, 30},
     {"weather_now", 60, 34},    {"weather_forecast", 90, 46}, {"label", 16, 14},
-    {"image", 16, 16},
+    {"image", 16, 16},          {"spectrum", 60, 30},
 };
 
 const char* const kThemes[kThemeCount] = {"dark", "midnight", "black", "graphite"};
@@ -593,6 +593,7 @@ bool parseWidget(JsonVariantConst v, const char* path, const Page& page, bool us
     if (!getChoice(o, "fit", path, kFits, 2, fit, c)) return false;
     w.fit = static_cast<Fit>(fit);
   }
+  if (strcmp(w.type, "spectrum") == 0 && !getInt(o, "bars", path, 4, 32, w.bars, c)) return false;
 
   const SourceStyle def = sourceDefaults(w.source);
   if (!unitSet) strcpy(w.unit, def.unit);

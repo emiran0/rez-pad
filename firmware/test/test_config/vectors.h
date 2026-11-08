@@ -170,4 +170,15 @@ static const char kConfigVectorsJson[] =
     "{\"op\":\"set\",\"path\":\"/macros\",\"value\":[{\"id\":\"a\",\"steps\":[{\"wait_ms\":60000}]}]}],\""
     "where\":\"macros[0].steps[0].wait_ms\",\"device\":null},{\"name\":\"bad keys in a macro step (host o"
     "nly)\",\"patch\":[{\"op\":\"set\",\"path\":\"/macros\",\"value\":[{\"id\":\"a\",\"steps\":[{\"keys\""
-    ":\"hyper+x\"}]}]}],\"where\":\"macros[0].steps[0].keys\",\"device\":null}]}";
+    ":\"hyper+x\"}]}]}],\"where\":\"macros[0].steps[0].keys\",\"device\":null},{\"name\":\"spectrum widge"
+    "ts\",\"patch\":[{\"op\":\"set\",\"path\":\"/pages/-\",\"value\":{\"id\":\"sp\",\"widgets\":[{\"type\""
+    ":\"spectrum\",\"x\":0,\"y\":0,\"w\":4,\"h\":1},{\"type\":\"spectrum\",\"x\":0,\"y\":1,\"w\":1,\"h\":"
+    "1,\"bars\":4},{\"type\":\"spectrum\",\"x\":1,\"y\":1,\"w\":2,\"h\":2,\"bars\":32}]}}],\"where\":null"
+    "},{\"name\":\"spectrum with too many bars\",\"patch\":[{\"op\":\"set\",\"path\":\"/pages/-\",\"value"
+    "\":{\"id\":\"sp\",\"widgets\":[{\"type\":\"spectrum\",\"x\":0,\"y\":0,\"w\":4,\"h\":1,\"bars\":33}]}"
+    "}],\"where\":\"pages[3].widgets[0].bars\"},{\"name\":\"spectrum with too few bars\",\"patch\":[{\"op"
+    "\":\"set\",\"path\":\"/pages/-\",\"value\":{\"id\":\"sp\",\"widgets\":[{\"type\":\"spectrum\",\"x\":"
+    "0,\"y\":0,\"w\":4,\"h\":1,\"bars\":3}]}}],\"where\":\"pages[3].widgets[0].bars\"},{\"name\":\"spectr"
+    "um 1x1 on an 8x8 grid is too small\",\"patch\":[{\"op\":\"set\",\"path\":\"/pages/-\",\"value\":{\"i"
+    "d\":\"sp\",\"widgets\":[{\"type\":\"spectrum\",\"x\":0,\"y\":0,\"w\":1,\"h\":1}],\"grid\":{\"cols\":"
+    "8,\"rows\":8}}}],\"where\":\"pages[3].widgets[0]\"}]}";

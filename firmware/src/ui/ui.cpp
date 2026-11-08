@@ -8,6 +8,7 @@
 #include "link/link.h"
 #include "lvgl_port.h"
 #include "media/media.h"
+#include "audio/spectrum.h"
 #include "sysstats/sysstats.h"
 #include "weather/weather.h"
 #include "model.h"
@@ -118,6 +119,7 @@ uint32_t pollLink(uint32_t nowMs) {
   changed |= pollMedia(m, nowMs);
   if (sysstats::take(m.stats)) changed |= kChangedStats;
   if (weather::take(m.weather, m.units)) changed |= kChangedWeather;
+  if (spectrum::update(m.spectrum, nowMs)) changed |= kChangedSpectrum;
   m.unixTime = link::unixNow();
   m.tzOffsetMin = link::tzOffsetMin();
   const int minutes = link::localMinutes();

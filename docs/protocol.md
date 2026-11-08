@@ -61,7 +61,7 @@ The host opens the port with DTR and RTS on (TinyUSB only sends while DTR is set
 | 0x45 | ASSET_CHUNK | binary `[offset u32][data]` | |
 | 0x46 | ASSET_END | empty | Device verifies, stores, replies ASSET_ACK |
 | 0x47 | ASSET_LIST | empty | Device replies ASSET_LIST_DATA |
-| 0x50 | SPECTRUM | binary `[n u8][bins u8 * n]` | Stretch goal, ~30 Hz |
+| 0x50 | SPECTRUM | binary `[n u8][bins u8 * n]` | Audio spectrum for `spectrum` widgets, about 30 Hz while there is sound. See below |
 | 0x60 | CMD | JSON `{cmd, args}` | Debug/maintenance: `set_spi_hz`, `reboot`, `factory_reset`, `bench_display`, `identify` |
 
 ### NOW_PLAYING body
@@ -146,6 +146,15 @@ Added within v1 (unreleased; older firmware ignores the unknown types). The host
 - ASSET_LIST: the device answers ASSET_LIST_DATA with every stored file and the free flash space; the host sends only what is missing.
 - After applying a config the device deletes asset files no `image` widget of that config uses.
 - Limits enforced by the host: at most 2 MB of decoded frames (w x h x 2 bytes each) per widget and 4 MB over the whole config; animations are slowed to at least 50 ms per frame and frames are dropped evenly to fit.
+
+### SPECTRUM body
+
+Added within v1 (unreleased; older firmware counts it as an unknown type). Binary: `n` (1 to 64, currently 32), then `n` levels.
+
+- Bins are log-spaced from 50 Hz to 16 kHz over what Windows plays on the default output device (WASAPI loopback, all channels mixed). Each level is 0 (-70 dBFS or quieter) to 255 (0 dBFS), linear in dB, with a +3 dB per octave tilt around 1 kHz so typical music fills the bars evenly.
+- The host smooths: a level rises at once and falls by at most 255 per 0.6 s.
+- Sent only while the layout has a `spectrum` widget, about every 33 ms. After 1 s of silence the host sends one all-zero frame and pauses until sound returns.
+- The device shows the last frame; when none arrives for 300 ms (host closed, paused) it lets the bars fall to zero by itself.
 
 ## Device -> Host
 

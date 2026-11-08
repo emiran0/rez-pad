@@ -86,6 +86,13 @@ struct Weather {
   uint8_t dayCount = 0;
 };
 
+// Audio spectrum from the host (SPECTRUM): levels 0 to 255, log-spaced 50 Hz to 16 kHz.
+constexpr int kSpectrumBins = 32;
+struct Spectrum {
+  uint8_t n = 0;  // bins in use (0 = nothing received yet)
+  uint8_t bins[kSpectrumBins] = {};
+};
+
 // Live room climate from the device's own sensor (always real, also in demo mode).
 struct Room {
   bool tempValid = false;
@@ -104,6 +111,7 @@ struct Model {
   Weather weather;
   Units units;
   Room room;
+  Spectrum spectrum;
   bool hostConnected = false;
   int clockMinutes = -1;  // minutes since midnight, -1 = unknown
   int64_t unixTime = 0;   // unix s from the synced clock, 0 = unknown (updated every loop)
@@ -121,6 +129,7 @@ enum Changed : uint32_t {
   kChangedClock = 1u << 6,
   kChangedHost = 1u << 7,
   kChangedTick = 1u << 8,  // periodic tick (progress bar interpolation, ages)
+  kChangedSpectrum = 1u << 9,  // up to 30 times a second; only the shown page redraws it
   kChangedAll = 0xFFFFFFFFu,
 };
 

@@ -29,5 +29,12 @@ void invalidateAll();
 
 void showPerfMonitor(bool on);
 
+// Totals since boot: rendered frames, flushed strips and pixels, time spent pushing them (SPI).
+struct RenderStats {
+  uint32_t frames, flushes, flushMs;
+  uint64_t pixels;
+};
+RenderStats renderStats();
+
 }  // namespace lvgl_port
 }  // namespace rp

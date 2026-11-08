@@ -41,6 +41,12 @@ Quick check on a new PC: run the host, then save `http://127.0.0.1:47800/api/sou
 - **Windows may keep the old USB descriptor** after the keyboard was added; if the shortcuts do nothing, unplug and replug the native port once.
 - **The editor cannot record F13 to F24, Win shortcuts Windows grabs (Win+L, Win+D), or Print Screen** in every browser; F13 to F24 have buttons under the recorder.
 
+## Spectrum
+
+- **Only the default output device** is captured (what Windows plays there, all apps mixed). Audio sent to another device, or played in exclusive mode, does not move the bars.
+- **The editor preview moves only for saved layouts**: the host captures while the saved layout has a `spectrum` widget and the device is connected; an unsaved widget shows a faded placeholder shape.
+- **LVGL keeps at most 32 dirty areas per frame** and redraws the whole screen when they run out (`LV_INV_BUF_SIZE`, not configurable). Widgets that move many parts at once must draw them from one object and invalidate a few merged areas, as the spectrum does (it was 5 FPS with one object per bar).
+
 ## Packaging
 
 - **The host exe is about 175 MB** (self-contained .NET 10 with WinForms, ASP.NET Core and WinRT projections, not trimmable; 64 MB zipped). Private memory is unchanged (about 63 MB). A framework-dependent build would be about 10 MB but needs the .NET 10 Desktop and ASP.NET Core runtimes installed first.
@@ -50,5 +56,5 @@ Quick check on a new PC: run the host, then save `http://127.0.0.1:47800/api/sou
 ## USB and development setup
 
 - **30 s COM close / COM4 wedge** behind the Genesys USB 2.0 hub (`05E3:0610`). Plug the native port straight into the PC. Details in `measurements.md`.
-- **Art transfer about 80 KB/s** through Arduino's `USBCDC` byte queue. Enough for art and config; replace with direct TinyUSB reads if bigger transfers ever matter.
+- **Art transfer about 165 KB/s** (10.7 KB in about 65 ms since the host's writes stopped waiting for its reads, 2026-11-08; it was 80 KB/s). Asset transfers were not re-measured. Enough for art and config; direct TinyUSB reads on the device if bigger transfers ever matter.
 - **Host log from a Claude desktop session:** the app is MSIX-packaged, so its child processes see a private copy of `%LOCALAPPDATA%`. Read the elevated host's log through `GET /api/log`.
