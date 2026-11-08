@@ -11,6 +11,8 @@ internal sealed class TrayContext : ApplicationContext
     private const string PawnIoUrl = "https://pawnio.eu/";
 
     private readonly NotifyIcon _icon;
+    private readonly Icon _iconOn = LoadIcon("tray-on.ico");
+    private readonly Icon _iconOff = LoadIcon("tray-off.ico");
     private readonly ToolStripMenuItem _statusItem;
     private readonly ToolStripMenuItem _sensorItem;
     private readonly ToolStripMenuItem _pawnIoItem;
@@ -46,7 +48,7 @@ internal sealed class TrayContext : ApplicationContext
 
         _icon = new NotifyIcon
         {
-            Icon = SystemIcons.Application, // placeholder until the app icon exists (Phase 11)
+            Icon = _iconOff,
             Text = "rez-pad",
             ContextMenuStrip = menu,
             Visible = true,
@@ -111,8 +113,15 @@ internal sealed class TrayContext : ApplicationContext
             _ => "Looking for rez-pad...",
         };
         _statusItem.Text = text;
+        _icon.Icon = s.State == DeviceLinkState.Connected ? _iconOn : _iconOff;
         var tip = $"rez-pad: {text}";
         _icon.Text = tip.Length > 127 ? tip[..127] : tip;
+    }
+
+    private static Icon LoadIcon(string name)
+    {
+        using var stream = typeof(TrayContext).Assembly.GetManifestResourceStream($"RezPad.Host.{name}");
+        return stream is null ? SystemIcons.Application : new Icon(stream, SystemInformation.SmallIconSize);
     }
 
     private static void Open(string target)
@@ -131,6 +140,8 @@ internal sealed class TrayContext : ApplicationContext
     {
         _icon.Visible = false;
         _icon.Dispose();
+        _iconOn.Dispose();
+        _iconOff.Dispose();
         base.ExitThreadCore();
     }
 }

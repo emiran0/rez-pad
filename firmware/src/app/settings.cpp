@@ -2,6 +2,7 @@
 
 #include "actions.h"
 #include "display/display.h"
+#include "display/screen.h"
 
 namespace rp {
 namespace settings {
@@ -37,7 +38,7 @@ sensors::Config sensorConfig(const cfg::Config& c) {
 void apply(const cfg::Config& c) {
   input::setConfig(inputConfig(c));
   sensors::setConfig(sensorConfig(c));
-  actions::setBrightness(c.brightness);
+  screen::apply(c);
   if (display::spiHz() != c.spiHz) display::setSpiHz(c.spiHz);
 }
 

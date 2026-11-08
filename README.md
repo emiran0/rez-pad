@@ -38,6 +38,18 @@ The tray app finds the board on its native USB port by itself (VID 303A, PID 400
 - Plug the board's native USB port straight into the PC, not through a USB 2.0 hub shared with the UART cable (see `docs/measurements.md`).
 - Log file: `%LOCALAPPDATA%\rez-pad\host.log`.
 
+## Release package
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\package.ps1     # -SkipFirmware to skip the PlatformIO build
+```
+
+Writes `publish\rez-pad-<version>-win-x64.zip`: a self-contained single-file `rez-pad.exe` (web editor embedded, no .NET install needed), `Install.cmd` / `Uninstall.cmd` (`setup/install.ps1`: per-user install to `%LOCALAPPDATA%\Programs\rez-pad`, Start menu and Settings > Apps entries, optional "Start with Windows" task, PawnIO hint) and the firmware image (`firmware.factory.bin`, flash at 0x0). The version comes from `host/Directory.Build.props`. App and tray icons: `python tools/gen_app_icon.py`.
+
+## Screen power
+
+Brightness, night window and "screen off while the PC sleeps" are under Settings > Screen. The device dims at night by the PC's clock, turns the backlight off and stops drawing when the PC sleeps (USB suspend) or after `display.toggle`, and the first knob or button input only wakes the screen (30 s while the PC sleeps or with night brightness 0). The brightness knob changes the day or night level until the next save. Console: `screen`.
+
 Firmware debug console (USB-UART port, 115200 baud): `help`, `link`, `media`, `stats`, `config`, `keys ctrl+shift+m` (send a shortcut from the device), `macro <id>`, `usb`, `sensor`, `enc`, `perf 1`, `view debug`, `bench`, ...
 `tools/devconsole.py` sends commands from a script.
 

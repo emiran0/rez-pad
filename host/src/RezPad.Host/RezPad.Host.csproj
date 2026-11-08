@@ -9,6 +9,13 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <!-- D3DKMT statistics buffers (Stats/GpuEngines.cs). -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationIcon Condition="Exists('rez-pad.ico')">rez-pad.ico</ApplicationIcon>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- tools/package.ps1: one self-contained exe, no .NET install needed on the target PC. Native
+         libraries go inside it too; not trimmed (WinForms and LibreHardwareMonitor use reflection). -->
+    <RuntimeIdentifier Condition="'$(PublishSingleFile)' == 'true'">win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
   <ItemGroup>
     <!-- Kestrel for the localhost config editor and API. -->
@@ -18,12 +25,15 @@
     <ProjectReference Include="..\RezPad.Protocol\RezPad.Protocol.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Tray icons from tools/gen_app_icon.py (connected / not connected). -->
+    <EmbeddedResource Include="tray-on.ico;tray-off.ico" LogicalName="RezPad.Host.%(Filename)%(Extension)" />
     <!-- Built-in default config, the same file the firmware's default is generated from. -->
     <EmbeddedResource Include="..\..\..\docs\default-config.json" LogicalName="RezPad.Host.default-config.json" />
   </ItemGroup>
   <ItemGroup>
-    <!-- The web editor lives in the repo's web/ folder and is copied next to the exe. -->
-    <Content Include="..\..\..\web\**\*" LinkBase="web" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The web editor lives in the repo's web/ folder and is embedded in the exe (single-file publish),
+         as RezPad.Host.web.<path with dots> for EmbeddedFileProvider. -->
+    <EmbeddedResource Include="..\..\..\web\**\*" LogicalName="RezPad.Host.web.$([System.String]::Copy('%(RecursiveDir)').Replace('\','.'))%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <!-- Latest stable on nuget.org, verified 2026-11-07 (0.9.7 still prerelease). MPL-2.0. Uses the

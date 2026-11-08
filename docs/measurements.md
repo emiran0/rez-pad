@@ -33,6 +33,7 @@ Chosen default: **40 MHz** (2026-11-07, confirmed 2026-11-08). Full frame 92.7 m
 | Host recovers after device unplug/replug | < 3 s | | |
 | Host average CPU | < 1% | 0.10 % of 12 cores (12 ms CPU per second) with 1 Hz system stats (direct NVML + D3DKMT) and media; 0.29 % with LibreHardwareMonitor for the GPU; 0.07 % before Phase 7 | 2026-11-07 |
 | Host memory | < 150 MB | 147 MB working set, 61 MB private (debug build, Phase 7). The working set is mostly mapped images shared with other processes: Microsoft.Windows.SDK.NET (WinRT projection, 24 MB), nvml.dll (22 MB), CoreLib, WinForms. Was 90 MB before LibreHardwareMonitor; most of the jump is NVIDIA driver DLLs mapped into the process. Recheck with a Release build in Phase 11 | 2026-11-07 |
+| Host memory, release single-file | < 150 MB | 158 MB working set, 63 MB private, with the device connected. The working set includes pages of the 175 MB self-contained exe mapped from disk (shareable, not counted as private) | 2026-11-08 |
 
 ## Boot log
 

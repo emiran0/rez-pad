@@ -18,6 +18,7 @@
 #include "debug/console.h"
 #include "debug/wiring_check.h"
 #include "display/backlight.h"
+#include "display/screen.h"
 #include "display/display.h"
 #include "hid/media_keys.h"
 #include "input/input.h"
@@ -125,6 +126,14 @@ void cmdBacklight(int argc, char** argv, Print& out) {
   if (argc == 2 && parseUint(argv[1], 0, 100, v)) rp::backlight::set(static_cast<uint8_t>(v));
   else if (argc != 1) out.println("usage: bl <0-100>");
   out.printf("backlight %u%%\n", rp::backlight::get());
+}
+
+void cmdScreen(int, char**, Print& out) {
+  const rp::screen::Policy& p = rp::screen::policy();
+  const int min = rp::link::localMinutes();
+  out.printf("screen target %u%%, backlight %u%%, %s%s%s%s\n", rp::screen::target(), rp::backlight::get(),
+             min < 0 ? "clock not synced" : (p.night(min) ? "night" : "day"), p.usbSuspended() ? ", PC asleep" : "",
+             p.manualOff() ? ", turned off" : "", rp::lvgl_port::sleeping() ? ", rendering stopped" : "");
 }
 
 void cmdSpi(int argc, char** argv, Print& out) {
@@ -418,6 +427,7 @@ const rp::console::Command kCommands[] = {
     {"i2c", "", cmdI2c},
     {"pins", "", cmdPins},
     {"bl", "<0-100>", cmdBacklight},
+    {"screen", "", cmdScreen},
     {"spi", "<MHz>", cmdSpi},
     {"pattern", "", cmdPattern},
     {"fill", "<color>", cmdFill},
@@ -477,7 +487,7 @@ void setup() {
 
   if (!rp::ui::begin()) Serial.println("UI (LVGL) init FAILED");
   rp::ui::loop(millis());  // first frame before the backlight comes on
-  rp::actions::setBrightness(cfg.brightness);
+  rp::screen::apply(cfg);  // the backlight fades in from the first tick
 
   rp::console::begin(kCommands, sizeof(kCommands) / sizeof(kCommands[0]));
   Serial.println("ready, type help");
@@ -505,6 +515,7 @@ void loop() {
       rp::debug_view::update(rp::input::snapshot(), rp::sensors::latest());
     }
   }
+  rp::screen::tick(now);
   rp::ui::loop(now);
   delay(2);
 }

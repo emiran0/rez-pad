@@ -14,7 +14,15 @@ uint32_t handle();
 
 // While paused (debug view, test pattern), LVGL does not render or flush.
 void setPaused(bool paused);
+// True while paused or sleeping.
 bool paused();
+
+// Backlight off (display/screen.cpp): no rendering, independent of setPaused().
+void setSleeping(bool sleeping);
+bool sleeping();
+
+// Renders everything that is invalid right now (instead of on LVGL's next refresh timer).
+void refreshNow();
 
 // Forces a full redraw on the next handle().
 void invalidateAll();

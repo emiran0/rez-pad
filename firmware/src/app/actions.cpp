@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "config/store.h"
-#include "display/backlight.h"
+#include "display/screen.h"
 #include "hid/media_keys.h"
 #include "link/link.h"
 #include "ui/pages.h"
@@ -14,9 +14,6 @@ namespace rp {
 namespace actions {
 
 namespace {
-
-bool gScreenOff = false;
-uint8_t gBrightness = 80;
 
 Binding actionBinding(Action a) {
   Binding b;
@@ -71,20 +68,9 @@ void runBinding(const Binding& b, int value) {
 
 }  // namespace
 
-void setBrightness(uint8_t percent) {
-  gBrightness = percent;
-  if (!gScreenOff) backlight::set(gBrightness);
-}
-
-uint8_t brightness() { return gBrightness; }
-
 void handle(const input::Event& e) {
-  // While the screen is off, the first input only wakes it.
-  if (gScreenOff) {
-    gScreenOff = false;
-    backlight::set(gBrightness);
-    return;
-  }
+  // While the screen is dark, the first input only wakes it.
+  if (screen::onInput()) return;
   const Binding b = resolve(e);
   if (b.none()) return;
   const bool rotate = e.kind == input::Kind::kRotate || e.kind == input::Kind::kRotatePressed;
@@ -114,15 +100,11 @@ void run(Action a, int value) {
       ui::mediaAction(a, value);
       break;
     case Action::kDisplayToggle:
-      gScreenOff = true;
-      backlight::set(0);
+      screen::turnOff();
       break;
-    case Action::kDisplayBrightness: {
-      int b = static_cast<int>(gBrightness) + value * 5;
-      gBrightness = static_cast<uint8_t>(b < 5 ? 5 : (b > 100 ? 100 : b));
-      backlight::set(gBrightness);
+    case Action::kDisplayBrightness:
+      screen::adjust(value);
       break;
-    }
   }
 }
 

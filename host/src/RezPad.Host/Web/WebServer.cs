@@ -43,19 +43,16 @@ internal sealed class WebServer(int port, WebServices services)
 
         var app = builder.Build();
 
-        var webRoot = Path.Combine(AppContext.BaseDirectory, "web");
-        if (Directory.Exists(webRoot))
+        // The editor is embedded in the exe (RezPad.Host.csproj), so a single-file publish carries it.
+        var files = new EmbeddedFileProvider(typeof(WebServer).Assembly, "RezPad.Host.web");
+        app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
+        // no-cache: the browser revalidates (cheap on localhost), so an updated host never runs
+        // with editor scripts left over from the previous version.
+        app.UseStaticFiles(new StaticFileOptions
         {
-            var files = new PhysicalFileProvider(webRoot);
-            app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
-            // no-cache: the browser revalidates (cheap on localhost), so an updated host never runs
-            // with editor scripts left over from the previous version.
-            app.UseStaticFiles(new StaticFileOptions
-            {
-                FileProvider = files,
-                OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache",
-            });
-        }
+            FileProvider = files,
+            OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache",
+        });
 
         app.MapGet("/api/status", () =>
         {

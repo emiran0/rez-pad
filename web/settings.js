@@ -104,7 +104,7 @@ function screen() {
       field("SPI clock", choice("display.spi_hz", [[20000000, "20 MHz"], [26666667, "26.7 MHz"], [40000000, "40 MHz (tested)"], [80000000, "80 MHz (not tested)"]], 40000000),
         "The ESP32-S3 divides 80 MHz, so these are the clocks it can run")),
     h("h3", { text: "Night", style: { fontSize: "13px", margin: "8px 0 4px" } }),
-    h("p", { style: { margin: "0 0 10px", color: "var(--muted)", fontSize: "12.5px" }, text: "Dimming at night and turning off with the PC arrive in Phase 11; these settings are kept until then." }),
+    h("p", { style: { margin: "0 0 10px", color: "var(--muted)", fontSize: "12.5px" }, text: "Uses the PC's clock (the device needs the host once after a restart to know the time). Night brightness 0 turns the screen off; a knob or button wakes it for 30 s. The brightness knob changes the day or night level until the settings are saved again." }),
     check("Dim at night", "display.night.enabled"),
     h("div", { class: "form-grid" },
       field("From", time("display.night.from", "23:00")),

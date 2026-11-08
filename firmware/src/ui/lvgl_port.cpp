@@ -14,6 +14,7 @@ namespace {
 constexpr int kBufLines = 40;
 lv_display_t* gDisp = nullptr;
 bool gPaused = false;
+bool gSleeping = false;
 
 uint32_t tick() { return millis(); }
 
@@ -62,7 +63,7 @@ bool begin() {
 }
 
 uint32_t handle() {
-  if (gPaused) return 20;
+  if (gPaused || gSleeping) return 20;
   return lv_timer_handler();
 }
 
@@ -72,7 +73,19 @@ void setPaused(bool paused) {
   if (!paused) invalidateAll();
 }
 
-bool paused() { return gPaused; }
+bool paused() { return gPaused || gSleeping; }
+
+void setSleeping(bool sleeping) {
+  if (gSleeping == sleeping) return;
+  gSleeping = sleeping;
+  if (!sleeping) invalidateAll();
+}
+
+bool sleeping() { return gSleeping; }
+
+void refreshNow() {
+  if (gDisp && !paused()) lv_refr_now(gDisp);
+}
 
 void invalidateAll() {
   if (gDisp) lv_obj_invalidate(lv_display_get_screen_active(gDisp));

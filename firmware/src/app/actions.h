@@ -12,10 +12,6 @@
 namespace rp {
 namespace actions {
 
-// Brightness from the config (display.brightness); the knob changes it until the next config.
-void setBrightness(uint8_t percent);
-uint8_t brightness();
-
 // Resolves an input event through the current page's map and runs the action.
 void handle(const input::Event& e);
 

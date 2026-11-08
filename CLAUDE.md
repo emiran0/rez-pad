@@ -264,6 +264,10 @@ rez-pad/
   tools/
     gen_protocol_vectors.py   reference framing implementation, generates shared test vectors
     gen_config_headers.py     C headers from docs/default-config.json and config-test-vectors.json
+    gen_app_icon.py           app, tray and favicon icons
+    package.ps1               release zip (single-file host, setup scripts, firmware image)
+  setup/
+    install.ps1, Install.cmd, Uninstall.cmd, README.txt   per-user installer shipped in the zip
   host/
     RezPad.slnx
     src/RezPad.Host/
@@ -440,3 +444,6 @@ Tracked in the "Open hardware checks" table in `docs/hardware.md` (native USB po
 - 2026-11-08: Editor redesign: Layout / Settings / Device views; page rail with live thumbnails; the screen is the editor (drag to move or swap, corner handle to resize, click an empty cell to add); inspector with a widget gallery (live previews, click or drag) and the selected widget's settings; undo/redo history; validation banner with "Show me".
 - 2026-11-08: Macro buttons: up to 4 tact switches (GPIO 17, 18, 8, 13; `inputs.buttons` 0 to 4) with click, double and long. A press gesture (also knob clicks) takes an action name, `{"keys": "..."}` (sent by the device through a new USB HID keyboard next to the consumer-control media keys, works without the host) or `{"macro": "<id>"}` (run by the host: SendInput keys, Unicode text, waits, open). `macros` list in the config (host-only steps; the device keeps the ids). Same key-name table on both sides (`actions::parseKeys`, `KeyCombo`), shared test vectors. No hold-to-press mode (decided with the user). ACTION gains `id` (additive in v1). Console: `keys <shortcut>`, `macro <id>`.
 - 2026-11-08: Editor files are served with `Cache-Control: no-cache`, so a host update never runs with the previous version's scripts.
+- 2026-11-08: Phase 11 screen power: pure policy in `firmware/lib/screen_logic` (native tests), applied by `src/display/screen.cpp` with 300 ms fades. Night window from the synced clock (unknown time = day). The brightness knob changes the current period's level (day or night) until the next config. Dark when the PC sleeps (USB suspend, if `sleep_on_pc_sleep`), after `display.toggle`, or at night brightness 0; the first input only wakes it, and a screen woken while it should be dark stays on 30 s after the last input (night level 0 wakes at 10 %). While the backlight is off, LVGL does not render (`lvgl_port::setSleeping`); on wake one full frame is drawn before the fade-in.
+- 2026-11-08: Packaging: the web editor is embedded in the exe (`EmbeddedFileProvider`, resource names `RezPad.Host.web.<path with dots>`) instead of copied next to it; the host publishes as one self-contained win-x64 file (`tools/package.ps1`), symbols embedded. Installer is a per-user PowerShell script (`setup/install.ps1`, no admin except the optional startup task through the existing `--register-startup` helper); uninstall leaves a startup task that points to another copy (e.g. a dev build). An unelevated `rez-pad.exe --exit` closes an elevated instance (checked). ESP Web Tools page not built (optional); the zip carries the factory image and esptool instructions.
+- 2026-11-08: App icon is original artwork from `tools/gen_app_icon.py`; the tray shows a grey-screen variant while the device is not connected.

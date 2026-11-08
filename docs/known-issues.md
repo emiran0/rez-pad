@@ -29,7 +29,8 @@ Quick check on a new PC: run the host, then save `http://127.0.0.1:47800/api/sou
 - **Animated images cost SPI time**: each frame redraws the image area over the 40 MHz SPI link (about 25 ms for a 234x144 frame). Several large GIFs on one page at 20 fps would keep the link busy; frames are limited to one per 50 ms or slower.
 - **Asset transfer about 57 KB/s** (Arduino `USBCDC` byte queue, see below): a 1 MB animation takes about 20 s to reach the device the first time. Faster transfers need direct TinyUSB reads.
 - **No light theme**: the four presets are dark; the weather icons are drawn for dark cards.
-- **Night dimming and "screen off while the PC sleeps"** are in the config and the editor but not applied by the firmware until Phase 11.
+- **Night dimming needs the PC's clock**: after a device restart without the host, the time is unknown and the day brightness applies until the host sends TIME_SYNC.
+- **Input while the PC sleeps does not wake the PC**: it only wakes the screen for 30 s (no USB remote wakeup). Knob actions in that time still run (media keys go nowhere while the PC is suspended).
 - **Unexplained restart on 2026-11-08 around 01:21**: seen afterwards from the sensor sample count; the host log showed no link drop (the host was being restarted at that time) and the reset reason was not recorded yet. `info` now prints the reset reason; check it if the device restarts again. The AHT20 has had a loose contact before.
 
 ## Buttons and macros
@@ -39,6 +40,12 @@ Quick check on a new PC: run the host, then save `http://127.0.0.1:47800/api/sou
 - **"Open" steps lose their arguments while the host runs elevated** (started through Explorer so programs do not inherit administrator rights). A shortcut file (`.lnk`) with arguments works.
 - **Windows may keep the old USB descriptor** after the keyboard was added; if the shortcuts do nothing, unplug and replug the native port once.
 - **The editor cannot record F13 to F24, Win shortcuts Windows grabs (Win+L, Win+D), or Print Screen** in every browser; F13 to F24 have buttons under the recorder.
+
+## Packaging
+
+- **The host exe is about 175 MB** (self-contained .NET 10 with WinForms, ASP.NET Core and WinRT projections, not trimmable; 64 MB zipped). Private memory is unchanged (about 63 MB). A framework-dependent build would be about 10 MB but needs the .NET 10 Desktop and ASP.NET Core runtimes installed first.
+- **The installer is a PowerShell script** (`setup/install.ps1`), not an MSI/MSIX: not signed, so SmartScreen may warn about `rez-pad.exe` the first time.
+- **Firmware updates are manual** (esptool or an ESP Web Tools flasher, `setup/README.txt`); there is no update check in the host.
 
 ## USB and development setup
 
