@@ -2,7 +2,7 @@
 #   rez-pad.exe            self-contained single-file host (no .NET install needed)
 #   install.ps1, Install.cmd, Uninstall.cmd
 #   firmware\rez-pad-firmware-<version>.bin   full flash image (write at 0x0)
-#   README.txt
+#   README.txt, LICENSE.txt, THIRD-PARTY-NOTICES.txt
 #
 #   powershell -ExecutionPolicy Bypass -File tools\package.ps1 [-SkipFirmware]
 #
@@ -47,6 +47,8 @@ Copy-Item (Join-Path $root "setup\install.ps1") $stage
 Copy-Item (Join-Path $root "setup\Install.cmd") $stage
 Copy-Item (Join-Path $root "setup\Uninstall.cmd") $stage
 Copy-Item (Join-Path $root "setup\README.txt") $stage
+Copy-Item (Join-Path $root "LICENSE") (Join-Path $stage "LICENSE.txt")
+Copy-Item (Join-Path $root "THIRD-PARTY-NOTICES.md") (Join-Path $stage "THIRD-PARTY-NOTICES.txt")
 
 $zip = Join-Path $out "rez-pad-$version-win-x64.zip"
 if (Test-Path $zip) {

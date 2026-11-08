@@ -145,7 +145,7 @@ function Install-App {
     $uninstallCmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$installDir\install.ps1`" -Uninstall"
     New-Item -Force $uninstallKey | Out-Null
     $values = @{
-        DisplayName = "rez-pad"; DisplayVersion = $version; Publisher = "rez-pad"
+        DisplayName = "rez-pad"; DisplayVersion = $version; Publisher = "rez-lab"
         InstallLocation = $installDir; DisplayIcon = $exe; UninstallString = $uninstallCmd
     }
     foreach ($k in $values.Keys) { Set-ItemProperty -Path $uninstallKey -Name $k -Value $values[$k] }

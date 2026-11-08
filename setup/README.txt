@@ -12,6 +12,9 @@ What is in this zip
                      The device firmware, as one full flash image. Only needed for a new board
                      or a firmware update.
   README.txt         This guide.
+  LICENSE.txt, THIRD-PARTY-NOTICES.txt
+                     rez-pad is open source (MIT); these list its license and the bundled
+                     components' licenses.
 
 
 The two USB-C ports on the board

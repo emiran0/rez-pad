@@ -5,6 +5,8 @@
     <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>rez-pad</AssemblyName>
+    <!-- FileDescription: the name Task Manager lists the process under. -->
+    <AssemblyTitle>rez-pad</AssemblyTitle>
     <RootNamespace>RezPad.Host</RootNamespace>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <!-- D3DKMT statistics buffers (Stats/GpuEngines.cs). -->

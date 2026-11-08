@@ -5,7 +5,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Version>0.1.0</Version>
-    <Authors>rez-pad</Authors>
+    <!-- Shown in the exe's file details and Task Manager (no signature needed). -->
+    <Authors>rez-lab</Authors>
+    <Company>rez-lab</Company>
+    <Product>rez-pad</Product>
+    <Copyright>Copyright (c) 2026 rez-lab</Copyright>
     <!-- Symbols inside the dlls, so a single-file publish is one file. -->
     <DebugType Condition="'$(Configuration)' == 'Release'">embedded</DebugType>
   </PropertyGroup>
