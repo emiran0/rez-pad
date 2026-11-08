@@ -159,6 +159,7 @@ function statusBar() {
   });
   return panel("Status bar", "Up to 3 small items on the right of the status bar, on every page. The page dots show at most 5 pages at a time and slide with the current page.",
     ...rows,
+    rows.length ? null : h("p", { class: "empty-note", text: "No items yet: the bar shows the clock, the page name, the page dots and the USB icon." }),
     items.length < 3 ? h("button", { type: "button", class: "ghost", onclick: () => update((list) => list.push({ type: "date" })) }, icon("plus", 16), "Add an item") : null);
 }
 
@@ -417,11 +418,78 @@ function sensorMedia() {
   ];
 }
 
+// Categories in the left column; only the chosen one is shown.
+const CATEGORIES = [
+  { group: "Look", id: "appearance", title: "Appearance", icon: "palette", panels: () => [appearance()] },
+  { group: "Look", id: "screen", title: "Screen", icon: "screen", panels: () => [screen()] },
+  { group: "Look", id: "statusbar", title: "Status bar", icon: "statusbar", panels: () => [statusBar()] },
+  { group: "Controls", id: "knobs", title: "Knobs and buttons", icon: "knob", panels: () => [knobs()] },
+  { group: "Controls", id: "macros", title: "Macros", icon: "bolt", panels: () => [macros()] },
+  { group: "Data", id: "weather", title: "Weather and units", icon: "weather_now", panels: () => [weather()] },
+  { group: "Data", id: "room", title: "Room sensor", icon: "room_climate", panels: () => [sensorMedia()[0]] },
+  { group: "Data", id: "data", title: "Media and system data", icon: "chart", panels: () => [sensorMedia()[1]] },
+  { group: "Data", id: "integrations", title: "Integrations", icon: "plug", panels: () => [integrations()] },
+];
+
+function currentCategory() {
+  let id = null;
+  try {
+    id = localStorage.getItem("rezpad.settings");
+  } catch {
+    // storage blocked: start at the first category
+  }
+  return CATEGORIES.find((c) => c.id === id) || CATEGORIES[0];
+}
+
+function chooseCategory(id) {
+  try {
+    localStorage.setItem("rezpad.settings", id);
+  } catch {
+    // remembered for this view only
+  }
+  renderSettings();
+  $("view-settings").querySelector(".settings-content")?.scrollTo(0, 0);
+}
+
 export function renderSettings() {
   if (!state.cfg) return;
-  const scroll = window.scrollY;
-  $("view-settings").replaceChildren(appearance(), screen(), statusBar(), knobs(), macros(), weather(), integrations(), ...sensorMedia());
-  window.scrollTo(0, scroll);
+  const cat = currentCategory();
+  const content = $("view-settings").querySelector(".settings-content");
+  const scroll = content ? content.scrollTop : 0;
+
+  const nav = h("nav", { class: "settings-nav", "aria-label": "Settings categories" });
+  let group = "";
+  for (const c of CATEGORIES) {
+    if (c.group !== group) {
+      group = c.group;
+      nav.append(h("div", { class: "nav-group", text: group }));
+    }
+    nav.append(h("button", {
+      type: "button", class: "nav-item" + (c.id === cat.id ? " active" : ""), "aria-current": c.id === cat.id ? "page" : null,
+      onclick: () => chooseCategory(c.id),
+    }, icon(c.icon, 18), h("span", { text: c.title })));
+  }
+
+  // One category: its title and description on top, its cards below. A card with the same title
+  // as the category gives up its heading (and its description moves up).
+  const panels = cat.panels().filter(Boolean);
+  let lead = "";
+  for (const p of panels) {
+    const h2 = p.querySelector(":scope > h2");
+    if (h2 && h2.textContent === cat.title) {
+      const hint = p.querySelector(":scope > .hint");
+      if (hint && !lead) {
+        lead = hint.textContent;
+        hint.remove();
+      }
+      h2.remove();
+    }
+  }
+  const main = h("div", { class: "settings-content" },
+    h("header", { class: "settings-head" }, h("h1", {}, icon(cat.icon, 22), h("span", { text: cat.title })), lead ? h("p", { text: lead }) : null),
+    h("div", { class: "settings-cards" }, ...panels));
+  $("view-settings").replaceChildren(nav, main);
+  main.scrollTop = scroll;
   renderLive();
 }
 

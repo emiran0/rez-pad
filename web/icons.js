@@ -17,6 +17,12 @@ const P = {
   check: "M5 12l5 5 9-10",
   warn: "M12 4l9 16H3zM12 10v4M12 17h.01",
   search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4",
+  // settings categories
+  screen: "M3 5h18v12H3zM8 21h8M12 17v4",
+  statusbar: "M3 4h18v16H3zM3 8h18M6 6h3M15 6h3",
+  bolt: "M13 3L5 14h6l-1 7 8-11h-6z",
+  plug: "M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0zM12 16v5",
+  chart: "M4 20V10M10 20V4M16 20v-7M22 20H2",
   // widget types
   now_playing: "M4 5h7v7H4zM14 6h6M14 10h4M5 17h14M5 20h9",
   album_art: "M4 4h16v16H4zM9 15a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM11 13V7l4 1",
