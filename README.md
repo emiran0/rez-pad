@@ -144,6 +144,10 @@ docs/       specs and measurements
 
 The host has been tested on one PC so far (Ryzen 5 5600X, RTX 3070 Ti, ASUS B450 board, Windows 11). Other CPUs, GPUs and motherboards should work but are untested; see the known issues for what to check.
 
+## Versions
+
+One version for the host, the firmware and the installer, in [`VERSION`](VERSION); see [`docs/versioning.md`](docs/versioning.md) and [`CHANGELOG.md`](CHANGELOG.md).
+
 ## License
 
 MIT, see [`LICENSE`](LICENSE). Third-party components and their licenses are listed in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).

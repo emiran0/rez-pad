@@ -1,0 +1,32 @@
+# Changelog
+
+All notable changes, newest first. Version rules: [docs/versioning.md](docs/versioning.md).
+
+## 0.2.0 (2026-11-09)
+
+Flash the new firmware together with this host (new widgets and messages; the USB protocol is still v1).
+
+### New
+- **Spectrum** widget: bars that move with whatever the PC plays (WASAPI loopback on the host, about 30 frames per second).
+- **Volume mixer** widget: the apps in the Windows volume mixer as rows or vertical faders. Focus it with a button, pick an app with knob 1, set its volume with knob 2; a priority list keeps chosen apps on top (or shows only them). The status bar explains the knobs while it is focused, and the editor maps the focus gesture in one click.
+- **Per-app volume**: knob actions for the playing app's volume and mute; the volume widget can show the playing app.
+- **Status bar items**: up to 3 small items next to the clock (date, room or outdoor temperature, volume, any system value); the page dots show at most 5 pages and slide.
+- **Integrations** (Settings > Integrations), starting with **Beszel**: each machine's CPU, memory, disk, load, network, temperatures, uptime and extra disks as data sources, and a **server card** widget. Credentials stay on the PC, encrypted.
+- Data sources are picked with a **step-by-step browser** (where, category, value) with live values and search.
+- Settings page with **categories** and refreshed controls; Layout page settings (grid, colors, knobs and buttons) inline under the preview; the preview fills large monitors.
+- Up to **32 data sources** (was 16).
+- Console: `perf` (frame rate and SPI load), `mixer`, `input` (inject a knob gesture), `screen`.
+
+### Changed
+- Animated images keep every frame (only thinned to fit the 1 MB file limit); long animations decode frame by frame on the device instead of being cut down to fit memory.
+- Size options include sizes that grow left or up (widgets at the right or bottom edge).
+- Open source under MIT; file details name rez-lab.
+
+### Fixed
+- Every message from the host waited about 31 ms for the serial read (now 0.3 ms): faster album art and config transfers.
+- A spectrum with many bars redrew the whole screen every frame (5 FPS); now about 29 FPS.
+- A 120-frame GIF played at about 1.4 FPS.
+
+## 0.1.0 (2026-11-08)
+
+First installable version (roadmap phases 0 to 11): ESP32-S3 device with a 3.5" display, two knobs, optional macro buttons and a room sensor; Windows tray host with Now Playing (album art, controls, seek, volume), system stats, weather, room climate, macros and key shortcuts; widget grid editor in the browser; night dimming and screen off while the PC sleeps; single-file host with a per-user installer.

@@ -235,6 +235,8 @@ Record real measurements in `docs/measurements.md`.
 ```
 rez-pad/
   CLAUDE.md
+  VERSION            the release version (docs/versioning.md)
+  CHANGELOG.md
   docs/
     hardware.md        pin map, wiring, power, photos
     protocol.md        protocol v1 (moved from this file)
@@ -376,6 +378,7 @@ Dropped: SD card on SPI3 (decided with the user 2026-11-08; the 16 MB flash is e
 8. Write unit tests for protocol encoding/decoding and config validation on both sides.
 9. Windows is the only supported host OS for now. Keep OS-specific code isolated so other hosts could be added later.
 10. Keep commits small and scoped to one phase or feature. End every phase with a short summary and a hardware checklist for the user.
+11. **Versions follow docs/versioning.md**: one version in the `VERSION` file for host, firmware and installer (never written anywhere else); MINOR for a big update (a finished phase or notable feature set), PATCH for fixes only, MAJOR after 1.0 for breaking changes. Bump only when making a release: `VERSION`, a `CHANGELOG.md` entry, a `vX.Y.Z` tag, then `tools/package.ps1`.
 
 ---
 
@@ -469,4 +472,5 @@ Tracked in the "Open hardware checks" table in `docs/hardware.md` (native USB po
 - 2026-11-09: `server` widget (min 110 x 60): one Beszel machine by `system` slug; uses the 8 sources in `cfg::kServerMetrics` / `ConfigCatalog.ServerMetrics` (online, cpu_load, mem_used_pct, disk_used_pct, load1, temp, net_rx_kbps, net_tx_kbps), which count toward the limit and are sent by the host like widget sources.
 - 2026-11-09: Data sources are picked with a step-by-step browser (`web/sources.js`): place (This PC, room sensor, each Beszel machine with its online dot; skipped when there is only one), category (fixed order: CPU, GPU, Memory, Network, Disks, Fans / Usage, Disks, Load, Network, Temperature, Status), then value tiles with live values; it opens at the current value's category, the path leads back up, and search lists matches from every place with their path. Replaces the single long list (and the plain dropdown of status bar items).
 - 2026-11-09: Settings view redesigned: category column (Look / Controls / Data, `CATEGORIES` in `web/settings.js`, last choice in localStorage) and one category per screen with its own header; a card titled like its category gives its heading to the header. Shared control styles: switches for checkboxes, own dropdown chevron, 36 px fields with a focus ring, outlined secondary buttons next to primary ones; fields pack to the top so side-by-side fields line up.
+- 2026-11-09: Versioning (docs/versioning.md): SemVer, one version for the whole release in `VERSION` (read by `host/Directory.Build.props`, `firmware/scripts/version.py` which generates the git-ignored `src/version_info.cpp` with version + commit + `.dirty` and the USB bcdDevice, and `tools/package.ps1`, which warns on an untagged or dirty build). 0.x until the first public release. 0.1.0 = Phase 11 (tag on c5420a1), 0.2.0 = Phase 12 plus Beszel and the editor redesigns. `CHANGELOG.md` per release.
 - 2026-11-08: App icon is original artwork from `tools/gen_app_icon.py`; the tray shows a grey-screen variant while the device is not connected.

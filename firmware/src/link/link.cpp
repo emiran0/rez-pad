@@ -1,4 +1,5 @@
 #include "link.h"
+#include "version_info.h"
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -24,9 +25,6 @@
 #include "weather/weather.h"
 #include "usb_device.h"
 
-#ifndef FW_VERSION
-#define FW_VERSION "dev"
-#endif
 
 namespace rp {
 namespace link {
@@ -109,7 +107,7 @@ void onHello(const Packet& p, uint32_t now) {
 
   JsonDocument out;
   out["proto"] = proto::kVersion;
-  out["fw_ver"] = FW_VERSION;
+  out["fw_ver"] = kFwVersion;
   out["w"] = 480;
   out["h"] = 320;
   out["psram_free"] = ESP.getFreePsram();

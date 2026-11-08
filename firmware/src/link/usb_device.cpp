@@ -1,4 +1,5 @@
 #include "usb_device.h"
+#include "version_info.h"
 
 #include <USB.h>
 #include <USBCDC.h>
@@ -6,9 +7,6 @@
 
 #include "hid/media_keys.h"
 
-#ifndef FW_VERSION_BCD
-#define FW_VERSION_BCD 0x0010  // 0.1.0 as BCD for bcdDevice
-#endif
 
 namespace rp {
 namespace usb {
@@ -65,7 +63,7 @@ bool begin() {
   USB.manufacturerName("rez-pad");
   USB.productName("rez-pad");
   USB.serialNumber(gSerial);
-  USB.firmwareVersion(FW_VERSION_BCD);
+  USB.firmwareVersion(kFwVersionBcd);
   USB.onEvent(onUsbEvent);
 
   hid::begin();      // registers the HID consumer-control interface

@@ -1,5 +1,6 @@
 # PlatformIO
 firmware/.pio/
+firmware/src/version_info.cpp
 firmware/.vscode/
 .pio/
 

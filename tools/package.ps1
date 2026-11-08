@@ -2,7 +2,7 @@
 #   rez-pad.exe            self-contained single-file host (no .NET install needed)
 #   install.ps1, Install.cmd, Uninstall.cmd
 #   firmware\rez-pad-firmware-<version>.bin   full flash image (write at 0x0)
-#   README.txt, LICENSE.txt, THIRD-PARTY-NOTICES.txt
+#   README.txt, CHANGELOG.txt, LICENSE.txt, THIRD-PARTY-NOTICES.txt
 #
 #   powershell -ExecutionPolicy Bypass -File tools\package.ps1 [-SkipFirmware]
 #
@@ -16,9 +16,22 @@ $root = Split-Path -Parent $PSScriptRoot
 $out = Join-Path $root "publish"
 $stage = Join-Path $out "rez-pad"
 
-[xml]$props = Get-Content (Join-Path $root "host\Directory.Build.props")
-$version = ($props.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1).Version
+# One version for everything: the VERSION file (docs/versioning.md).
+$version = (Get-Content (Join-Path $root "VERSION") -Raw).Trim()
 Write-Host "rez-pad $version"
+Push-Location $root
+try {
+    # A release is built from a clean, tagged commit; say so when it is not (dev zips are fine).
+    if (git status --porcelain --untracked-files=no) {
+        Write-Warning "uncommitted changes: this zip is a dev build ($version.dirty)"
+    }
+    $tags = @(git tag --points-at HEAD)
+    if ($tags -notcontains "v$version") {
+        Write-Warning "HEAD is not tagged v$version: tag the release commit (git tag -a v$version -m ""rez-pad $version"")"
+    }
+} finally {
+    Pop-Location
+}
 
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Force $stage | Out-Null
@@ -49,6 +62,7 @@ Copy-Item (Join-Path $root "setup\Uninstall.cmd") $stage
 Copy-Item (Join-Path $root "setup\README.txt") $stage
 Copy-Item (Join-Path $root "LICENSE") (Join-Path $stage "LICENSE.txt")
 Copy-Item (Join-Path $root "THIRD-PARTY-NOTICES.md") (Join-Path $stage "THIRD-PARTY-NOTICES.txt")
+Copy-Item (Join-Path $root "CHANGELOG.md") (Join-Path $stage "CHANGELOG.txt")
 
 $zip = Join-Path $out "rez-pad-$version-win-x64.zip"
 if (Test-Path $zip) {

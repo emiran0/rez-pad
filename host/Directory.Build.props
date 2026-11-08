@@ -4,7 +4,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <Version>0.1.0</Version>
+    <!-- One version for host, firmware and installer: the repo's VERSION file (docs/versioning.md). -->
+    <Version>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\VERSION').Trim())</Version>
     <!-- Shown in the exe's file details and Task Manager (no signature needed). -->
     <Authors>rez-lab</Authors>
     <Company>rez-lab</Company>

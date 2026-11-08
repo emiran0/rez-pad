@@ -12,6 +12,7 @@
 #include <esp_system.h>
 #include <string.h>
 
+#include "version_info.h"
 #include "app/actions.h"
 #include "app/settings.h"
 #include "config/store.h"
@@ -36,9 +37,6 @@
 #include "ui/model.h"
 #include "ui/ui.h"
 
-#ifndef FW_VERSION
-#define FW_VERSION "dev"
-#endif
 
 namespace {
 
@@ -77,7 +75,7 @@ void printInfo(Print& out) {
   uint32_t flashSize = 0;
   esp_flash_get_size(nullptr, &flashSize);
 
-  out.printf("fw %s, protocol v%u, built %s %s\n", FW_VERSION, rp::proto::kVersion, __DATE__, __TIME__);
+  out.printf("fw %s, protocol v%u, built %s %s\n", rp::kFwVersion, rp::proto::kVersion, __DATE__, __TIME__);
   out.printf("chip ESP32-S3 rev %u.%u, %u cores, %lu MHz\n", static_cast<unsigned>(chip.revision / 100),
              static_cast<unsigned>(chip.revision % 100), static_cast<unsigned>(chip.cores),
              static_cast<unsigned long>(getCpuFrequencyMhz()));
