@@ -97,7 +97,15 @@ public sealed record WeatherHour(long T, double Temp, int Code, int Pop, bool Is
 public sealed record WeatherDay(string D, double Min, double Max, int Code, int Pop);
 
 /// <summary>VOLUME (0x15). Level 0 to 100.</summary>
-public sealed record VolumeMsg(int Level, bool Muted);
+/// <summary>VOLUME: master volume, plus the Now Playing app's own volume when it has an audio session.</summary>
+public sealed record VolumeMsg(int Level, bool Muted, AppVolumeMsg? App = null);
+
+public sealed record AppVolumeMsg(string Name, int Level, bool Muted);
+
+/// <summary>MIXER (0x16): the Windows volume mixer for mixer widgets.</summary>
+public sealed record MixerMsg(IReadOnlyList<MixerAppMsg> Apps);
+
+public sealed record MixerAppMsg(string Id, string Name, int Level, bool Muted, bool Active);
 
 // ---- Device -> Host ----
 

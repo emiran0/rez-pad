@@ -212,3 +212,33 @@ Not checked on the screen yet: icon placement and readability, the `clock` widge
 | Device, 4x2 spectrum, one custom-drawn object, dirty strips merged into 8 areas | tone sweep: 28.7 frames/s, 5900 px/frame, SPI busy 9 %; pulsing pink noise (all bars moving): 28.9 frames/s, 9200 px/frame, 231 strips/s, SPI busy 11 % (`perf`) |
 | Test sweep 60 Hz to 12 kHz at -26 dBFS | peak band followed the sweep from band 3 to band 28, levels 121 to 168 (tilt applied) |
 
+## Per-app volume (Phase 12, 2026-11-08)
+
+| Measurement | Result |
+|---|---|
+| Spotify (Store) found from its GSMTC session | yes, audio session matched (100 % in the mixer) |
+| `action media.app_volume -3` (step 2 %) | Spotify 100 to 94 %, master unchanged (21 %); `media.app_mute` twice mutes and unmutes; device console `media` shows `volume 21, Spotify 100` |
+| Host CPU idle, app volume polled every 1 s (spectrum page saved, silence) | 0.25 % of all cores |
+
+## Mixer widget (Phase 12, 2026-11-08)
+
+Driven through the console's `input` command (same path as the knobs), on a test page with a 2x3 and a 2x1 mixer:
+
+| Step | Result |
+|---|---|
+| Host list (`/api/mixer`) | Flow.Launcher, Spotify, System sounds (the host's own loopback session is left out) |
+| `mixer.focus`, knob 1 +1 | focused, Spotify selected |
+| knob 2 -3 (step 2 %) | Spotify 100 to 94 % in the Windows mixer |
+| knob 2 click, click | muted, unmuted |
+| knob 2 +3, knob 1 click | back to 100 %, unfocused |
+| page change while focused / 16 s idle / `mixer.focus` on a page without a mixer | unfocused / unfocused / nothing happens |
+
+## Animated images, full frame count (2026-11-08)
+
+Before, the host halved an animation's frames until they fit 2 MB decoded per widget; a 120-frame, 10.8 s GIF in a 2x2 card ended up with 15 frames of about 720 ms (about 1.4 FPS, "stuck").
+
+| Animation (card) | Before | After |
+|---|---|---|
+| 600x600, 120 frames at 90 ms (2x2, 234x194) | 15 frames, about 1.4 FPS | 120 frames, 448 KB file, decoded per frame: 11.0 FPS (`perf`), SPI busy 30 % |
+| 279x279, 54 frames at 50/60 ms (1x2, 114x194) | 27 frames, 9 to 10 FPS | 54 frames, 394 KB, decoded per frame: 18.0 FPS, SPI busy 24 % |
+| PSRAM free with both on screen | | 6642 KB of 8192 KB |

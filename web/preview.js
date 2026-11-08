@@ -29,6 +29,7 @@ export const WIDGETS = {
   media_controls: { name: "Media controls", group: "Media", desc: "Play, skip and progress", size: [2, 1] },
   progress: { name: "Progress bar", group: "Media", desc: "Position in the track", size: [2, 1] },
   volume: { name: "Volume", group: "Media", desc: "PC volume and mute", size: [1, 1] },
+  mixer: { name: "Volume mixer", group: "Media", desc: "Apps and their volumes, set with the knobs", size: [2, 2] },
   spectrum: { name: "Spectrum", group: "Media", desc: "Bars that move with the sound", size: [4, 1] },
   metric_gauge: { name: "Gauge", group: "System", desc: "A value on a ring", size: [1, 1] },
   metric_value: { name: "Value", group: "System", desc: "A number with its label", size: [1, 1] },
@@ -330,7 +331,11 @@ const RENDER = {
   },
 
   volume(box, w, h, ctx) {
-    const v = ctx.data.media?.volume;
+    // target "app": the Now Playing app's own volume, like firmware VolumeWidget.
+    const app = ctx.widget.target === "app";
+    const master = ctx.data.media?.volume;
+    const appVol = ctx.data.media?.app_volume;
+    const v = app ? (appVol ? { ...appVol, available: master?.available } : null) : master;
     const side = Math.min(w, h);
     const arcW = side >= 120 ? 10 : side >= 70 ? 7 : 5;
     const level = v?.available && ctx.data.connected ? v.level : null;
@@ -338,7 +343,13 @@ const RENDER = {
     align(box, g, "CENTER");
     const iconOn = side >= 64;
     align(box, txt(side >= 120 ? 28 : side >= 64 ? 20 : 14, "", level === null ? "--" : String(level)), "CENTER", 0, iconOn ? -Math.floor(side / 16) - 2 : 0);
-    if (iconOn) align(box, txt(14, "dim", v?.muted ? "\u{1F507}" : "\u{1F50A}"), "CENTER", 0, Math.floor(side / 8) + 6);
+    if (app && side >= 90) {
+      const n = ellipsis(14, "dim", appVol ? appVol.name : "No media app", Math.floor((side * 3) / 5));
+      n.style.textAlign = "center";
+      align(box, n, "CENTER", 0, Math.floor(side / 8) + 6);
+    } else if (iconOn) {
+      align(box, txt(14, "dim", v?.muted ? "\u{1F507}" : "\u{1F50A}"), "CENTER", 0, Math.floor(side / 8) + 6);
+    }
   },
 
   metric_value(box, w, h, ctx) {
@@ -547,6 +558,80 @@ const RENDER = {
     align(box, t, "CENTER", 0, top / 2);
   },
 
+  mixer(box, w, h, ctx) {
+    // Same layout as firmware/src/widgets/mixer_widget.cpp (unfocused: the list from the top).
+    box.classList.add("mixer-prev");
+    // Until the first /api/mixer answer (and in the gallery, drawn once) a faded sample list.
+    const sample = !ctx.data.mixer;
+    let apps = ctx.data.mixer ?? [
+      { id: "spotify", name: "Spotify", level: 80, muted: false, active: true },
+      { id: "chrome", name: "Google Chrome", level: 55, muted: false, active: false },
+      { id: "discord", name: "Discord", level: 100, muted: true, active: false },
+      { id: "system", name: "System sounds", level: 100, muted: false, active: false },
+    ];
+    if (!ctx.data.connected && !sample) {
+      align(box, txt(14, "dim", "No host connected"), "CENTER");
+      return;
+    }
+    if (sample) box.style.opacity = "0.35";
+    // Like mixer::view(): the widget's "apps" first, in order, then the rest unless "only".
+    const pins = sample ? [] : ctx.widget.apps || [];
+    const pinned = pins.map((id) => apps.find((a) => a.id === id)).filter(Boolean);
+    const ordered = ctx.widget.only && !sample ? pinned : [...pinned, ...apps.filter((a) => !pins.includes(a.id))];
+    if (!sample && ordered.length === 0) {
+      align(box, txt(14, "dim", "None of its apps is playing"), "CENTER");
+      return;
+    }
+    apps = ordered;
+    if (ctx.widget.layout === "faders" && h >= 100) {
+      const n = Math.min(Math.max(Math.floor(w / 60), 1), 8);
+      const colW = Math.floor(w / n);
+      const track = h - 3 * 19 - 12;
+      apps.slice(0, n).forEach((a, i) => {
+        const x = i * colW;
+        const lvl = txt(14, a.muted ? "dim" : "", a.muted ? "\u{1F507}" : String(a.level));
+        Object.assign(lvl.style, { width: colW + "px", textAlign: "center" });
+        at(box, lvl, x, 4);
+        const bar = el("div", "bar");
+        Object.assign(bar.style, { borderRadius: "2px" });
+        const fill = el("div", "fill");
+        Object.assign(fill.style, { position: "absolute", left: 0, bottom: 0, width: "100%", height: a.level + "%", background: a.muted ? ctx.pal.dim : ctx.pal.accent });
+        bar.append(fill);
+        at(box, bar, x + Math.floor((colW - 8) / 2), 6 + 19, 8, track);
+        bar.style.position = "absolute";
+        // Two lines, "..." only at the end (firmware: fixed-height label in DOTS mode).
+        const name = txt(14, a.active ? "" : "dim", a.name || a.id);
+        Object.assign(name.style, { width: colW - 4 + "px", height: 2 * 19 - 2 + "px", lineHeight: "17px", whiteSpace: "normal",
+          textAlign: "center", overflow: "hidden", display: "-webkit-box", webkitBoxOrient: "vertical", webkitLineClamp: "2", overflowWrap: "anywhere" });
+        at(box, name, x + 2, h - 2 * 19);
+      });
+      return;
+    }
+    if (apps.length === 0) {
+      align(box, txt(14, "dim", "No apps with sound"), "CENTER");
+      return;
+    }
+    const rows = Math.min(Math.max(Math.floor(h / 30), 1), 8);
+    const rowH = Math.floor(h / rows);
+    apps.slice(0, rows).forEach((a, i) => {
+      const y = i * rowH;
+      const ty = y + Math.floor((rowH - 2 - 6 - 19) / 2);
+      const name = ellipsis(14, a.active ? "" : "dim", a.name || a.id, w - 48);
+      at(box, name, 4, ty);
+      const lvl = txt(14, a.muted ? "dim" : "", a.muted ? "\u{1F507}" : String(a.level));
+      lvl.style.width = "40px";
+      lvl.style.textAlign = "right";
+      at(box, lvl, w - 44, ty);
+      const track = el("div", "bar");
+      Object.assign(track.style, { height: "3px" });
+      const fill = el("div", "fill");
+      fill.style.width = a.level + "%";
+      fill.style.background = a.muted ? ctx.pal.dim : ctx.pal.accent;
+      track.append(fill);
+      at(box, track, 4, y + rowH - 2 - 7, w - 8, 3);
+    });
+  },
+
   spectrum(box, w, h, ctx) {
     // Same layout as firmware/src/widgets/spectrum_widget.cpp.
     const n = Math.min(Math.max(ctx.widget.bars || Math.floor(w / 10), 4), 32);
@@ -667,6 +752,56 @@ export function renderWidget(card, wd, rect, cfg, pal, data, catalog) {
  * Renders a whole page into `screen` (a 480x320 element). Returns the grid element and the card
  * elements in widget order.
  */
+/** Texts of the status bar items (config status_bar.items), like the firmware draws them. */
+export function statusItems(cfg, data) {
+  const units = cfg.units || {};
+  const out = [];
+  for (const it of cfg.status_bar?.items || []) {
+    const pre = it.label ? it.label + " " : "";
+    let v = "--";
+    switch (it.type) {
+      case "date": {
+        if (data.connected) {
+          const d = new Date();
+          v = `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()]} ${d.getDate()}`;
+        }
+        break;
+      }
+      case "room_temp": {
+        const t = data.connected ? data.room?.temp_c : null;
+        if (t !== null && t !== undefined) v = `${(units.temp === "f" ? t * 1.8 + 32 : t).toFixed(1)}${DEG}`;
+        break;
+      }
+      case "room_hum": {
+        const hh = data.connected ? data.room?.hum_pct : null;
+        if (hh !== null && hh !== undefined) v = `${Math.round(hh)}%`;
+        break;
+      }
+      case "outdoor_temp": {
+        const t = data.weather?.latest?.now?.temp;
+        if (t !== undefined && t !== null) v = `${Math.round(t)}${DEG}`;
+        break;
+      }
+      case "volume": {
+        const vol = data.media?.volume;
+        if (data.connected && vol?.available) v = vol.muted ? "\u{1F507}" : `\u{1F50A} ${vol.level}`;
+        out.push(it.label && data.connected && vol?.available && !vol.muted ? `${it.label} ${vol.level}` : v);
+        continue;
+      }
+      case "metric": {
+        const s = data.sources?.get(it.source);
+        if (data.connected && s?.available) {
+          const unit = (s.unit || "").startsWith(DEG) ? DEG : s.unit || "";
+          v = `${Math.abs(s.value) < 10 && unit !== "%" ? s.value.toFixed(1) : Math.round(s.value)}${unit}`;
+        }
+        break;
+      }
+    }
+    out.push(pre + v);
+  }
+  return out;
+}
+
 export function renderScreen(screen, cfg, pageIndex, data, catalog) {
   screen.replaceChildren();
   const pages = cfg.pages || [];
@@ -682,14 +817,28 @@ export function renderScreen(screen, cfg, pageIndex, data, catalog) {
   bar.style.background = pal.status;
   const now = new Date();
   align(bar, txt(14, "", data.connected ? `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}` : "--:--"), "LEFT_MID", 8);
-  align(bar, txt(14, "dim", page ? page.name || page.id : ""), "LEFT_MID", 64);
+  align(bar, ellipsis(14, "dim", page ? page.name || page.id : "", 140), "LEFT_MID", 64);
+  // Like firmware/src/ui/status_bar.cpp: at most 5 dots, a window sliding with the current page;
+  // a smaller dot at an end means more pages that way.
+  const count = Math.min(pages.length, 8);
+  const shown = Math.min(count, 5);
+  const first = Math.max(0, Math.min(pageIndex - Math.floor(shown / 2), count - shown));
   const dots = el("div", "dots");
-  for (let i = 0; i < Math.min(pages.length, 8); i++) {
+  for (let s = 0; s < shown; s++) {
+    const i = first + s;
     const d = el("i");
+    const edge = (s === 0 && first > 0) || (s === shown - 1 && first + shown < count);
+    if (edge) Object.assign(d.style, { width: "4px", height: "4px", margin: "1px" });
     d.style.background = i === pageIndex ? pal.accent : pal.faint;
     dots.append(d);
   }
   align(bar, dots, "CENTER");
+  const items = statusItems(cfg, data);
+  if (items.length) {
+    const row = el("div", "status-items");
+    for (const t of items) row.append(txt(14, "", t));
+    align(bar, row, "RIGHT_MID", -34);
+  }
   const usb = txt(14, "", "⬌");
   usb.style.color = data.connected ? "#66BB6A" : pal.faint;
   align(bar, usb, "RIGHT_MID", -8);

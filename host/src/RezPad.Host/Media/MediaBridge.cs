@@ -22,6 +22,11 @@ internal sealed class MediaBridge : IDisposable
     private (uint Id, uint Crc)? _deviceArt;  // what the device has; Crc 0 = ART_NONE
     private int _artSize;
     private long _trackChangedAt;
+    private static readonly TimeSpan AppPoll = TimeSpan.FromSeconds(1);
+    private readonly System.Threading.Timer _appPoll;
+    private readonly object _appLock = new();
+    private AppVolumeState? _appVolume;
+    private int _appPolling;
     private uint _lastTrack;  // Stopwatch timestamp of the last track change, for the art latency log
 
     public MediaBridge(SerialLink link, MediaService media, AudioService audio, Func<MediaOptions> options)
@@ -37,6 +42,8 @@ internal sealed class MediaBridge : IDisposable
         _media.Changed += OnMediaChanged;
         _media.ArtChanged += _ => Task.Run(() => SendArtAsync(force: false));
         _audio.Changed += _ => SendVolume();
+        // The mixer has no change events we subscribe to; poll the media app's volume.
+        _appPoll = new System.Threading.Timer(_ => PollAppVolume(), null, AppPoll, AppPoll);
     }
 
     /// <summary>Handles device packets that belong to media. Returns false for anything else.</summary>
@@ -71,6 +78,12 @@ internal sealed class MediaBridge : IDisposable
             case "media.seek": _media.Seek(value); break;
             case "media.volume": _audio.Step(value * _options().VolumeStep); break;
             case "media.mute": _audio.ToggleMute(); break;
+            case "media.app_volume":
+                SetAppVolume(StepApp(value * _options().VolumeStep));
+                break;
+            case "media.app_mute":
+                SetAppVolume(StepApp(0, mute: true));
+                break;
             default:
                 Log.Info($"action {action} {value} not handled by the host");
                 return;
@@ -128,7 +141,62 @@ internal sealed class MediaBridge : IDisposable
         var v = _audio.State;
         if (v.Available && _link.IsConnected)
         {
-            _link.SendJson(MsgType.Volume, new VolumeMsg(v.Level, v.Muted));
+            AppVolumeState? app;
+            lock (_appLock)
+            {
+                app = _appVolume;
+            }
+            _link.SendJson(MsgType.Volume, new VolumeMsg(v.Level, v.Muted,
+                app is { } a ? new AppVolumeMsg(a.Name, a.Level, a.Muted) : null));
+        }
+    }
+
+    // ---- per-app volume (the Now Playing app) ----
+
+    private AppVolumeState? StepApp(int delta, bool mute = false)
+    {
+        var id = _media.SessionAppId;
+        if (id is null)
+        {
+            Log.Info("app volume: no media app");
+            return null;
+        }
+        var name = MediaService.AppName(id);
+        var result = mute ? AppVolume.ToggleMute(id, name) : AppVolume.Step(id, name, delta);
+        if (result is null)
+        {
+            Log.Info($"app volume: {name} has no audio session");
+        }
+        return result;
+    }
+
+    private void SetAppVolume(AppVolumeState? state)
+    {
+        lock (_appLock)
+        {
+            if (Equals(_appVolume, state))
+            {
+                return;
+            }
+            _appVolume = state;
+        }
+        SendVolume();
+    }
+
+    private void PollAppVolume()
+    {
+        if (!_link.IsConnected || Interlocked.Exchange(ref _appPolling, 1) == 1)
+        {
+            return;
+        }
+        try
+        {
+            var id = _media.SessionAppId;
+            SetAppVolume(id is null ? null : AppVolume.Get(id, MediaService.AppName(id)));
+        }
+        finally
+        {
+            Volatile.Write(ref _appPolling, 0);
         }
     }
 
@@ -183,5 +251,9 @@ internal sealed class MediaBridge : IDisposable
         }
     }
 
-    public void Dispose() => _resync.Dispose();
+    public void Dispose()
+    {
+        _resync.Dispose();
+        _appPoll.Dispose();
+    }
 }

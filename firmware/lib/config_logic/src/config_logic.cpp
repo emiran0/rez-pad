@@ -31,6 +31,9 @@ const Name kNames[] = {
     {Action::kMute, "media.mute"},
     {Action::kDisplayToggle, "display.toggle"},
     {Action::kDisplayBrightness, "display.brightness"},
+    {Action::kAppVolume, "media.app_volume"},
+    {Action::kAppMute, "media.app_mute"},
+    {Action::kMixerFocus, "mixer.focus"},
 };
 
 }  // namespace
@@ -54,7 +57,8 @@ bool parse(const char* s, Action& out) {
 }
 
 bool isRotate(Action a) {
-  return a == Action::kNavPage || a == Action::kSeek || a == Action::kVolume || a == Action::kDisplayBrightness;
+  return a == Action::kNavPage || a == Action::kSeek || a == Action::kVolume || a == Action::kDisplayBrightness ||
+         a == Action::kAppVolume;
 }
 
 namespace {
@@ -173,6 +177,7 @@ const TypeInfo kTypes[] = {
     {"metric_graph", 80, 40},   {"clock", 50, 26},        {"room_climate", 60, 30},
     {"weather_now", 60, 34},    {"weather_forecast", 90, 46}, {"label", 16, 14},
     {"image", 16, 16},          {"spectrum", 60, 30},
+    {"mixer", 110, 50},
 };
 
 const char* const kThemes[kThemeCount] = {"dark", "midnight", "black", "graphite"};
@@ -594,6 +599,39 @@ bool parseWidget(JsonVariantConst v, const char* path, const Page& page, bool us
     w.fit = static_cast<Fit>(fit);
   }
   if (strcmp(w.type, "spectrum") == 0 && !getInt(o, "bars", path, 4, 32, w.bars, c)) return false;
+  if (strcmp(w.type, "mixer") == 0) {
+    static const char* const kLayouts[] = {"list", "faders"};
+    uint8_t layout = 0;
+    if (!getChoice(o, "layout", path, kLayouts, 2, layout, c)) return false;
+    w.faders = layout == 1;
+    // "apps": ids (lowercase process names, from MIXER) shown first, in this order.
+    JsonVariantConst apps = o["apps"];
+    if (!apps.isNull()) {
+      if (!apps.is<JsonArrayConst>()) return c.fail(Path(path, "apps").s, "must be an array");
+      JsonArrayConst arr = apps.as<JsonArrayConst>();
+      if (arr.size() > 8) return c.fail(Path(path, "apps").s, "at most 8 apps");
+      int k = 0;
+      for (JsonVariantConst a : arr) {
+        char p[56];
+        snprintf(p, sizeof(p), "%s.apps[%d]", path, k);
+        const char* id = a.is<const char*>() ? a.as<const char*>() : nullptr;
+        const size_t n = id ? strlen(id) : 0;
+        if (!id || n == 0 || n > 23 || strchr(id, ',')) return c.fail(p, "must be an app id (1 to 23 bytes, no comma)");
+        const size_t used = strlen(w.apps);
+        if (used + (used ? 1 : 0) + n >= sizeof(w.apps)) return c.fail(Path(path, "apps").s, "too long (63 bytes in all)");
+        if (used) strcat(w.apps, ",");
+        strcat(w.apps, id);
+        ++k;
+      }
+    }
+    if (!getBool(o, "only", path, w.onlyApps, c)) return false;
+  }
+  if (strcmp(w.type, "volume") == 0) {
+    static const char* const kTargets[] = {"master", "app"};
+    uint8_t target = 0;
+    if (!getChoice(o, "target", path, kTargets, 2, target, c)) return false;
+    w.appTarget = target == 1;
+  }
 
   const SourceStyle def = sourceDefaults(w.source);
   if (!unitSet) strcpy(w.unit, def.unit);
@@ -674,6 +712,39 @@ bool parsePage(JsonVariantConst v, int index, Config& cfg, Ctx& c) {
   return true;
 }
 
+bool parseStatusBar(JsonObjectConst root, Config& cfg, Ctx& c) {
+  JsonObjectConst sb;
+  if (!getObject(root, "status_bar", "", sb, c)) return false;
+  if (sb.isNull()) return true;
+  JsonVariantConst items = sb["items"];
+  if (items.isNull()) return true;
+  if (!items.is<JsonArrayConst>()) return c.fail("status_bar.items", "must be an array");
+  JsonArrayConst arr = items.as<JsonArrayConst>();
+  if (arr.size() > static_cast<size_t>(kMaxStatusItems)) {
+    return c.fail("status_bar.items", "at most %d items", kMaxStatusItems);
+  }
+  static const char* const kTypes[] = {"date", "room_temp", "room_hum", "outdoor_temp", "volume", "metric"};
+  int i = 0;
+  for (JsonVariantConst v : arr) {
+    char path[32];
+    snprintf(path, sizeof(path), "status_bar.items[%d]", i);
+    if (!v.is<JsonObjectConst>()) return c.fail(path, "must be an object");
+    JsonObjectConst o = v.as<JsonObjectConst>();
+    StatusItem& it = cfg.status[i];
+    if (o["type"].isNull()) return c.fail(Path(path, "type").s, "required");
+    uint8_t type = 0;
+    if (!getChoice(o, "type", path, kTypes, 6, type, c)) return false;
+    it.type = static_cast<StatusType>(type);
+    bool set = false;
+    if (!getString(o, "source", path, it.source, sizeof(it.source), set, c)) return false;
+    if (it.type == StatusType::kMetric && !it.source[0]) return c.fail(Path(path, "source").s, "required for metric");
+    if (!getString(o, "label", path, it.label, sizeof(it.label), set, c)) return false;
+    ++i;
+  }
+  cfg.statusCount = static_cast<uint8_t>(i);
+  return true;
+}
+
 bool parsePages(JsonObjectConst root, Config& cfg, Ctx& c) {
   JsonVariantConst ps = root["pages"];
   if (!ps.is<JsonArrayConst>()) return c.fail("pages", "required, must be an array");
@@ -700,6 +771,15 @@ bool parsePages(JsonObjectConst root, Config& cfg, Ctx& c) {
       if (n == kMaxSources) return c.fail("pages", "at most %d different data sources", kMaxSources);
       seen[n++] = ws.source;
     }
+  }
+  for (int s = 0; s < cfg.statusCount; ++s) {
+    const StatusItem& it = cfg.status[s];
+    if (it.type != StatusType::kMetric) continue;
+    bool known = false;
+    for (int k = 0; k < n && !known; ++k) known = strcmp(seen[k], it.source) == 0;
+    if (known) continue;
+    if (n == kMaxSources) return c.fail("pages", "at most %d different data sources", kMaxSources);
+    seen[n++] = it.source;
   }
   return true;
 }
@@ -753,7 +833,8 @@ bool parse(const char* json, size_t len, Config& out, char* err, size_t errLen) 
 
   return parseDisplay(root, out, c) && parseGrid(root, out, c) && parseTheme(root, out, c) &&
          parseUnits(root, out, c) && parseSensor(root, out, c) && parseMedia(root, out, c) &&
-         parseMacros(root, out, c) && parseInputs(root, out, c) && parsePages(root, out, c);
+         parseMacros(root, out, c) && parseInputs(root, out, c) && parseStatusBar(root, out, c) &&
+         parsePages(root, out, c);
 }
 
 }  // namespace cfg

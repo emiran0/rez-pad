@@ -72,7 +72,10 @@ async function pollStatus() {
 }
 
 async function pollLive() {
-  const [src, media] = await Promise.all([api("/api/sources").catch(() => null), api("/api/media").catch(() => null)]);
+  const wantMixer = !!document.querySelector(".mixer-prev");
+  const [src, media, mixer] = await Promise.all([api("/api/sources").catch(() => null), api("/api/media").catch(() => null),
+    wantMixer ? api("/api/mixer").catch(() => null) : null]);
+  if (mixer?.ok) state.data.mixer = mixer.body.apps;
   if (src?.ok) {
     for (const s of src.body.sources) {
       state.data.sources.set(s.id, s);

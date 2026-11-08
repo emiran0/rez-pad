@@ -44,6 +44,7 @@ enum MsgType : uint8_t {
   kAssetChunk = 0x45,
   kAssetEnd = 0x46,
   kAssetList = 0x47,
+  kMixer = 0x16,
   kSpectrum = 0x50,
   kCmd = 0x60,
   // Device -> Host

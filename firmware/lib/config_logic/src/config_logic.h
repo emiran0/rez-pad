@@ -26,6 +26,9 @@ enum class Action : uint8_t {
   kMute,
   kDisplayToggle,
   kDisplayBrightness,  // rotate
+  kAppVolume,          // rotate: the Now Playing app's own volume (host only)
+  kAppMute,
+  kMixerFocus,  // focus or unfocus the mixer widget on the current page
 };
 
 const char* name(Action a);
@@ -108,9 +111,22 @@ struct WidgetSpec {
   char asset[40] = ""; // image widget: asset id
   Fit fit = Fit::kCover;
   uint8_t bars = 0;    // spectrum: bar count, 0 = automatic (one per 10 px)
+  bool faders = false;     // mixer: "layout": "faders" (columns with vertical bars) instead of "list"
+  char apps[64] = "";      // mixer: app ids to show first, in order, joined with ',' ("apps" array)
+  bool onlyApps = false;   // mixer: "only": show just the apps in `apps`
+  bool appTarget = false;  // volume: true = the Now Playing app's volume ("target": "app")
   float min = 0, max = 100;
   float warn = NAN, crit = NAN;  // color thresholds (NAN = none)
   int8_t decimals = -1;          // -1 = automatic
+};
+
+// Small items on the right of the status bar (docs/config-schema.md, "Status bar").
+constexpr int kMaxStatusItems = 3;
+enum class StatusType : uint8_t { kDate, kRoomTemp, kRoomHum, kOutdoorTemp, kVolume, kMetric };
+struct StatusItem {
+  StatusType type = StatusType::kDate;
+  char source[40] = "";  // kMetric: data source id
+  char label[8] = "";    // optional short prefix, e.g. "CPU"
 };
 
 struct Page {
@@ -125,6 +141,8 @@ struct Page {
 };
 
 struct Config {
+  StatusItem status[kMaxStatusItems];
+  uint8_t statusCount = 0;
   // display
   uint8_t brightness = 80;
   bool nightEnabled = false;

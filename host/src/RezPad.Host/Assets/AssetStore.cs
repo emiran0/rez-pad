@@ -112,39 +112,19 @@ internal sealed class AssetStore
         return true;
     }
 
-    /// <summary>Frames left after merging those shorter than the minimum delay (the natural frame count).</summary>
-    public int PlayableFrames(string id)
-    {
-        if (Original(id) is not { } o)
-        {
-            return 0;
-        }
-        using var img = Image.FromFile(o.Path);
-        return MergeShortFrames(Delays(img)).Count;
-    }
+    /// <summary>
+    /// The RPA1 file for one widget box: every frame (frames shorter than 50 ms merged), thinned only
+    /// when the file would not fit the 1 MB transfer limit. The device decodes frames ahead when they
+    /// fit its memory and one by one otherwise, so the frame count no longer depends on RAM.
+    /// </summary>
+    public byte[] Variant(AssetFormat.Placement p) => _variants.GetOrAdd(p.FileName, _ => Render(p));
 
-    /// <summary>The RPA1 file for one widget box, with at most <paramref name="maxFrames"/> frames.</summary>
-    public byte[] Variant(AssetFormat.Placement p, int maxFrames)
-    {
-        var key = $"{p.FileName}#{maxFrames}";
-        return _variants.GetOrAdd(key, _ => Render(p, maxFrames));
-    }
-
-    private byte[] Render(AssetFormat.Placement p, int maxFrames)
+    private byte[] Render(AssetFormat.Placement p)
     {
         var o = Original(p.Asset) ?? throw new InvalidOperationException($"no image {p.Asset}");
         using var img = Image.FromFile(o.Path);
-        var groups = MergeShortFrames(Delays(img));
-        // Drop frames evenly to fit the budget, keeping the total duration.
-        while (groups.Count > Math.Max(1, maxFrames))
-        {
-            var merged = new List<(int First, int Delay)>();
-            for (var i = 0; i < groups.Count; i += 2)
-            {
-                merged.Add(i + 1 < groups.Count ? (groups[i].First, groups[i].Delay + groups[i + 1].Delay) : groups[i]);
-            }
-            groups = merged;
-        }
+        var all = MergeShortFrames(Delays(img));
+        var groups = all;
 
         // Output size: the whole box for cover, the fitted image for contain.
         var scale = p.Contain ? Math.Min((double)p.W / img.Width, (double)p.H / img.Height)
@@ -156,7 +136,10 @@ internal sealed class AssetStore
         var bg = Color.FromArgb(255, (int)(p.Bg >> 16) & 0xFF, (int)(p.Bg >> 8) & 0xFF, (int)p.Bg & 0xFF);
         var animated = img.FrameDimensionsList.Contains(FrameDimension.Time.Guid);
 
-        for (var quality = 85L; ; quality -= 15)
+        // Lower the JPEG quality first (85, 70, 55); if the file still exceeds 1 MB, keep as many
+        // frames as fit (spread evenly, same total duration).
+        var quality = 85L;
+        while (true)
         {
             var frames = new List<AssetFormat.Frame>();
             foreach (var (first, delay) in groups)
@@ -180,15 +163,22 @@ internal sealed class AssetStore
                 frames.Add(new AssetFormat.Frame(groups.Count > 1 ? delay : 0, Jpeg(bmp, quality)));
             }
             var file = AssetFormat.Build(outW, outH, frames);
-            if (file.Length <= AssetFormat.MaxFileBytes || quality <= 40)
+            if (file.Length <= AssetFormat.MaxFileBytes)
             {
-                if (file.Length > AssetFormat.MaxFileBytes)
-                {
-                    throw new InvalidOperationException($"{p.Path}: the image is too big for the device even at low quality; use fewer frames");
-                }
-                Log.Info($"assets: {p.FileName} {outW}x{outH}, {frames.Count} frame(s), {file.Length} bytes (quality {quality})");
+                Log.Info($"assets: {p.FileName} {outW}x{outH}, {frames.Count} of {all.Count} frame(s), {file.Length} bytes (quality {quality})");
                 return file;
             }
+            if (quality > 55)
+            {
+                quality -= 15;
+                continue;
+            }
+            if (groups.Count == 1)
+            {
+                throw new InvalidOperationException($"{p.Path}: the image is too big for the device even at low quality");
+            }
+            var keep = (int)(groups.Count * (double)AssetFormat.MaxFileBytes / file.Length * 0.95);
+            groups = AssetFormat.Thin(all, Math.Min(keep, groups.Count - 1));
         }
     }
 

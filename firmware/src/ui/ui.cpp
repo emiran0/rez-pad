@@ -5,9 +5,11 @@
 #include "app/settings.h"
 #include "assets/assets.h"
 #include "config/store.h"
+#include <string.h>
 #include "link/link.h"
 #include "lvgl_port.h"
 #include "media/media.h"
+#include "audio/mixer.h"
 #include "audio/spectrum.h"
 #include "sysstats/sysstats.h"
 #include "weather/weather.h"
@@ -111,6 +113,8 @@ uint32_t pollLink(uint32_t nowMs) {
       m.art = Art();
       media::releaseArt();
       for (Stat& s : m.stats) s = Stat();  // system widgets show "--"
+      m.mixer = Mixer();  // also drops the focus
+      changed |= kChangedMixer;
       changed |= kChangedStats;
       gArtRequested = 0;
       changed |= kChangedMedia | kChangedVolume | kChangedArt;
@@ -120,6 +124,7 @@ uint32_t pollLink(uint32_t nowMs) {
   if (sysstats::take(m.stats)) changed |= kChangedStats;
   if (weather::take(m.weather, m.units)) changed |= kChangedWeather;
   if (spectrum::update(m.spectrum, nowMs)) changed |= kChangedSpectrum;
+  if (mixer::update(m.mixer, nowMs)) changed |= kChangedMixer;
   m.unixTime = link::unixNow();
   m.tzOffsetMin = link::tzOffsetMin();
   const int minutes = link::localMinutes();
@@ -160,12 +165,15 @@ void buildPages() {
   widgets::ImageWidget::resetMissing();
   gAssetGen = assets::generation();
   pages::build(gGrid, c);
+  status_bar::setItems(c);
   status_bar::setWarning(config::warning());
 }
 
 // A new config from the host (validated and saved by the link task): rebuild everything, apply
 // the settings, then confirm with CONFIG_ACK (docs/protocol.md).
 void applyConfig(cfg::Config* next) {
+  // The widgets are rebuilt: a focused mixer would point at the old one.
+  mixer::unfocus(model().mixer);
   const uint32_t t0 = millis();
   const int page = pages::current();
   pages::clear();  // widgets reference the old config's specs: delete them before releasing it
@@ -220,12 +228,62 @@ bool begin() {
   return true;
 }
 
+bool pageHasMixer();
+
+// ---- mixer hints in the status bar ----
+
+uint32_t gMixerHintUntil = 0;  // "how to focus" after a page with a mixer is shown
+char gHintShown[96] = "";
+
+// "Hold knob 2" for the gesture mapped to mixer.focus on the current page, or nullptr.
+bool focusGesture(char* out, size_t n) {
+  const cfg::Config& c = config::active();
+  const int p = pages::current();
+  const actions::Map& map = (p >= 0 && p < c.pageCount) ? c.pages[p].inputs : c.inputs;
+  auto is = [](const actions::Binding& b) {
+    return b.kind == actions::Binding::Kind::kAction && b.action == actions::Action::kMixerFocus;
+  };
+  for (int e = 0; e < 2; ++e) {
+    const actions::EncoderMap& m = map.enc[e];
+    if (is(m.click)) return snprintf(out, n, "Click knob %d", e + 1) > 0;
+    if (is(m.lng)) return snprintf(out, n, "Hold knob %d", e + 1) > 0;
+    if (is(m.dbl)) return snprintf(out, n, "Double-click knob %d", e + 1) > 0;
+  }
+  for (int b = 0; b < c.buttons && b < actions::kMaxButtons; ++b) {
+    const actions::ButtonMap& m = map.btn[b];
+    if (is(m.click)) return snprintf(out, n, "Press button %d", b + 1) > 0;
+    if (is(m.lng)) return snprintf(out, n, "Hold button %d", b + 1) > 0;
+    if (is(m.dbl)) return snprintf(out, n, "Double-press button %d", b + 1) > 0;
+  }
+  return false;
+}
+
+void updateHint(uint32_t nowMs) {
+  char hint[96] = "";
+  const Model& m = model();
+  if (m.mixer.focused) {
+    snprintf(hint, sizeof(hint), "Knob 1: app \xC2\xB7 Knob 2: volume, click mutes \xC2\xB7 Click knob 1: exit");
+  } else if (static_cast<int32_t>(gMixerHintUntil - nowMs) > 0) {
+    char g[32];
+    if (focusGesture(g, sizeof(g))) snprintf(hint, sizeof(hint), "%s to control the mixer", g);
+    else snprintf(hint, sizeof(hint), "Mixer: map \"Focus the volume mixer\" in the editor");
+  }
+  if (strcmp(hint, gHintShown) == 0) return;
+  strcpy(gHintShown, hint);
+  status_bar::setHint(hint);
+}
+
+void showMixerHint() {
+  gMixerHintUntil = pageHasMixer() ? millis() + 5000 : 0;
+}
+
 void loop(uint32_t nowMs) {
   if (nowMs - gLastTick >= kTickMs) {
     gLastTick = nowMs;
     gPending |= kChangedTick;
   }
   if (cfg::Config* next = config::take()) applyConfig(next);
+  updateHint(nowMs);
   // An image widget was built before its file arrived: rebuild once new files are stored.
   if (widgets::ImageWidget::missing() > 0 && assets::generation() != gAssetGen) rebuildPages();
   gPending |= pollRoom();
@@ -244,15 +302,57 @@ void loop(uint32_t nowMs) {
   lvgl_port::handle();
 }
 
+const cfg::WidgetSpec* pageMixer() {
+  const cfg::Config& c = config::active();
+  const int p = pages::current();
+  if (p < 0 || p >= c.pageCount) return nullptr;
+  for (int i = 0; i < c.pages[p].widgetCount; ++i) {
+    if (strcmp(c.pages[p].widgets[i].type, "mixer") == 0) return &c.pages[p].widgets[i];
+  }
+  return nullptr;
+}
+
+bool pageHasMixer() {
+  const cfg::Config& c = config::active();
+  const int p = pages::current();
+  if (p < 0 || p >= c.pageCount) return false;
+  for (int i = 0; i < c.pages[p].widgetCount; ++i) {
+    if (strcmp(c.pages[p].widgets[i].type, "mixer") == 0) return true;
+  }
+  return false;
+}
+
+void unfocusMixer() {
+  if (!model().mixer.focused) return;
+  mixer::unfocus(model().mixer);
+  gPending |= kChangedMixer;
+}
+
+void toggleMixerFocus() {
+  Model& m = model();
+  if (mixer::toggleFocus(m.mixer, pageMixer(), m.hostConnected, millis())) gPending |= kChangedMixer;
+}
+
+bool mixerInput(const input::Event& e) {
+  Model& m = model();
+  if (!mixer::handleInput(m.mixer, e, config::active().volumeStep, millis())) return false;
+  gPending |= kChangedMixer;
+  return true;
+}
+
 void showPage(int index) {
+  unfocusMixer();
   pages::show(index);
   updatePageIndicator();
+  showMixerHint();
   gPending |= kChangedTick;  // bring the new page's live parts up to date immediately
 }
 
 void stepPage(int delta) {
+  unfocusMixer();
   pages::step(delta);
   updatePageIndicator();
+  showMixerHint();
   gPending |= kChangedTick;
 }
 
@@ -267,6 +367,11 @@ void mediaAction(actions::Action a, int value) {
     int v = m.volume.level + value * config::active().volumeStep;
     m.volume.level = static_cast<uint8_t>(v < 0 ? 0 : (v > 100 ? 100 : v));
     if (value > 0) m.volume.muted = false;
+    gPending |= kChangedVolume;
+  } else if (a == actions::Action::kAppVolume && m.volume.appValid) {
+    int v = m.volume.appLevel + value * config::active().volumeStep;
+    m.volume.appLevel = static_cast<uint8_t>(v < 0 ? 0 : (v > 100 ? 100 : v));
+    if (value > 0) m.volume.appMuted = false;
     gPending |= kChangedVolume;
   } else if (a == actions::Action::kSeek && m.np.canSeek) {
     int64_t p = static_cast<int64_t>(m.np.positionAt(now)) +

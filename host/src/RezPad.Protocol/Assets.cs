@@ -13,9 +13,33 @@ namespace RezPad.Protocol;
 public static class AssetFormat
 {
     public const int MaxFileBytes = 1048576;
-    public const long MaxDecodedPerWidget = 2L * 1024 * 1024;
-    public const long MaxDecodedTotal = 4L * 1024 * 1024;
     public const int MinFrameDelayMs = 50;
+
+    /// <summary>
+    /// Keeps <paramref name="count"/> frames spread evenly over the animation; each kept frame also
+    /// lasts as long as the dropped ones after it, so the total duration stays the same.
+    /// </summary>
+    public static List<(int First, int Delay)> Thin(List<(int First, int Delay)> groups, int count)
+    {
+        if (count >= groups.Count)
+        {
+            return groups;
+        }
+        count = Math.Max(1, count);
+        var result = new List<(int First, int Delay)>(count);
+        for (var k = 0; k < count; k++)
+        {
+            var from = (int)((long)k * groups.Count / count);
+            var to = (int)((long)(k + 1) * groups.Count / count);
+            var delay = 0;
+            for (var i = from; i < to; i++)
+            {
+                delay += groups[i].Delay;
+            }
+            result.Add((groups[from].First, delay));
+        }
+        return result;
+    }
 
     /// <summary>Card colors of the theme presets (firmware/src/ui/theme.cpp), the background images are composited on.</summary>
     public static readonly IReadOnlyDictionary<string, uint> ThemeCard = new Dictionary<string, uint>

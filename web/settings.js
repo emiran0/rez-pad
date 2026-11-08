@@ -115,6 +115,55 @@ function screen() {
 
 const ENC_PRESSES = [["click", "Click"], ["double", "Double click"], ["long", "Long press"]];
 
+// ---- status bar items (status_bar.items, up to 3) ----
+
+const STATUS_TYPES = [
+  ["date", "Date"], ["room_temp", "Room temperature"], ["room_hum", "Room humidity"],
+  ["outdoor_temp", "Outdoor temperature"], ["volume", "PC volume"], ["metric", "A system value"],
+];
+
+function statusBar() {
+  const items = get("status_bar.items", []) || [];
+  const update = (fn) => {
+    change((cfg) => {
+      cfg.status_bar ??= {};
+      cfg.status_bar.items ??= [];
+      fn(cfg.status_bar.items);
+      if (!cfg.status_bar.items.length) delete cfg.status_bar;
+    });
+    renderSettings();
+  };
+  const sources = [...state.data.sources.values()].filter((s) => s.available !== undefined);
+  const rows = items.map((it, i) => {
+    const type = h("select", {
+      onchange: (e) => update((list) => {
+        list[i] = { type: e.target.value, ...(list[i].label ? { label: list[i].label } : {}) };
+        if (e.target.value === "metric") list[i].source = sources[0]?.id ?? "sys.cpu.load";
+      }),
+    }, ...STATUS_TYPES.map(([v, t]) => h("option", { value: v, text: t, selected: v === it.type })));
+    const src = it.type === "metric" ? h("select", {
+      onchange: (e) => update((list) => { list[i].source = e.target.value; }),
+    }, ...(sources.some((s) => s.id === it.source) ? [] : [h("option", { value: it.source, text: it.source, selected: true })]),
+    ...sources.map((s) => h("option", { value: s.id, text: s.name ? `${s.name} (${s.id})` : s.id, selected: s.id === it.source }))) : null;
+    const label = h("input", {
+      type: "text", maxlength: 7, value: it.label ?? "", placeholder: it.type === "metric" ? "e.g. CPU" : "optional",
+      oninput: (e) => {
+        const v = e.target.value;
+        change((cfg) => {
+          if (v) cfg.status_bar.items[i].label = v;
+          else delete cfg.status_bar.items[i].label;
+        }, `sb${i}.label`);
+      },
+    });
+    return h("div", { class: "status-row" },
+      field(`Item ${i + 1}`, type), src ? field("Value", src) : h("span"), field("Short label", label),
+      h("button", { type: "button", class: "ghost", title: "Remove", onclick: () => update((list) => list.splice(i, 1)) }, icon("trash", 16)));
+  });
+  return panel("Status bar", "Up to 3 small items on the right of the status bar, on every page. The page dots show at most 5 pages at a time and slide with the current page.",
+    ...rows,
+    items.length < 3 ? h("button", { type: "button", class: "ghost", onclick: () => update((list) => list.push({ type: "date" })) }, icon("plus", 16), "Add an item") : null);
+}
+
 function knobs() {
   const buttons = get("inputs.buttons", 0);
   const turns = [["rotate", "Turn"], ["rotate_pressed", "Press and turn"]];
@@ -298,7 +347,7 @@ function sensorMedia() {
 export function renderSettings() {
   if (!state.cfg) return;
   const scroll = window.scrollY;
-  $("view-settings").replaceChildren(appearance(), screen(), knobs(), macros(), weather(), ...sensorMedia());
+  $("view-settings").replaceChildren(appearance(), screen(), statusBar(), knobs(), macros(), weather(), ...sensorMedia());
   window.scrollTo(0, scroll);
   renderLive();
 }

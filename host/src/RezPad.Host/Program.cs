@@ -76,8 +76,14 @@ internal static class Program
         using var bridge = new MediaBridge(link, media, audio, () => config.Media);
         configSync.Applied += bridge.OnConfigApplied;
         using var macros = new MacroRunner(config);
+        using var mixer = new MixerBridge(link, config, () => config.Media.VolumeStep);
         link.PacketReceived += packet =>
         {
+            if (packet.Type == MsgType.Action && ProtocolJson.Deserialize<ActionMsg>(packet.Body) is { } mixAction &&
+                mixer.Handle(mixAction))
+            {
+                return;
+            }
             if (packet.Type == MsgType.Action && ProtocolJson.Deserialize<ActionMsg>(packet.Body) is { Action: "macro" } m)
             {
                 Log.Info($"button: macro \"{m.Id}\"");

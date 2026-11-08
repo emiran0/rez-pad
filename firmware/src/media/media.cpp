@@ -206,6 +206,14 @@ void onVolume(const uint8_t* body, size_t len) {
   v.level = static_cast<uint8_t>(level < 0 ? 0 : (level > 100 ? 100 : level));
   v.muted = doc["muted"] | false;
   v.valid = true;
+  JsonObject app = doc["app"];
+  if (!app.isNull()) {
+    const int al = app["level"] | 0;
+    v.appValid = true;
+    v.appLevel = static_cast<uint8_t>(al < 0 ? 0 : (al > 100 ? 100 : al));
+    v.appMuted = app["muted"] | false;
+    strlcpy(v.appName, app["name"] | "", sizeof(v.appName));
+  }
   taskENTER_CRITICAL(&gLock);
   gVol = v;
   gVolNew = true;

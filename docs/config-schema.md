@@ -6,7 +6,7 @@ Schema changes bump `schema` and include a migration on the host.
 
 ## The default config
 
-[`default-config.json`](default-config.json) is the built-in default and the reference example. The host embeds that file; `tools/gen_config_headers.py` turns it into `firmware/lib/config_logic/src/default_config.h`, so both sides start from the same bytes. Top-level sections: `schema`, `display`, `grid`, `theme`, `units`, `weather`, `sensor`, `media`, `stats`, `inputs`, `pages`.
+[`default-config.json`](default-config.json) is the built-in default and the reference example. The host embeds that file; `tools/gen_config_headers.py` turns it into `firmware/lib/config_logic/src/default_config.h`, so both sides start from the same bytes. Top-level sections: `schema`, `display`, `grid`, `theme`, `units`, `weather`, `sensor`, `media`, `stats`, `inputs`, `status_bar`, `pages`.
 
 ## Validation
 
@@ -50,7 +50,7 @@ A widget may have any size (in cells) whose content area is at least the type's 
 | `track_info` | 80 x 18 | title (scrolls), then artist, album, app as height allows |
 | `media_controls` | 60 x 24 | prev/play/next; progress bar from 44 px high, times from 70 px |
 | `progress` | 60 x 10 | progress bar; times from 30 px high |
-| `volume` | 40 x 34 | volume ring and level, mute icon from 64 px |
+| `volume` | 40 x 34 | volume ring and level, mute icon from 64 px. `target`: `master` (default, the PC's volume) or `app` (the Now Playing app's own volume in the Windows volume mixer; its name replaces the icon from 90 px) |
 | `metric_value` | 50 x 30 | any numeric source, label, unit |
 | `metric_bar` | 60 x 30 | bar with min/max and thresholds; one row below 44 px high |
 | `metric_gauge` | 44 x 44 | ring gauge; the number is sized to fit inside the ring, the unit in small type under it |
@@ -61,6 +61,7 @@ A widget may have any size (in cells) whose content area is at least the type's 
 | `weather_forecast` | 90 x 46 | `daily` or `hourly`, one column per 48 px (up to 5) |
 | `label` | 16 x 14 | static `text`, optional small `label` above it |
 | `image` | 16 x 16 | uploaded picture or animated GIF (`asset`, `fit` `cover` or `contain`), edge to edge in the card |
+| `mixer` | 110 x 50 | the Windows volume mixer (MIXER). `layout`: `list` (default, one row per app: name, level, bar) or `faders` (one column per app with a vertical bar and the name on up to two lines; from 100 px high, smaller cards use the list). `apps`: up to 8 app ids (from MIXER, e.g. `"spotify"`) shown first in this order; `only`: show just those. Interactive, see "Mixer widget" |
 | `spectrum` | 60 x 30 | audio spectrum bars of what the PC plays (SPECTRUM). `bars` 4 to 32 (default: one per 10 px of width, at most 32) |
 
 Widgets may have optional style fields (`label`, `unit`, `min`, `max`, `warn`, `crit`, `decimals`); see "Validation" for the rules and defaults.
@@ -95,7 +96,37 @@ Stable dotted IDs. The host publishes the catalog of what exists on this PC (`GE
 
 ## Actions
 
-`none`, `nav.page` (rotate), `nav.next_page`, `nav.prev_page`, `nav.home`, `media.play_pause`, `media.next`, `media.prev`, `media.seek` (rotate, seconds per detent configurable), `media.volume` (rotate), `media.mute`, `display.toggle`, `display.brightness` (rotate).
+`none`, `nav.page` (rotate), `nav.next_page`, `nav.prev_page`, `nav.home`, `media.play_pause`, `media.next`, `media.prev`, `media.seek` (rotate, seconds per detent configurable), `media.volume` (rotate), `media.mute`, `media.app_volume` (rotate), `media.app_mute`, `mixer.focus`, `display.toggle`, `display.brightness` (rotate).
+
+`mixer.focus` (press) focuses the `mixer` widget on the current page, or unfocuses it; see "Mixer widget".
+
+`media.app_volume` and `media.app_mute` change only the app that is playing (the Now Playing app, e.g. Spotify or the browser), like its slider in the Windows volume mixer, by `media.volume_step` per detent. The host matches the media session to the app's audio sessions by process (and package for Store apps) and changes all of them. They need the host: offline they do nothing (there is no media key for one app's volume).
+
+## Status bar
+
+The 20 px bar shows the clock, the page name, the page dots and the host icon. The dots show at most 5 pages at a time: the window slides with the current page, and a smaller dot at an end means there are more pages that way.
+
+`status_bar.items` (optional, up to 3) adds small items on the right, on every page, each `{"type": ..., "label": "..."}` with an optional short `label` (up to 7 bytes, e.g. "CPU") in front of the value:
+
+| `type` | Shows |
+|---|---|
+| `date` | weekday and day, e.g. "Sun 8" |
+| `room_temp` / `room_hum` | the device's room sensor (temperature in the config's units) |
+| `outdoor_temp` | current weather temperature |
+| `volume` | the PC's volume (mute icon when muted) |
+| `metric` | any data source, `source` required (e.g. `{"type": "metric", "source": "sys.cpu.temp", "label": "CPU"}`); counts toward the 16 different sources |
+
+While the mixer widget is focused, or for 5 s after a page with a mixer is shown, the bar shows a hint (what the knobs do, or which gesture focuses the mixer) instead of the clock, name, dots and items.
+
+## Mixer widget
+
+The `mixer` widget lists the apps in the Windows volume mixer (sent by the host, MIXER). It does nothing until focused:
+
+- A press mapped to `mixer.focus` focuses it (accent ring; the selected app gets an accent background and edge, the others dim). Map it to a button or a knob gesture; the editor's mixer settings offer to map a free gesture in one click, and the device's status bar says which gesture to use (or that none is mapped) when the page is shown.
+- While focused, the knobs drive the mixer instead of their mapping: **knob 1 turn** selects the previous/next app, **knob 2 turn** changes the selected app's volume (`media.volume_step` per detent), **knob 2 click** mutes or unmutes it, **knob 1 click** or the `mixer.focus` press again unfocuses. Other gestures (double clicks, long presses, press-and-turn, buttons) keep their normal actions.
+- Knob 1 moves through the widget's own order (its `apps` first) and focus starts at the top of it. Only the first mixer widget of a page can be focused.
+- It also unfocuses after 15 s without input, on a page change, on a new config and when the host disconnects.
+- Without the host it shows "No host connected" and cannot be focused.
 
 ## Buttons and macros
 

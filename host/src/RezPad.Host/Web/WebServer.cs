@@ -77,6 +77,8 @@ internal sealed class WebServer(int port, WebServices services)
                 BadFrames: decoder is null ? 0 : decoder.BadCobs + decoder.BadCrc + decoder.TooShort + decoder.TooLarge + decoder.BadVersion));
         });
         app.MapGet("/api/log", () => Results.Json(Log.Recent()));
+        // The Windows volume mixer as a mixer widget shows it (editor preview).
+        app.MapGet("/api/mixer", () => Results.Json(new MixerMsg(MixerService.Snapshot()), ProtocolJson.Options));
         // Live spectrum for the editor preview: 32 levels 0 to 255, all zero while capture is off.
         app.MapGet("/api/spectrum", () => Results.Json(new
         {
@@ -184,6 +186,9 @@ internal sealed class WebServer(int port, WebServices services)
                 now_playing = media.Current.ToMessage(DateTimeOffset.UtcNow),
                 art = new { track_id = art.TrackId, source_bytes = art.Source?.Length ?? 0 },
                 volume = new { level = vol.Level, muted = vol.Muted, available = vol.Available },
+                // The Now Playing app's own volume (volume widget with target "app"), null without one.
+                app_volume = media.SessionAppId is { } appId && AppVolume.Get(appId, MediaService.AppName(appId)) is { } av
+                    ? new { name = av.Name, level = av.Level, muted = av.Muted } : null,
             }, ProtocolJson.Options);
         });
         // The master config (docs/config-schema.md). PUT validates, saves and pushes it to the device;

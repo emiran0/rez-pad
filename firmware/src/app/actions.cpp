@@ -71,6 +71,8 @@ void runBinding(const Binding& b, int value) {
 void handle(const input::Event& e) {
   // While the screen is dark, the first input only wakes it.
   if (screen::onInput()) return;
+  // A focused mixer widget takes the knobs' turns and clicks.
+  if (ui::mixerInput(e)) return;
   const Binding b = resolve(e);
   if (b.none()) return;
   const bool rotate = e.kind == input::Kind::kRotate || e.kind == input::Kind::kRotatePressed;
@@ -98,6 +100,19 @@ void run(Action a, int value) {
         hid::sendMediaAction(a, value);
       }
       ui::mediaAction(a, value);
+      break;
+    case Action::kAppVolume:
+    case Action::kAppMute:
+      // Only the host can change one app's volume; there is no media key for it.
+      if (link::hostConnected()) {
+        link::sendAction(name(a), value);
+        ui::mediaAction(a, value);
+      } else {
+        Serial.printf("[input] %s needs the host app\n", name(a));
+      }
+      break;
+    case Action::kMixerFocus:
+      ui::toggleMixerFocus();
       break;
     case Action::kDisplayToggle:
       screen::turnOff();

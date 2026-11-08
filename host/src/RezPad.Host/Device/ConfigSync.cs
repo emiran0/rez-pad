@@ -130,9 +130,9 @@ internal sealed class ConfigSync
         var files = new Dictionary<string, byte[]>();
         try
         {
-            foreach (var (p, maxFrames) in Budget(placements))
+            foreach (var p in placements)
             {
-                files.TryAdd(p.FileName, _assets.Variant(p, maxFrames));
+                files.TryAdd(p.FileName, _assets.Variant(p));
             }
         }
         catch (Exception ex) when (ex is InvalidOperationException or IOException or ArgumentException)
@@ -188,20 +188,6 @@ internal sealed class ConfigSync
             sent++;
         }
         return (sent, null);
-    }
-
-    // Frames per widget: everything that plays, at most 2 MB decoded per widget and 4 MB in total.
-    private IEnumerable<(AssetFormat.Placement P, int MaxFrames)> Budget(IReadOnlyList<AssetFormat.Placement> placements)
-    {
-        var plan = placements.Select(p =>
-        {
-            var frameBytes = (long)p.W * p.H * 2;
-            var natural = Math.Max(1, _assets.PlayableFrames(p.Asset));
-            return (P: p, FrameBytes: frameBytes, Frames: (int)Math.Max(1, Math.Min(natural, AssetFormat.MaxDecodedPerWidget / frameBytes)));
-        }).ToList();
-        var total = plan.Sum(x => x.Frames * x.FrameBytes);
-        var factor = total > AssetFormat.MaxDecodedTotal ? (double)AssetFormat.MaxDecodedTotal / total : 1;
-        return plan.Select(x => (x.P, Math.Max(1, (int)(x.Frames * factor))));
     }
 
     /// <summary>The device's stored config (CONFIG_GET), or null on timeout or a bad transfer.</summary>

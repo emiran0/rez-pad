@@ -17,6 +17,7 @@
 #include "config/store.h"
 #include "debug/console.h"
 #include "debug/wiring_check.h"
+#include "audio/mixer.h"
 #include "display/backlight.h"
 #include "display/screen.h"
 #include "display/display.h"
@@ -223,6 +224,46 @@ void cmdView(int argc, char** argv, Print& out) {
   }
 }
 
+// Injects a knob gesture as if it came from the hardware (goes through screen wake, the mixer focus
+// and the input map): input <enc1|enc2> <rotate N|click|double|long|rotate_pressed N>.
+void cmdInput(int argc, char** argv, Print& out) {
+  if (argc < 3 || (strcmp(argv[1], "enc1") != 0 && strcmp(argv[1], "enc2") != 0)) {
+    out.println("usage: input <enc1|enc2> <rotate N|rotate_pressed N|click|double|long>");
+    return;
+  }
+  rp::input::Event e{};
+  e.source = strcmp(argv[1], "enc1") == 0 ? rp::input::Source::kEnc1 : rp::input::Source::kEnc2;
+  e.timeMs = millis();
+  const char* k = argv[2];
+  if (strcmp(k, "rotate") == 0) e.kind = rp::input::Kind::kRotate;
+  else if (strcmp(k, "rotate_pressed") == 0) e.kind = rp::input::Kind::kRotatePressed;
+  else if (strcmp(k, "click") == 0) e.kind = rp::input::Kind::kClick;
+  else if (strcmp(k, "double") == 0) e.kind = rp::input::Kind::kDouble;
+  else if (strcmp(k, "long") == 0) e.kind = rp::input::Kind::kLong;
+  else {
+    out.printf("unknown gesture '%s'\n", k);
+    return;
+  }
+  e.value = static_cast<int16_t>(argc >= 4 ? atoi(argv[3]) : 0);
+  rp::actions::handle(e);
+  const rp::ui::Mixer& m = rp::ui::model().mixer;
+  out.printf("ok; mixer %s, selected %d of %u\n", m.focused ? "focused" : "not focused", m.selected, m.count);
+}
+
+void cmdMixer(int, char**, Print& out) {
+  const rp::ui::Mixer& m = rp::ui::model().mixer;
+  uint8_t order[rp::ui::kMixerApps];
+  const int shown = rp::mixer::view(m, m.focused ? m.pins : "", m.focused && m.onlyPins, order);
+  out.printf("mixer: %u apps (%d shown), %s, selected %d%s%s\n", m.count, shown, m.focused ? "focused" : "not focused",
+             m.selected, m.focused && m.pins[0] ? ", order: " : "", m.focused ? m.pins : "");
+  for (int k = 0; k < shown; ++k) {
+    const rp::ui::MixerApp& a = m.apps[order[k]];
+    const int i = k;
+    out.printf("  %c %-16s %-23s %3u%s%s\n", m.focused && i == m.selected ? '>' : ' ', a.id, a.name, a.level, a.muted ? " muted" : "",
+               a.active ? " playing" : "");
+  }
+}
+
 void cmdAction(int argc, char** argv, Print& out) {
   if (argc < 2) {
     out.println("usage: action <name> [value]   e.g. action media.next, action media.volume -3");
@@ -385,6 +426,14 @@ void cmdMedia(int, char**, Print& out) {
   out.printf("last art %lu bytes, decoded in %lu us, art size %d px, transfer %s\n",
              static_cast<unsigned long>(s.lastArtBytes), static_cast<unsigned long>(s.lastDecodeUs),
              rp::media::artSize(), rp::media::artTransferActive() ? "in progress" : "idle");
+  const rp::ui::Volume& v = rp::ui::model().volume;
+  if (!v.valid) {
+    out.println("volume unknown (no host)");
+  } else {
+    out.printf("volume %u%s", v.level, v.muted ? " muted" : "");
+    if (v.appValid) out.printf(", %s %u%s\n", v.appName, v.appLevel, v.appMuted ? " muted" : "");
+    else out.println(", no media app volume");
+  }
 }
 
 void cmdStats(int, char**, Print& out) {
@@ -447,6 +496,8 @@ const rp::console::Command kCommands[] = {
     {"pins", "", cmdPins},
     {"bl", "<0-100>", cmdBacklight},
     {"screen", "", cmdScreen},
+    {"input", "<enc1|enc2> <gesture> [N]", cmdInput},
+    {"mixer", "", cmdMixer},
     {"spi", "<MHz>", cmdSpi},
     {"pattern", "", cmdPattern},
     {"fill", "<color>", cmdFill},

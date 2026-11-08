@@ -26,6 +26,8 @@ Quick check on a new PC: run the host, then save `http://127.0.0.1:47800/api/sou
 ## Firmware
 
 - **Full page redraw about 153 ms** (target 120 ms). Measured with `page <n>` on the System and Weather pages at 40 MHz SPI; the page switch still looks instant on the hardware. The flush waits for each strip to go out over SPI before LVGL renders the next one. Fix if it matters: convert RGB565 to RGB666 into a separate DMA buffer and return from the flush right away (see measurements.md, "UI rendering").
+- **Full-screen animations play at about 7 to 10 FPS**: a 480x300 frame takes about 50 ms to decode and about 55 ms to push over the 40 MHz SPI link.
+- **Long animations decode on the fly**: when an animation does not fit the 2 MB pre-decoded budget per widget, the device decodes each JPEG frame when it is due (about 15 ms for a 234x194 frame on the UI task). Several large ones on one page add up.
 - **Animated images cost SPI time**: each frame redraws the image area over the 40 MHz SPI link (about 25 ms for a 234x144 frame). Several large GIFs on one page at 20 fps would keep the link busy; frames are limited to one per 50 ms or slower.
 - **Asset transfer about 57 KB/s** (Arduino `USBCDC` byte queue, see below): a 1 MB animation takes about 20 s to reach the device the first time. Faster transfers need direct TinyUSB reads.
 - **No light theme**: the four presets are dark; the weather icons are drawn for dark cards.
@@ -46,6 +48,22 @@ Quick check on a new PC: run the host, then save `http://127.0.0.1:47800/api/sou
 - **Only the default output device** is captured (what Windows plays there, all apps mixed). Audio sent to another device, or played in exclusive mode, does not move the bars.
 - **The editor preview moves only for saved layouts**: the host captures while the saved layout has a `spectrum` widget and the device is connected; an unsaved widget shows a faded placeholder shape.
 - **LVGL keeps at most 32 dirty areas per frame** and redraws the whole screen when they run out (`LV_INV_BUF_SIZE`, not configurable). Widgets that move many parts at once must draw them from one object and invalidate a few merged areas, as the spectrum does (it was 5 FPS with one object per bar).
+
+## Per-app volume
+
+- **Only the Now Playing app** can be controlled (the app the Now Playing widget shows). Choosing another app (a game, voice chat) is not possible yet.
+- **Changes made in the Windows volume mixer show up within 1 s** (polled, no session events).
+- **Matching is by process**: the media session's app id against each audio session's process name (and package for Store apps). Apps whose media session and audio come from differently named processes are not found ("No media app"); all audio sessions of a matching process change together (e.g. every Chrome tab).
+
+## Mixer widget
+
+- **Apps are grouped by process name**: several WebView2 apps (they all run as `msedgewebview2`) show as one entry named after the first one found.
+
+- **Only the first mixer widget of a page can be focused**; a second one on the same page shows its list but cannot be controlled.
+- **Knob roles while focused are fixed** (knob 1 selects, knob 2 adjusts). Not configurable yet.
+- **At most 8 apps**, sorted by name (not by activity), so the order stays put while you scroll.
+- **Changes made on the PC show within 1 s** (the host polls the mixer; session events are not used).
+- **Only the default output device's** sessions are listed, like the Windows mixer's main section.
 
 ## Packaging
 

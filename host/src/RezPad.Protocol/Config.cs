@@ -22,6 +22,7 @@ public static class ConfigCatalog
     public const int MaxSources = 16;
 
     public const int MaxButtons = 4;
+    public const int MaxStatusItems = 3;
     public const int MaxMacros = 32;
     public const int MaxMacroSteps = 32;
 
@@ -54,6 +55,7 @@ public static class ConfigCatalog
         ["label"] = (16, 14),
         ["image"] = (16, 16),
         ["spectrum"] = (60, 30),
+        ["mixer"] = (110, 50),
     };
 
     /// <summary>Theme presets, in the firmware's order.</summary>
@@ -72,11 +74,12 @@ public static class ConfigCatalog
     [
         "none", "nav.page", "nav.next_page", "nav.prev_page", "nav.home", "media.play_pause", "media.next",
         "media.prev", "media.seek", "media.volume", "media.mute", "display.toggle", "display.brightness",
+        "media.app_volume", "media.app_mute", "mixer.focus",
     ];
 
     /// <summary>Actions that take a detent count: allowed on rotate gestures only, the others on presses only.</summary>
     public static readonly IReadOnlySet<string> RotateActions =
-        new HashSet<string> { "nav.page", "media.seek", "media.volume", "display.brightness" };
+        new HashSet<string> { "nav.page", "media.seek", "media.volume", "display.brightness", "media.app_volume" };
 
     public static bool IsMetric(string type) => type.StartsWith("metric_", StringComparison.Ordinal);
 
@@ -132,6 +135,15 @@ public static class ConfigCatalog
     public static IReadOnlyList<string> ReferencedSources(JsonNode? root)
     {
         var list = new List<string>();
+        // Status bar items of type "metric" first: they show on every page.
+        foreach (var item in (root?["status_bar"]?["items"] as JsonArray) ?? [])
+        {
+            if (item?["type"] is JsonValue t && t.TryGetValue<string>(out var type) && type == "metric" &&
+                item["source"] is JsonValue s && s.TryGetValue<string>(out var id) && id.Length > 0 && !list.Contains(id))
+            {
+                list.Add(id);
+            }
+        }
         foreach (var page in (root?["pages"] as JsonArray) ?? [])
         {
             foreach (var w in (page?["widgets"] as JsonArray) ?? [])
@@ -140,6 +152,29 @@ public static class ConfigCatalog
                     w["source"] is JsonValue s && s.TryGetValue<string>(out var id) && id.Length > 0 && !list.Contains(id))
                 {
                     list.Add(id);
+                }
+            }
+        }
+        return list;
+    }
+
+    /// <summary>App ids pinned by mixer widgets ("apps"), in order, without repeats.</summary>
+    public static IReadOnlyList<string> MixerPins(JsonNode? root)
+    {
+        var list = new List<string>();
+        foreach (var page in (root?["pages"] as JsonArray) ?? [])
+        {
+            foreach (var w in (page?["widgets"] as JsonArray) ?? [])
+            {
+                if (w?["type"] is JsonValue t && t.TryGetValue<string>(out var type) && type == "mixer")
+                {
+                    foreach (var a in (w["apps"] as JsonArray) ?? [])
+                    {
+                        if (a is JsonValue v && v.TryGetValue<string>(out var id) && !list.Contains(id))
+                        {
+                            list.Add(id);
+                        }
+                    }
                 }
             }
         }
@@ -318,6 +353,8 @@ public static class ConfigValidator
             Gestures(inputs, "inputs", macroIds);
         }
 
+        StatusBar(o);
+
         if (o["pages"] is not JsonArray pages)
         {
             throw Fail("pages", "required, must be an array");
@@ -334,6 +371,44 @@ public static class ConfigValidator
         if (ConfigCatalog.ReferencedSources(o).Count > ConfigCatalog.MaxSources)
         {
             throw Fail("pages", $"at most {ConfigCatalog.MaxSources} different data sources");
+        }
+    }
+
+    public static readonly IReadOnlyList<string> StatusTypes = ["date", "room_temp", "room_hum", "outdoor_temp", "volume", "metric"];
+
+    private static void StatusBar(JsonObject o)
+    {
+        if (Obj(o, "status_bar", "") is not { } sb || sb["items"] is null)
+        {
+            return;
+        }
+        if (sb["items"] is not JsonArray items)
+        {
+            throw Fail("status_bar.items", "must be an array");
+        }
+        if (items.Count > ConfigCatalog.MaxStatusItems)
+        {
+            throw Fail("status_bar.items", $"at most {ConfigCatalog.MaxStatusItems} items");
+        }
+        for (var i = 0; i < items.Count; i++)
+        {
+            var path = $"status_bar.items[{i}]";
+            if (items[i] is not JsonObject it)
+            {
+                throw Fail(path, "must be an object");
+            }
+            if (it["type"] is null)
+            {
+                throw Fail(P(path, "type"), "required");
+            }
+            Choice(it, "type", path, [.. StatusTypes]);
+            var type = it["type"]!.GetValue<string>();
+            var source = Str(it, "source", path, 40) ?? "";
+            if (type == "metric" && source.Length == 0)
+            {
+                throw Fail(P(path, "source"), "required for metric");
+            }
+            Str(it, "label", path, 8);
         }
     }
 
@@ -459,6 +534,41 @@ public static class ConfigValidator
                 throw Fail(P(path, "asset"), "required for image");
             }
             Choice(w, "fit", path, "cover", "contain");
+        }
+        if (type == "mixer")
+        {
+            Choice(w, "layout", path, "list", "faders");
+            if (w["apps"] is { } appsNode)
+            {
+                if (appsNode is not JsonArray apps)
+                {
+                    throw Fail(P(path, "apps"), "must be an array");
+                }
+                if (apps.Count > 8)
+                {
+                    throw Fail(P(path, "apps"), "at most 8 apps");
+                }
+                var total = 0;
+                for (var k = 0; k < apps.Count; k++)
+                {
+                    var id = apps[k] is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
+                    var n = id is null ? 0 : System.Text.Encoding.UTF8.GetByteCount(id);
+                    if (id is null || n == 0 || n > 23 || id.Contains(','))
+                    {
+                        throw Fail($"{path}.apps[{k}]", "must be an app id (1 to 23 bytes, no comma)");
+                    }
+                    total += n + (k > 0 ? 1 : 0);
+                    if (total > 63)
+                    {
+                        throw Fail(P(path, "apps"), "too long (63 bytes in all)");
+                    }
+                }
+            }
+            Bool(w, "only", path);
+        }
+        if (type == "volume")
+        {
+            Choice(w, "target", path, "master", "app");
         }
         if (type == "spectrum")
         {

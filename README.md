@@ -9,9 +9,11 @@ You build the hardware from common modules (no custom PCB, no soldering beyond h
 - **Now Playing**: title, artist, album art, progress and controls for whatever plays in Windows (Spotify, browsers, any app that shows up in the Windows media overlay). Seek, volume and mute from the knobs.
 - **System**: CPU and GPU load, temperatures, clocks and power, RAM, VRAM, disks, network, fans. Values match Task Manager.
 - **Weather and room**: current weather and forecast from [Open-Meteo](https://open-meteo.com/) (no account or API key), plus live room temperature, humidity, pressure and pressure trend from the device's own sensor.
+- **Volume mixer**: a widget listing the apps in the Windows volume mixer, as rows or vertical faders; focus it with a button, pick an app with one knob and set its volume with the other. The status bar shows what the knobs do while it is focused.
+- **Status bar**: clock, page name, page dots and up to 3 small items of your choice (date, room or outdoor temperature, volume, any system value).
 - **Spectrum**: bars that move with whatever the PC plays (captured on the PC, sent over USB about 30 times a second).
 - **Widget grid editor** at `http://127.0.0.1:47800`: up to 8 pages, each with its own grid (up to 8x8) and colors. Widgets: now playing, album art, track info, media controls, progress, volume, spectrum, metric value / bar / gauge / graph, clock, room climate, weather now, forecast, text label, and images (pictures and animated GIFs). The editor shows a live preview of the device screen.
-- **Knobs and buttons**: turn, press-and-turn, click, double click and long press, each mapped to an action (pages, media, volume, seek, brightness, screen off), a key shortcut the device types itself, or a host macro (keys, text, waits, opening programs). Up to 4 extra buttons.
+- **Knobs and buttons**: turn, press-and-turn, click, double click and long press, each mapped to an action (pages, media, volume, volume of just the playing app, seek, brightness, screen off), a key shortcut the device types itself, or a host macro (keys, text, waits, opening programs). Up to 4 extra buttons.
 - **Works without the app**: the device keeps its layout in flash; without the host it still shows the room climate and the last weather, and the knobs send media keys over USB.
 - **Screen power**: night dimming, off while the PC sleeps, wakes on a knob.
 - No Wi-Fi on the device: nothing to set up, nothing on your network.
@@ -93,7 +95,7 @@ pio device monitor           # debug log on the USB-UART port, 115200 baud
 pio test -e native           # unit tests (needs gcc)
 ```
 
-The debug console on the USB-UART port takes commands such as `help`, `info`, `link`, `config`, `screen`, `perf` (3 s frame rate and SPI load; `perf 1` shows LVGL's overlay), `sensor`, `enc`, `usb`, `keys ctrl+shift+m`, `view debug` and `bench`. `tools/devconsole.py` sends them from a script.
+The debug console on the USB-UART port takes commands such as `help`, `info`, `link`, `config`, `screen`, `perf` (3 s frame rate and SPI load; `perf 1` shows LVGL's overlay), `mixer`, `input enc1 rotate 1` (inject a knob gesture), `sensor`, `enc`, `usb`, `keys ctrl+shift+m`, `view debug` and `bench`. `tools/devconsole.py` sends them from a script.
 
 ### Host app
 

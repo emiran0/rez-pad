@@ -50,7 +50,8 @@ The host opens the port with DTR and RTS on (TinyUSB only sends while DTR is set
 | 0x12 | ART_CHUNK | binary `[id u32][offset u32][data]` | |
 | 0x13 | ART_END | JSON `{id}` | Device verifies CRC32, decodes, swaps image |
 | 0x14 | ART_NONE | JSON `{id}` | Track has no art, show placeholder |
-| 0x15 | VOLUME | JSON `{level, muted}` | level 0 to 100 |
+| 0x15 | VOLUME | JSON `{level, muted, app}` | Master volume, level 0 to 100. `app` `{name, level, muted}`: volume of the Now Playing app's audio session(s), omitted when there is no media app or Windows has no audio session for it (added within v1, optional for readers). Sent on every change; the app volume is polled every second |
+| 0x16 | MIXER | JSON `{apps: [{id, name, level, muted, active}]}` | The Windows volume mixer for `mixer` widgets. See below |
 | 0x20 | SYS_STATS | JSON `{t, v:{"<source_id>": number or null, ...}}` | Only referenced sources, after every sample (default 1 Hz) |
 | 0x30 | WEATHER | JSON, see below | Every 15 min and on connect |
 | 0x40 | CONFIG_BEGIN | JSON `{size, crc32}` | |
@@ -145,7 +146,14 @@ Added within v1 (unreleased; older firmware ignores the unknown types). The host
 - Transfer: ASSET_BEGIN `{name, size, crc32}`, ASSET_CHUNKs `[offset u32][data]` contiguous from 0, ASSET_END. At most 1048576 bytes per file. The device checks size and CRC32, writes `/a/<name>` atomically and answers ASSET_ACK. Only one asset transfer at a time.
 - ASSET_LIST: the device answers ASSET_LIST_DATA with every stored file and the free flash space; the host sends only what is missing.
 - After applying a config the device deletes asset files no `image` widget of that config uses.
-- Limits enforced by the host: at most 2 MB of decoded frames (w x h x 2 bytes each) per widget and 4 MB over the whole config; animations are slowed to at least 50 ms per frame and frames are dropped evenly to fit.
+- Limits: the host keeps every frame (frames shorter than 50 ms are merged) and only thins an animation when its file would exceed 1 MB (JPEG quality 85, 70, 55 first; then as many frames as fit, spread evenly, total duration kept). The device decodes all frames into PSRAM once when they fit (2 MB per widget, 4 MB in all); otherwise it keeps the JPEG frames and decodes each one just before it is shown, so a long animation plays at its own speed.
+
+### MIXER body
+
+Added within v1 (unreleased; older firmware counts it as an unknown type). Sent only while the layout has a `mixer` widget: on connect, when the list or a value changes (checked every second) and right after a mixer action.
+
+- `apps`: up to 8 apps that have an audio session on the default output device, grouped by process like the Windows volume mixer: the apps pinned by mixer widgets (`apps`) first, then the rest sorted by name with "System sounds" last. `id` is the app's key (lowercase process name, at most 23 bytes, `system` for system sounds); `name` its display name (at most 23 bytes); `level` 0 to 100; `muted`; `active` true while the app is playing sound.
+- The device answers with ACTION `{"action": "mixer.volume", "value": <detents>, "id": "<app id>"}` (the host steps every session of that app by `media.volume_step` per detent, turning up unmutes) and `{"action": "mixer.mute", "value": 1, "id": "<app id>"}` (toggles mute).
 
 ### SPECTRUM body
 
@@ -162,7 +170,7 @@ Added within v1 (unreleased; older firmware counts it as an unknown type). Binar
 |---|---|---|---|
 | 0x81 | HELLO_ACK | JSON `{proto, fw_ver, w, h, psram_free, cfg_crc, buttons, serial, art}` | Reply to HELLO. `serial` is the USB serial number; `art` is the album art edge in px the device's layout wants (omitted when the layout has no `album_art`). Both added within v1, optional for readers |
 | 0x82 | PONG | empty | Reply to PING |
-| 0x90 | ACTION | JSON `{action, value, id}` | Resolved from input map, see `config-schema.md`. `id` only for `action` `"macro"` (the macro to run; added within v1) |
+| 0x90 | ACTION | JSON `{action, value, id}` | Resolved from input map, see `config-schema.md`. `id` only for `action` `"macro"` (the macro to run) and `"mixer.volume"` / `"mixer.mute"` (the app, see MIXER); added within v1 |
 | 0x91 | ART_REQUEST | JSON `{id}` | Device lost or never received art for current track |
 | 0xA0 | SENSOR | JSON `{temp_c, hum_pct, press_hpa, trend, delta_3h}` | Every 10 s while connected. Values after offsets and filtering, always metric; a missing reading is `null`. `trend` is `rising`, `falling`, `steady` or `unknown` |
 | 0xC0 | CONFIG_ACK | JSON `{ok, crc32, error, art}` | See "Config transfer". `art` (album art edge of the new layout, 0 = none) added within v1, optional for readers |

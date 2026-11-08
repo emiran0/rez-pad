@@ -116,6 +116,7 @@ class VolumeWidget : public Widget {
   lv_obj_t* arc_ = nullptr;
   lv_obj_t* value_ = nullptr;
   lv_obj_t* icon_ = nullptr;
+  lv_obj_t* name_ = nullptr;  // target "app" from 90 px: the app's name instead of the icon
 };
 
 }  // namespace widgets

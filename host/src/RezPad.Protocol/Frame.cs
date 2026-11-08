@@ -25,6 +25,7 @@ public enum MsgType : byte
     AssetChunk = 0x45,
     AssetEnd = 0x46,
     AssetList = 0x47,
+    Mixer = 0x16,
     Spectrum = 0x50,
     Cmd = 0x60,
 

@@ -34,6 +34,11 @@ struct Volume {
   uint8_t level = 0;  // 0..100
   bool muted = false;
   bool valid = false;  // only known while the host is connected
+  // The Now Playing app's own volume (Windows volume mixer), when it has an audio session.
+  bool appValid = false;
+  uint8_t appLevel = 0;
+  bool appMuted = false;
+  char appName[24] = "";
 };
 
 // Album art for track `id` (RGB565, w x h), or `px == nullptr` when that track has none.
@@ -93,6 +98,26 @@ struct Spectrum {
   uint8_t bins[kSpectrumBins] = {};
 };
 
+// The Windows volume mixer from the host (MIXER), and the mixer widget's focus.
+constexpr int kMixerApps = 8;
+struct MixerApp {
+  char id[24] = "";
+  char name[24] = "";
+  uint8_t level = 0;
+  bool muted = false;
+  bool active = false;
+};
+struct Mixer {
+  uint8_t count = 0;
+  MixerApp apps[kMixerApps];
+  bool received = false;  // a MIXER arrived since the host connected
+  bool focused = false;   // knobs drive the mixer widget on the current page
+  int8_t selected = 0;    // position in the focused widget's order (mixer::view)
+  const void* focusWidget = nullptr;  // the focused widget's spec (its "apps" order applies)
+  char pins[64] = "";     // that widget's "apps" priority list, comma-joined
+  bool onlyPins = false;
+};
+
 // Live room climate from the device's own sensor (always real, also in demo mode).
 struct Room {
   bool tempValid = false;
@@ -112,6 +137,7 @@ struct Model {
   Units units;
   Room room;
   Spectrum spectrum;
+  Mixer mixer;
   bool hostConnected = false;
   int clockMinutes = -1;  // minutes since midnight, -1 = unknown
   int64_t unixTime = 0;   // unix s from the synced clock, 0 = unknown (updated every loop)
@@ -129,6 +155,7 @@ enum Changed : uint32_t {
   kChangedClock = 1u << 6,
   kChangedHost = 1u << 7,
   kChangedTick = 1u << 8,  // periodic tick (progress bar interpolation, ages)
+  kChangedMixer = 1u << 10,  // mixer apps, focus or selection
   kChangedSpectrum = 1u << 9,  // up to 30 times a second; only the shown page redraws it
   kChangedAll = 0xFFFFFFFFu,
 };

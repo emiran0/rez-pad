@@ -17,6 +17,9 @@ export const ACTION_NAMES = {
   "media.seek": "Seek in the track",
   "media.volume": "Volume",
   "media.mute": "Mute",
+  "media.app_volume": "Volume of the playing app",
+  "media.app_mute": "Mute the playing app",
+  "mixer.focus": "Focus the volume mixer",
   "display.toggle": "Screen off / on",
   "display.brightness": "Brightness",
 };

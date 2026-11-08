@@ -15,6 +15,11 @@ bool begin();
 void loop(uint32_t nowMs);
 
 void showPage(int index);
+
+// Mixer widget (docs/config-schema.md, "Mixer widget"): mixer.focus, and knob input while focused
+// (returns true when the mixer used the event).
+void toggleMixerFocus();
+bool mixerInput(const input::Event& e);
 void stepPage(int delta);
 
 // Media actions; in Phase 3 they drive the demo player.

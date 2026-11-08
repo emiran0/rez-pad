@@ -24,6 +24,8 @@ bool send(uint8_t type, const char* json);
 
 // ACTION {"action": name, "value": value}.
 bool sendAction(const char* action, int value);
+// ACTION {"action": action, "value": value, "id": id} (mixer.volume / mixer.mute: id is the app).
+bool sendActionId(const char* action, int value, const char* id);
 // ACTION {"action": "macro", "value": 1, "id": id}: the host runs the macro.
 bool sendMacro(const char* id);
 

@@ -164,15 +164,35 @@ function renderStageHead() {
   const { cols, rows } = grid();
   const pal = pageTheme(state.cfg, p);
   const overrides = Object.values(p.inputs_override || {}).reduce((a, o) => a + Object.keys(o || {}).length, 0);
+  // Shortcuts to the page settings below the screen, plus the page menu.
+  const jump = (id) => () => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
   $("page-tools").replaceChildren(
-    h("button", { type: "button", class: "tool", title: "Grid of this page", onclick: (e) => openPopover(e.currentTarget, gridPopover) },
+    h("button", { type: "button", class: "tool", title: "Grid of this page", onclick: jump("ps-grid") },
       icon("grid", 16), `${cols} × ${rows}`),
-    h("button", { type: "button", class: "tool", title: "Colors of this page", onclick: (e) => openPopover(e.currentTarget, themePopover) },
+    h("button", { type: "button", class: "tool", title: "Colors of this page", onclick: jump("ps-colors") },
       h("span", { class: "swatch", style: { background: pal.accent } }), p.theme ? THEMES[pal.name].label : h("span", {}, "Colors ", h("small", { text: "(all pages)" }))),
-    h("button", { type: "button", class: "tool", title: "What the knobs do on this page", onclick: (e) => openPopover(e.currentTarget, knobsPopover) },
-      icon("knob", 16), overrides ? `Knobs (${overrides})` : "Knobs"),
+    h("button", { type: "button", class: "tool", title: "What the knobs and buttons do on this page", onclick: jump("ps-knobs") },
+      icon("knob", 16), overrides ? `Knobs (${overrides} changed)` : "Knobs"),
     h("button", { type: "button", class: "tool icon-btn", title: "More", "aria-label": "More page actions", onclick: (e) => openPopover(e.currentTarget, morePopover) }, icon("more", 18)),
   );
+}
+
+// ---- page settings (under the screen) ----
+
+function renderPageSettings() {
+  const box = $("page-settings");
+  const grid = h("div", { class: "ps-card", id: "ps-grid" });
+  const colors = h("div", { class: "ps-card", id: "ps-colors" });
+  const knobs = h("div", { class: "ps-card wide", id: "ps-knobs" });
+  gridPopover(grid);
+  themePopover(colors);
+  knobsPopover(knobs);
+  box.replaceChildren(grid, colors, knobs);
+}
+
+/** replaceChildren without the null/false entries of conditional children. */
+function fillPanel(panel, ...children) {
+  panel.replaceChildren(...children.filter((c) => c !== null && c !== undefined && c !== false));
 }
 
 function stepper(label, value, min, max, onSet) {
@@ -191,10 +211,11 @@ function gridPopover(panel) {
         pg.grid = { cols: pg.grid?.cols ?? cfg.grid?.cols ?? 4, rows: pg.grid?.rows ?? cfg.grid?.rows ?? 3, [key]: v };
       });
       fill();
+      renderStageHead();
     };
     const bad = (p.widgets || []).filter((w, i) => !fits(w.x, w.y, w.w, w.h, [i]) || !big(w.type, w.w, w.h)).length;
-    panel.replaceChildren(
-      h("h4", { text: "Grid of this page" }),
+    fillPanel(panel,
+      h("h4", {}, icon("grid", 16), "Grid of this page"),
       h("p", { class: "hint", text: `Each cell is ${Math.floor(SCREEN_W / cols) - 4} × ${Math.floor(300 / rows) - 4} px. More cells make smaller widgets possible.` }),
       stepper("Columns", cols, 1, 8, (v) => set("cols", v)),
       stepper("Rows", rows, 1, 8, (v) => set("rows", v)),
@@ -222,9 +243,10 @@ function themePopover(panel) {
         pg.theme = { ...(pg.theme || {}), ...patch };
       });
       fill();
+      renderStageHead();
     };
-    panel.replaceChildren(
-      h("h4", { text: "Colors of this page" }),
+    fillPanel(panel,
+      h("h4", {}, h("span", { class: "swatch", style: { background: pal.accent, width: "12px", height: "12px", borderRadius: "50%", display: "inline-block" } }), "Colors of this page"),
       h("label", { class: "check" },
         h("input", {
           type: "checkbox", checked: !own,
@@ -235,6 +257,7 @@ function themePopover(panel) {
               else pg.theme = { name: pal.name, accent: pal.accent };
             });
             fill();
+            renderStageHead();
           },
         }), "Same as all pages (set in Settings)"),
       own ? h("div", {},
@@ -266,25 +289,33 @@ function knobsPopover(panel) {
       if (!Object.keys(po.inputs_override).length) delete po.inputs_override;
     });
     renderStageHead();
+    renderPageSettings();
   };
-  const rows = [];
+  const cards = [];
   for (const [dev, label, isKnob] of devices) {
-    rows.push(h("div", { class: "group-title", text: label }));
+    const rows = [];
     if (isKnob) {
-      for (const [g, gl] of [["rotate", "Turn"], ["rotate_pressed", "Press and turn"]]) {
+      for (const [g, gl] of [["rotate", "Turn"], ["rotate_pressed", "Press + turn"]]) {
         const global = get(["inputs", dev, g], "none");
-        rows.push(h("label", { class: "field" }, h("span", { text: gl }),
-          actionSelect(true, ov[dev]?.[g], `Default: ${ACTION_NAMES[global] || global}`, (v) => setOverride(dev, g, v === "" ? undefined : v))));
+        const own = ov[dev]?.[g] !== undefined;
+        rows.push(h("label", { class: "ctl-row" + (own ? " own" : "") }, h("span", { text: gl, title: own ? "Changed for this page" : "Same as all pages" }),
+          actionSelect(true, ov[dev]?.[g], `${ACTION_NAMES[global] || global} (all pages)`, (v) => setOverride(dev, g, v === "" ? undefined : v))));
       }
     }
     for (const [g, gl] of presses) {
       const global = get(["inputs", dev, g]) ?? "none";
-      rows.push(h("label", { class: "field" }, h("span", { text: gl }),
-        bindingControl(ov[dev]?.[g], (v) => setOverride(dev, g, v), `Default: ${bindingText(global)}`)));
+      const own = ov[dev]?.[g] !== undefined;
+      rows.push(h("label", { class: "ctl-row" + (own ? " own" : "") }, h("span", { text: gl, title: own ? "Changed for this page" : "Same as all pages" }),
+        bindingControl(ov[dev]?.[g], (v) => setOverride(dev, g, v), `${bindingText(global)} (all pages)`)));
     }
+    cards.push(h("div", { class: "ctl-dev" }, h("h5", { text: label }), ...rows));
   }
-  panel.style.width = "380px";
-  panel.append(h("h4", { text: "Knobs and buttons on this page" }), h("p", { class: "hint", text: "Only while this page is shown. The defaults are in Settings." }), ...rows);
+  const hasMixer = (p.widgets || []).some((w) => w.type === "mixer");
+  panel.append(
+    h("h4", {}, icon("knob", 16), "Knobs and buttons on this page"),
+    h("p", { class: "hint", text: "What each knob and button does while this page is shown. Pick something to change it for this page only (shown in color); \"(all pages)\" means the default from Settings > Knobs and buttons is used."
+      + (hasMixer ? " While the volume mixer is focused, knob 1 picks an app and knob 2 sets its volume; the gestures here apply again when you leave it." : "") }),
+    h("div", { class: "ctl-grid" }, ...cards));
 }
 
 function morePopover(panel) {
@@ -728,16 +759,125 @@ function imagePicker(w) {
     input);
 }
 
+/**
+ * Where a ww x hh widget can go while keeping the selected widget's top-left cell: it may grow to
+ * the left and up as well (a widget at the right or bottom edge can still get bigger). The spot
+ * closest to the current position wins; null when there is none.
+ */
+function resizeSpot(w, ww, hh) {
+  let best = null;
+  for (let y = Math.max(0, w.y - hh + 1); y <= w.y; y++) {
+    for (let x = Math.max(0, w.x - ww + 1); x <= w.x; x++) {
+      if (!fits(x, y, ww, hh, [state.selected])) continue;
+      const d = w.x - x + (w.y - y);
+      if (!best || d < best.d) best = { x, y, d };
+    }
+  }
+  return best;
+}
+
 function sizeChips(w) {
   const { cols, rows } = grid();
   const opts = [];
   for (let hh = 1; hh <= rows; hh++) {
-    for (let ww = 1; ww <= cols; ww++) if (big(w.type, ww, hh) && fits(w.x, w.y, ww, hh, [state.selected])) opts.push([ww, hh]);
+    for (let ww = 1; ww <= cols; ww++) {
+      if (!big(w.type, ww, hh)) continue;
+      const spot = resizeSpot(w, ww, hh);
+      if (spot) opts.push([ww, hh, spot]);
+    }
   }
   opts.sort((a, b) => a[0] * a[1] - b[0] * b[1] || a[1] - b[1]);
   if (!opts.length) return h("p", { class: "insp-sub", text: "No size fits here; move it to a bigger free spot." });
-  return h("div", { class: "chips" }, ...opts.slice(0, 16).map(([ww, hh]) =>
-    h("button", { type: "button", class: ww === w.w && hh === w.h ? "on" : "", onclick: () => setWidget({ w: ww, h: hh }) }, `${ww}×${hh}`)));
+  return h("div", { class: "chips" }, ...opts.slice(0, 24).map(([ww, hh, spot]) =>
+    h("button", { type: "button", class: ww === w.w && hh === w.h ? "on" : "", onclick: () => setWidget({ x: spot.x, y: spot.y, w: ww, h: hh }) }, `${ww}×${hh}`)));
+}
+
+// ---- volume mixer: how to use it, and mapping its focus gesture in one click ----
+
+const GESTURE_TEXT = { click: "Click", double: "Double-click", long: "Hold" };
+
+/** Where "mixer.focus" is mapped for the current page: [{dev, g, text}]. */
+function focusGestures() {
+  const p = page();
+  const buttons = get("inputs.buttons", 0);
+  const devs = ["enc1", "enc2", ...Array.from({ length: buttons }, (_, k) => `btn${k + 1}`)];
+  const out = [];
+  for (const dev of devs) {
+    for (const g of ["click", "double", "long"]) {
+      const v = p.inputs_override?.[dev]?.[g] ?? get(["inputs", dev, g]);
+      if (v === "mixer.focus") out.push({ dev, g, text: `${GESTURE_TEXT[g]} ${dev.startsWith("enc") ? "knob " + dev[3] : "button " + dev[3]}` });
+    }
+  }
+  return out;
+}
+
+/** "Apps to show first": the widget's priority list, picked from the apps the PC has now. */
+function mixerApps(w) {
+  const pins = w.apps || [];
+  const live = state.data.mixer || [];
+  const nameOf = (id) => live.find((a) => a.id === id)?.name || id;
+  const setPins = (list) => setWidget({ apps: list.length ? list : undefined, only: list.length ? w.only : undefined });
+  const move = (i, d) => {
+    const list = [...pins];
+    [list[i], list[i + d]] = [list[i + d], list[i]];
+    setPins(list);
+  };
+  const rows = pins.map((id, i) => h("div", { class: "pin-row" },
+    h("span", { class: "pin-name", text: nameOf(id), title: id }),
+    h("button", { type: "button", class: "ghost icon-btn", title: "Up", disabled: i === 0, onclick: () => move(i, -1) }, "\u25B2"),
+    h("button", { type: "button", class: "ghost icon-btn", title: "Down", disabled: i === pins.length - 1, onclick: () => move(i, 1) }, "\u25BC"),
+    h("button", { type: "button", class: "ghost icon-btn", title: "Remove", onclick: () => setPins(pins.filter((x) => x !== id)) }, icon("trash", 14))));
+  const free = live.filter((a) => !pins.includes(a.id));
+  const add = free.length && pins.length < 8 ? h("select", {
+    onchange: (ev) => ev.target.value && setPins([...pins, ev.target.value]),
+  }, h("option", { value: "", text: "Add an app..." }), ...free.map((a) => h("option", { value: a.id, text: a.name || a.id }))) : null;
+  return h("div", { class: "field" },
+    h("span", { text: "Apps to show first" }),
+    ...rows,
+    add,
+    pins.length ? h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!w.only, onchange: (ev) => setWidget({ only: ev.target.checked || undefined }) }), "Show only these apps") : null,
+    h("small", { text: pins.length ? "These come first in this order; knob 1 moves through the same order." : "Pick the apps you care about so they are always in view, even on a small card. The list shows the apps that have sound on the PC now." }));
+}
+
+function mixerSetup() {
+  const mapped = focusGestures();
+  const steps = h("ol", { class: "steps" },
+    h("li", {}, mapped.length ? h("span", {}, h("b", { text: mapped[0].text }), " focuses the mixer (an accent ring appears and the knob roles show in the status bar).")
+      : h("span", {}, "Pick a gesture below that ", h("b", { text: "focuses the mixer" }), ".")),
+    h("li", {}, h("b", { text: "Turn knob 1" }), " to pick an app."),
+    h("li", {}, h("b", { text: "Turn knob 2" }), " to set its volume, ", h("b", { text: "click knob 2" }), " to mute it."),
+    h("li", {}, h("b", { text: "Click knob 1" }), " (or the focus gesture again) when you are done. It also leaves after 15 s."));
+  const box = h("div", { class: "setup-card" + (mapped.length ? "" : " warn") },
+    h("h4", { text: mapped.length ? "How to use it" : "One step left: choose how to focus it" }), steps);
+  if (!mapped.length) {
+    // Offer the press gestures with what they do now; free ones first.
+    const buttons = get("inputs.buttons", 0);
+    const devs = [["enc1", "knob 1"], ["enc2", "knob 2"], ...Array.from({ length: buttons }, (_, k) => [`btn${k + 1}`, `button ${k + 1}`])];
+    const options = [];
+    for (const [dev, name] of devs) {
+      for (const g of ["long", "double", "click"]) {
+        const cur = get(["inputs", dev, g]) ?? "none";
+        options.push({ dev, g, label: `${GESTURE_TEXT[g]} ${name}`, cur, free: cur === "none" });
+      }
+    }
+    options.sort((a, b) => Number(b.free) - Number(a.free));
+    const sel = h("select", {}, ...options.map((o, k) => h("option", { value: String(k), text: `${o.label}${o.free ? " (free)" : ` (now: ${bindingText(o.cur)})`}` })));
+    box.append(h("div", { class: "setup-row" }, sel, h("button", {
+      type: "button", class: "primary",
+      onclick: () => {
+        const o = options[Number(sel.value)];
+        change((cfg) => {
+          cfg.inputs ??= {};
+          cfg.inputs[o.dev] ??= {};
+          cfg.inputs[o.dev][o.g] = "mixer.focus";
+        });
+        toast(`${o.label} now focuses the volume mixer (on every page; another page can still change it). Save to send it to the device.`);
+        renderInspector();
+      },
+    }, "Use this")));
+    box.append(h("p", { class: "insp-sub", text: "You can change it later under Settings > Knobs and buttons, or for one page in the page settings below the screen." }));
+  }
+  return box;
 }
 
 function renderProps(box) {
@@ -753,6 +893,14 @@ function renderProps(box) {
   } else if (w.type === "label") {
     content.push(field("Text", textInput(w, "text", "", 63)));
     content.push(field("Small title", textInput(w, "label", "optional", 31)));
+  } else if (w.type === "mixer") {
+    content.push(field("Layout", segmented([["list", "List"], ["faders", "Faders"]], w.layout || "list", (v) => setWidget({ layout: v === "list" ? undefined : v })),
+      "List: one row per app. Faders: one column per app with a vertical bar (needs some height; small cards show the list)."));
+    content.push(mixerApps(w));
+    content.push(mixerSetup());
+  } else if (w.type === "volume") {
+    content.push(field("Shows", segmented([["master", "PC volume"], ["app", "Playing app"]], w.target || "master", (v) => setWidget({ target: v === "master" ? undefined : v })),
+      "Playing app: the Now Playing app's own slider in the Windows volume mixer. Turn it with the knob action \"Volume of the playing app\"."));
   } else if (w.type === "spectrum") {
     const auto = Math.min(Math.max(Math.floor((w.w * Math.floor(SCREEN_W / grid().cols) - CELL_GAP - 2 * PAD) / 10), 4), 32);
     content.push(field("Bars", numberInput(w, "bars", `${auto} (automatic), 4 to 32`), "What the PC plays, in 32 bands from 50 Hz to 16 kHz. Moves once the layout is saved to the device."));
@@ -804,8 +952,14 @@ function renderInspector() {
 
 function fitScreen() {
   const wrap = $("screen-wrap");
-  const scale = Math.max(0.5, Math.min(2, (wrap.clientWidth - 2 * FRAME) / SCREEN_W));
+  // As wide as the stage allows, but the whole screen stays visible in the window (big
+  // monitors), up to 3x; the frame hugs the screen and is centered.
+  const room = wrap.parentElement.clientWidth - 48;  // stage padding
+  const byWidth = (room - 2 * FRAME) / SCREEN_W;
+  const byHeight = (window.innerHeight - 230) / SCREEN_H;
+  const scale = Math.max(0.5, Math.min(3, byWidth, Math.max(byHeight, 1)));
   wrap.style.setProperty("--scale", scale);
+  wrap.style.width = SCREEN_W * scale + 2 * FRAME + "px";
   wrap.style.height = SCREEN_H * scale + 2 * FRAME + "px";
 }
 
@@ -816,6 +970,7 @@ export function renderAll() {
   renderStageHead();
   renderScreenNow();
   renderInspector();
+  renderPageSettings();
   $("stage-hint").textContent = "Drag widgets to move them (drop on another to swap), drag the corner to resize, click an empty cell to add there.";
 }
 
@@ -831,7 +986,8 @@ export function initEditor() {
       cfg.pages[i].name = v;
     }, `p${i}.name`);
   });
-  new ResizeObserver(fitScreen).observe($("screen-wrap"));
+  new ResizeObserver(fitScreen).observe($("screen-wrap").parentElement);
+  window.addEventListener("resize", fitScreen);
   fitScreen();
 
   on("selection", () => {

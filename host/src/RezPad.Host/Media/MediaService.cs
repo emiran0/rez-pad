@@ -74,7 +74,7 @@ internal sealed class MediaService(Func<MediaOptions> options) : IDisposable
     private readonly List<Session> _subscribed = [];
     private SessionManager? _manager;
     private Session? _session;
-    private string? _sessionId;
+    private volatile string? _sessionId;
     private MediaState _current = MediaState.None;
     private ArtState _art = new(0, null, 0);
     private int _dirty;
@@ -87,6 +87,9 @@ internal sealed class MediaService(Func<MediaOptions> options) : IDisposable
 
     /// <summary>Raised on a worker thread when the art for the current track changes.</summary>
     public event Action<ArtState>? ArtChanged;
+
+    /// <summary>GSMTC source app id of the chosen session (e.g. "Spotify.exe"), null when there is none.</summary>
+    public string? SessionAppId => _sessionId;
 
     public MediaState Current
     {

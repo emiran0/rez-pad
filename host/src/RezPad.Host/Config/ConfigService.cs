@@ -181,6 +181,17 @@ internal sealed class ConfigService
         }
     }
 
+    public IReadOnlyList<string> MixerPins
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return ConfigCatalog.MixerPins(_root);
+            }
+        }
+    }
+
     public bool HasWidget(string type)
     {
         lock (_lock)

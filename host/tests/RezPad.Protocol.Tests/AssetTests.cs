@@ -56,3 +56,24 @@ public class AssetTests
         Assert.Equal(Crc32.Compute(file), begin.Crc32);
     }
 }
+
+public class ThinTests
+{
+    [Fact]
+    public void ThinKeepsTheCountSpreadEvenlyAndTheDuration()
+    {
+        var groups = Enumerable.Range(0, 120).Select(i => (i, 90)).ToList();
+        var kept = AssetFormat.Thin(groups, 22);
+        Assert.Equal(22, kept.Count);
+        Assert.Equal(120 * 90, kept.Sum(g => g.Delay));
+        Assert.Equal(0, kept[0].First);
+        Assert.True(kept.Zip(kept.Skip(1)).All(p => p.Second.First - p.First.First is 5 or 6));
+    }
+
+    [Fact]
+    public void ThinLeavesShortAnimationsAlone()
+    {
+        var groups = new List<(int, int)> { (0, 50), (1, 60) };
+        Assert.Same(groups, AssetFormat.Thin(groups, 5));
+    }
+}

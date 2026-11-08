@@ -283,7 +283,11 @@ void VolumeWidget::build(lv_obj_t* card, int w, int h) {
   value_ = makeLabel(card, side >= 120 ? ui::font::large() : side >= 64 ? ui::font::body() : ui::font::small(),
                      ui::color::text(), "0");
   lv_obj_align(value_, LV_ALIGN_CENTER, 0, icon ? -(side / 16) - 2 : 0);
-  if (icon) {
+  if (spec_.appTarget && side >= 90) {
+    name_ = makeEllipsis(card, ui::font::small(), ui::color::dim(), side * 3 / 5);
+    lv_obj_set_style_text_align(name_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(name_, LV_ALIGN_CENTER, 0, side / 8 + 6);
+  } else if (icon) {
     icon_ = makeLabel(card, ui::font::small(), ui::color::dim(), LV_SYMBOL_VOLUME_MAX);
     lv_obj_align(icon_, LV_ALIGN_CENTER, 0, side / 8 + 6);
   }
@@ -292,21 +296,25 @@ void VolumeWidget::build(lv_obj_t* card, int w, int h) {
 uint32_t VolumeWidget::interests() const { return ui::kChangedVolume; }
 
 void VolumeWidget::refresh(const Model& m, uint32_t, uint32_t) {
-  if (!m.volume.valid) {
-    // Offline the PC's volume is unknown; the knob still sends volume keys.
+  const bool app = spec_.appTarget;
+  const bool valid = m.volume.valid && (!app || m.volume.appValid);
+  if (name_) setText(name_, !m.volume.valid ? "" : (m.volume.appValid ? m.volume.appName : "No media app"));
+  if (!valid) {
+    // Offline the PC's volume is unknown (the knob still sends volume keys); "app" also needs a
+    // media app that is playing through Windows' mixer.
     lv_arc_set_value(arc_, 0);
     setText(value_, "--");
     if (icon_) setText(icon_, LV_SYMBOL_VOLUME_MAX);
     return;
   }
-  lv_arc_set_value(arc_, m.volume.level);
-  lv_obj_set_style_arc_color(arc_, m.volume.muted ? ui::color::dim() : ui::color::accent(), LV_PART_INDICATOR);
+  const uint8_t level = app ? m.volume.appLevel : m.volume.level;
+  const bool muted = app ? m.volume.appMuted : m.volume.muted;
+  lv_arc_set_value(arc_, level);
+  lv_obj_set_style_arc_color(arc_, muted ? ui::color::dim() : ui::color::accent(), LV_PART_INDICATOR);
   char buf[8];
-  snprintf(buf, sizeof(buf), "%u", m.volume.level);
+  snprintf(buf, sizeof(buf), "%u", level);
   setText(value_, buf);
-  if (icon_) {
-    setText(icon_, m.volume.muted ? LV_SYMBOL_MUTE : (m.volume.level < 50 ? LV_SYMBOL_VOLUME_MID : LV_SYMBOL_VOLUME_MAX));
-  }
+  if (icon_) setText(icon_, muted ? LV_SYMBOL_MUTE : (level < 50 ? LV_SYMBOL_VOLUME_MID : LV_SYMBOL_VOLUME_MAX));
 }
 
 }  // namespace widgets
