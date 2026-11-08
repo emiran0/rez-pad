@@ -79,7 +79,7 @@ constexpr int kMaxPages = 8;
 constexpr int kMaxWidgets = 16;  // per page
 constexpr int kMaxGrid = 8;      // cols and rows
 constexpr size_t kMaxConfigBytes = 32768;
-constexpr int kMaxSources = 16;  // different data sources over all pages (SYS_STATS keeps 16)
+constexpr int kMaxSources = 32;  // different data sources over all pages (SYS_STATS keeps 32)
 constexpr int kMaxMacros = 32;   // the host runs them; the device only needs their ids
 
 // Screen geometry the sizes are checked against (firmware/src/ui/pages.cpp uses the same numbers).
@@ -103,7 +103,7 @@ enum class Fit : uint8_t { kCover, kContain };
 struct WidgetSpec {
   char type[20] = "";
   uint8_t x = 0, y = 0, w = 0, h = 0;  // grid cell position and size
-  char source[40] = "";  // metric_*: data source id
+  char source[40] = "";  // metric_*: data source id; server: the Beszel system slug ("system")
   char label[32] = "";
   char unit[12] = "";
   char mode[8] = "";   // weather_forecast: "daily" or "hourly"
@@ -186,6 +186,12 @@ bool knownType(const char* type);
 bool minContent(const char* type, int& w, int& h);  // false for unknown types
 
 // Unit, range and thresholds for a data source when the widget does not set them.
+// The `server` widget (Beszel machine card) shows these sources of bz.<system>.: the same list on
+// the host (ConfigCatalog.ServerMetrics), which sends them, and here, where they count toward
+// kMaxSources.
+constexpr int kServerMetricCount = 8;
+extern const char* const kServerMetrics[kServerMetricCount];
+
 struct SourceStyle {
   const char* unit;
   float min, max;

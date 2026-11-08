@@ -11,14 +11,10 @@ import { state, on, emit, get, change, h, api, toast, openPopover, closePopover 
 import { icon } from "./icons.js";
 import { actionSelect, ACTION_NAMES, swatches, themeCards } from "./settings.js";
 import { bindingControl, bindingText } from "./bindings.js";
+import { sourceButton } from "./sources.js";
 
 const $ = (id) => document.getElementById(id);
 const FRAME = 10;  // px of black bezel around the preview
-
-const SOURCE_GROUPS = [
-  ["sys.cpu.", "CPU"], ["sys.gpu.", "GPU"], ["sys.ram.", "Memory"], ["sys.net.", "Network"],
-  ["sys.disk.", "Disks"], ["sys.fan.", "Fans"],
-];
 
 let drag = null;   // move, resize or add-from-gallery in progress
 let screenEl = null;
@@ -88,7 +84,23 @@ function newWidget(type, p) {
   if (type === "weather_forecast") w.mode = "daily";
   if (type === "label") w.text = "Hello";
   if (type === "image" && state.assets[0]) w.asset = state.assets[0].id;
+  if (type === "server") {
+    const used = new Set(state.cfg.pages.flatMap((pg) => (pg.widgets || []).map((x) => x.system)));
+    const sys = beszelSystems().find((s) => !used.has(s.slug)) || beszelSystems()[0];
+    w.system = sys?.slug || "server";
+    if (sys) w.label = sys.name.slice(0, 31);
+  }
   return w;
+}
+
+/** Beszel machines the host offers right now (from the bz.<slug>.online sources): [{slug, name}]. */
+function beszelSystems() {
+  const out = [];
+  for (const s of state.data.sources.values()) {
+    const m = /^bz\.([a-z0-9-]+)\.online$/.exec(s.id);
+    if (m) out.push({ slug: m[1], name: (s.group || "").replace(/^Beszel: /, "") || m[1] });
+  }
+  return out;
 }
 
 function addWidget(type, at) {
@@ -676,49 +688,14 @@ function setWidget(patch) {
   renderInspector();
 }
 
-function liveText(id) {
-  const s = state.data.sources.get(id);
-  return s?.available ? `${Math.round(s.value * 10) / 10} ${s.unit}` : "unavailable";
-}
-
 function sourcePicker(w) {
-  const name = state.data.sources.get(w.source)?.name || w.source;
-  return h("button", {
-    type: "button", class: "picker",
-    onclick: (e) => openPopover(e.currentTarget, (panel) => {
-      panel.style.width = "340px";
-      const list = h("div", { class: "pick-list" });
-      const search = h("input", { type: "search", placeholder: "Search", "aria-label": "Search data sources" });
-      const fillList = () => {
-        const q = search.value.trim().toLowerCase();
-        const items = state.catalog.sources.filter((s) => !q || s.id.includes(q) || (state.data.sources.get(s.id)?.name || "").toLowerCase().includes(q));
-        const groups = new Map();
-        for (const s of items) {
-          const g = SOURCE_GROUPS.find(([p]) => s.id.startsWith(p))?.[1] || "Other";
-          if (!groups.has(g)) groups.set(g, []);
-          groups.get(g).push(s);
-        }
-        list.replaceChildren(...[...groups].flatMap(([g, ss]) => [h("div", { class: "group-title", text: g }), ...ss.map((s) => {
-          const live = state.data.sources.get(s.id);
-          return h("button", {
-            type: "button", class: "pick-item" + (s.id === w.source ? " on" : "") + (live?.available ? "" : " na"),
-            onclick: () => {
-              const old = shortName(state.data.sources.get(w.source)?.name || "");
-              const patch = { source: s.id };
-              if (!w.label || w.label === old) patch.label = shortName(live?.name || "");
-              closePopover();
-              setWidget(patch);
-            },
-          }, h("span", { text: live?.name || s.id }), h("span", { class: "val", text: liveText(s.id) }));
-        })]));
-        if (!items.length) list.append(h("p", { class: "hint", text: "Nothing matches." }));
-      };
-      search.addEventListener("input", fillList);
-      panel.append(search, list);
-      fillList();
-      search.focus();
-    }),
-  }, h("span", { text: name }), h("span", { class: "val", text: liveText(w.source) }));
+  return sourceButton(w.source, (id) => {
+    // Follow with the label unless the user wrote their own.
+    const old = shortName(state.data.sources.get(w.source)?.name || "");
+    const patch = { source: id };
+    if (!w.label || w.label === old) patch.label = shortName(state.data.sources.get(id)?.name || "");
+    setWidget(patch);
+  });
 }
 
 function imagePicker(w) {
@@ -898,6 +875,21 @@ function renderProps(box) {
       "List: one row per app. Faders: one column per app with a vertical bar (needs some height; small cards show the list)."));
     content.push(mixerApps(w));
     content.push(mixerSetup());
+  } else if (w.type === "server") {
+    const systems = beszelSystems();
+    if (!systems.length) {
+      content.push(h("p", { class: "insp-sub", style: { color: "var(--warn, #FFB300)" }, text: "No Beszel machines yet: connect your hub under Settings > Integrations." }));
+    }
+    const known = systems.some((s) => s.slug === w.system);
+    content.push(field("Machine", h("select", {
+      onchange: (ev) => {
+        const sys = systems.find((s) => s.slug === ev.target.value);
+        setWidget({ system: ev.target.value, label: sys ? sys.name.slice(0, 31) : w.label });
+      },
+    }, ...(known || !w.system ? [] : [h("option", { value: w.system, text: `${w.system} (not on the hub now)`, selected: true })]),
+    ...systems.map((s) => h("option", { value: s.slug, text: s.name, selected: s.slug === w.system }))),
+    "CPU, memory and disk as bars; load, temperature and network down/up below when the card is tall enough. Single values of a machine (any of them, also its extra disks) are in the data source list of value, bar, gauge and graph widgets."));
+    content.push(field("Title", textInput(w, "label", w.system || "", 31)));
   } else if (w.type === "volume") {
     content.push(field("Shows", segmented([["master", "PC volume"], ["app", "Playing app"]], w.target || "master", (v) => setWidget({ target: v === "master" ? undefined : v })),
       "Playing app: the Now Playing app's own slider in the Windows volume mixer. Turn it with the knob action \"Volume of the playing app\"."));

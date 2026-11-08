@@ -40,6 +40,7 @@ export const WIDGETS = {
   weather_forecast: { name: "Forecast", group: "Time & weather", desc: "Next days or hours", size: [4, 1] },
   room_climate: { name: "Room", group: "Time & weather", desc: "Room temperature, humidity", size: [2, 1] },
   image: { name: "Image", group: "Other", desc: "Picture or animated GIF", size: [2, 2] },
+  server: { name: "Server (Beszel)", group: "External", desc: "A homelab machine: CPU, memory, disk", size: [2, 1] },
   label: { name: "Text", group: "Other", desc: "Your own text", size: [2, 1] },
 };
 
@@ -630,6 +631,57 @@ const RENDER = {
       track.append(fill);
       at(box, track, 4, y + rowH - 2 - 7, w - 8, 3);
     });
+  },
+
+  server(box, w, h, ctx) {
+    // Same layout as firmware/src/widgets/server_widget.cpp.
+    const wd = ctx.widget;
+    const get = (m) => {
+      const s = ctx.data.sources?.get(`bz.${wd.system}.${m}`);
+      return ctx.data.connected && s?.available ? s.value : null;
+    };
+    const sample = !wd.system || !ctx.data.sources?.has(`bz.${wd.system}.online`);
+    const val = sample ? (m) => ({ online: 1, cpu_load: 12, mem_used_pct: 46, disk_used_pct: 71, load1: 0.42, temp: 44, net_rx_kbps: 820, net_tx_kbps: 130 })[m] : get;
+    if (sample) box.style.opacity = "0.45";
+    const big = h >= 100;
+    align(box, ellipsis(big ? 20 : 14, "", wd.label || wd.system || "Server", w - 16), "TOP_LEFT", 0, big ? -2 : 0);
+    const online = val("online");
+    const dot = el("div");
+    Object.assign(dot.style, { width: "8px", height: "8px", borderRadius: "50%", background: online === null ? ctx.pal.faint : online >= 0.5 ? "#66BB6A" : "#EF5350" });
+    align(box, dot, "TOP_RIGHT", 0, 6);
+    const headerH = 24, rowH = 21, footerH = 19;
+    const footer = h - headerH >= 3 * rowH + footerH;
+    const rows = Math.max(1, Math.min(3, Math.floor((h - headerH - (footer ? footerH : 0)) / rowH)));
+    const step = Math.floor((h - headerH - (footer ? footerH : 0)) / rows);
+    const info = [["cpu_load", "CPU", 80, 95], ["mem_used_pct", "MEM", 85, 95], ["disk_used_pct", "DISK", 90, 97]];
+    for (let i = 0; i < rows; i++) {
+      const [m, label, warn, crit] = info[i];
+      const v = val(m);
+      const y = headerH + i * step + Math.floor((step - 19) / 2);
+      at(box, txt(14, "dim", label), 0, y);
+      const bar = el("div", "bar");
+      const fill = el("div", "fill");
+      fill.style.width = (v ?? 0) + "%";
+      fill.style.background = v === null ? ctx.pal.faint : v >= crit ? "#EF5350" : v >= warn ? "#FFB300" : ctx.pal.accent;
+      bar.append(fill);
+      at(box, bar, 40, y + 7, w - 40 - 42 - 4, 6);
+      const t = txt(14, "", v === null ? "--" : `${Math.round(v)}%`);
+      Object.assign(t.style, { width: "42px", textAlign: "right" });
+      at(box, t, w - 42, y);
+    }
+    if (footer) {
+      const parts = [];
+      if (!ctx.data.connected && !sample) parts.push("No host connected");
+      else if (online !== null && online < 0.5) parts.push("Offline");
+      else {
+        const l = val("load1"), tp = val("temp"), rx = val("net_rx_kbps"), tx = val("net_tx_kbps");
+        const rate = (k) => (k === null ? "--" : k >= 1000 ? `${(k / 1000).toFixed(1)}M` : `${Math.round(k)}k`);
+        if (l !== null) parts.push(`load ${l.toFixed(2)}`);
+        if (tp !== null) parts.push(`${Math.round(tp)}${DEG}`);
+        if (rx !== null || tx !== null) parts.push(`\u2193 ${rate(rx)} \u2191 ${rate(tx)}`);
+      }
+      align(box, ellipsis(14, "dim", parts.join("   "), w), "BOTTOM_LEFT", 0, 2);
+    }
   },
 
   spectrum(box, w, h, ctx) {

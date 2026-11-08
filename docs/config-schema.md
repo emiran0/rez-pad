@@ -14,7 +14,7 @@ Implemented twice, tested against the same cases ([`config-test-vectors.json`](c
 
 - `schema` must be 1 and `pages` must exist; every other section may be missing (struct defaults). Unknown keys are ignored. A JSON `null` counts as missing.
 - Numbers are range-checked (see below), whole numbers where the schema says so; strings have byte limits (UTF-8): page `id` 23, page `name` 31, widget `type` 19, `source` 39, `label` 31, `unit` 11, `text` 63.
-- 1 to 8 pages, page ids unique and not empty (`name` defaults to the id), up to 16 widgets per page, at most 16 different data sources over all pages (the device keeps 16 SYS_STATS values).
+- 1 to 8 pages, page ids unique and not empty (`name` defaults to the id), up to 16 widgets per page, at most 32 different data sources over the whole config (metric widgets, server cards and status bar items; the device keeps 32 SYS_STATS values).
 - Pages may set their own `grid` (`{cols, rows}`, 1 to 8) and `theme` (`{name, accent}`, each optional); otherwise the global ones apply.
 - Widgets: known type, `x`/`y`/`w`/`h` inside the page's grid, big enough for the type (see "Widget catalog"), no overlap. `metric_*` need a `source`, `label` needs `text`, `image` needs `asset` (and `fit` is `cover` or `contain`), `weather_forecast` `mode` is `daily` (default) or `hourly`, `decimals` 0 to 3, and `min` must be below `max` after source defaults.
 - Actions: known names; `nav.page`, `media.seek`, `media.volume`, `display.brightness` take a rotation and are only allowed on `rotate`/`rotate_pressed`; all others only on presses (`click`, `double`, `long`).
@@ -62,6 +62,7 @@ A widget may have any size (in cells) whose content area is at least the type's 
 | `label` | 16 x 14 | static `text`, optional small `label` above it |
 | `image` | 16 x 16 | uploaded picture or animated GIF (`asset`, `fit` `cover` or `contain`), edge to edge in the card |
 | `mixer` | 110 x 50 | the Windows volume mixer (MIXER). `layout`: `list` (default, one row per app: name, level, bar) or `faders` (one column per app with a vertical bar and the name on up to two lines; from 100 px high, smaller cards use the list). `apps`: up to 8 app ids (from MIXER, e.g. `"spotify"`) shown first in this order; `only`: show just those. Interactive, see "Mixer widget" |
+| `server` | 110 x 60 | a Beszel machine (`system`: its id, e.g. `"main-pve-node"`; `label`: the title): online dot, CPU / memory / disk bars as far as the height allows, then load, temperature and network down/up. Uses 8 sources (see "Integrations") |
 | `spectrum` | 60 x 30 | audio spectrum bars of what the PC plays (SPECTRUM). `bars` 4 to 32 (default: one per 10 px of width, at most 32) |
 
 Widgets may have optional style fields (`label`, `unit`, `min`, `max`, `warn`, `crit`, `decimals`); see "Validation" for the rules and defaults.
@@ -101,6 +102,26 @@ Stable dotted IDs. The host publishes the catalog of what exists on this PC (`GE
 `mixer.focus` (press) focuses the `mixer` widget on the current page, or unfocuses it; see "Mixer widget".
 
 `media.app_volume` and `media.app_mute` change only the app that is playing (the Now Playing app, e.g. Spotify or the browser), like its slider in the Windows volume mixer, by `media.volume_step` per detent. The host matches the media session to the app's audio sessions by process (and package for Store apps) and changes all of them. They need the host: offline they do nothing (there is no media key for one app's volume).
+
+## Integrations
+
+Apps on the user's network the host reads (Settings > Integrations). Their settings and credentials are host-only (`%APPDATA%\rez-pad\integrations.json`, password encrypted with Windows DPAPI); the config only names their data sources.
+
+**Beszel** (system monitoring hub): the host signs in as a hub user (best a read-only one; it sees the systems shared with it) and offers each machine's values as sources `bz.<machine>.<metric>`, `<machine>` being a short id from its name (a-z, 0-9, -, up to 14 characters):
+
+| Metric | Unit | |
+|---|---|---|
+| `online` | | 1 up, 0 down |
+| `cpu_load`, `mem_used_pct`, `disk_used_pct` | % | |
+| `mem_used_gb`, `disk_used_gb` | GB | per-minute record |
+| `load1`, `load5`, `load15` | | load average |
+| `net_kbps`, `net_rx_kbps`, `net_tx_kbps` | kB/s | total, down, up (down/up per minute) |
+| `temp` | °C | the temperature Beszel shows |
+| `cpu_temp` | °C | the CPU sensor (package, Tctl or cpu_thermal) |
+| `uptime_h` | h | |
+| `fs1_used_pct` to `fs3_used_pct` | % | extra filesystems, sorted by name |
+
+They work with every metric widget and status bar item; the `server` widget shows `online`, `cpu_load`, `mem_used_pct`, `disk_used_pct`, `load1`, `temp`, `net_rx_kbps` and `net_tx_kbps` of one machine, and those 8 count toward the 32 different sources. A machine that is down keeps its sources without values ("--").
 
 ## Status bar
 
@@ -151,7 +172,7 @@ The device only reads the macro ids (validation of `{"macro"}` references); the 
 
 `web/` in the repo, copied next to the host exe and served at `http://127.0.0.1:47800`. Plain HTML/CSS/JS as ES modules, no build step and no third-party code. Three views:
 
-- **Layout**: pages on the left (live thumbnails, new page), the device screen in the middle and the inspector on the right. On the screen: drag a widget to move it (dropping it on one other widget swaps the two when both fit), drag the corner of the selected widget to resize, click an empty cell to add a widget there; arrow keys move, Shift + arrows resize, Delete removes. Above the screen: the page name and the page's grid, colors, knob overrides and more (duplicate, reorder, delete). The inspector shows the widget gallery (live previews; click to add, or drag onto the screen) or the selected widget's settings: data source picker with live values and search, labels, size chips (every size that fits), look (unit, range, thresholds, decimals), forecast mode, text, image picker with upload.
+- **Layout**: pages on the left (live thumbnails, new page), the device screen in the middle and the inspector on the right. On the screen: drag a widget to move it (dropping it on one other widget swaps the two when both fit), drag the corner of the selected widget to resize, click an empty cell to add a widget there; arrow keys move, Shift + arrows resize, Delete removes. Above the screen: the page name and the page's grid, colors, knob overrides and more (duplicate, reorder, delete). The inspector shows the widget gallery (live previews; click to add, or drag onto the screen) or the selected widget's settings: data source browser (step by step: where the value comes from, This PC or a Beszel machine, then a category, then the value, all as tiles with live values; opens where the current value is, with a path back up and search across everything; `web/sources.js`, also used for status bar items), labels, size chips (every size that fits), look (unit, range, thresholds, decimals), forecast mode, text, image picker with upload.
 - **Settings**: appearance (theme presets and accent), screen, knobs and buttons, weather and units, room sensor, media and system data.
 - **Device**: status, compare with the device's copy, restart, clear the device's config, the uploaded images, the data sources of this PC.
 

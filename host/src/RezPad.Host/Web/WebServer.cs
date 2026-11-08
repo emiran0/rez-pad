@@ -18,7 +18,7 @@ namespace RezPad.Host.Web;
 /// <summary>Kestrel bound to 127.0.0.1 only. Serves web/ and the /api endpoints (docs/config-schema.md).</summary>
 internal sealed record WebServices(SerialLink Link, MediaService Media, AudioService Audio, SystemStatsService Stats,
     ConfigService Config, WeatherService Weather, RoomSensor Room, ConfigSync ConfigSync, AssetStore Assets,
-    SpectrumBridge Spectrum);
+    SpectrumBridge Spectrum, Integrations.IntegrationStore Integrations, Integrations.BeszelService Beszel);
 
 internal sealed class WebServer(int port, WebServices services)
 {
@@ -32,10 +32,30 @@ internal sealed class WebServer(int port, WebServices services)
     private readonly WeatherService weather = services.Weather;
     private readonly RoomSensor room = services.Room;
     private readonly SpectrumBridge spectrum = services.Spectrum;
+    private readonly Integrations.IntegrationStore integrations = services.Integrations;
+    private readonly Integrations.BeszelService beszel = services.Beszel;
 
     private WebApplication? _app;
 
     public string Url { get; } = $"http://127.0.0.1:{port}/";
+
+    private static async Task<Integrations.BeszelSettings?> ReadBeszelAsync(HttpRequest req)
+    {
+        var o = await System.Text.Json.Nodes.JsonNode.ParseAsync(req.Body) as System.Text.Json.Nodes.JsonObject;
+        var url = ((string?)o?["url"] ?? "").Trim();
+        if (url.Length > 0 && !(url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
+        {
+            return null;
+        }
+        var password = (string?)o?["password"];
+        return new Integrations.BeszelSettings(
+            (bool?)o?["enabled"] ?? false,
+            url,
+            ((string?)o?["email"] ?? "").Trim(),
+            string.IsNullOrEmpty(password) ? null : password,  // empty: keep the stored one
+            Math.Clamp((int?)o?["refresh_s"] ?? Integrations.BeszelSettings.DefaultRefreshS, 5, 300),
+            (bool?)o?["insecure_tls"] ?? false);
+    }
 
     public void Start()
     {
@@ -173,9 +193,58 @@ internal sealed class WebServer(int port, WebServices services)
                         value = v is { } d ? Math.Round(d, 2) : (double?)null,
                         used = used.Contains(s.Id),
                     };
-                }),
+                }).Concat(beszel.Sources.Select(s =>
+                {
+                    // Integration sources: same shape, plus the group the editor lists them under.
+                    var v = beszel.Value(s.Id);
+                    return new
+                    {
+                        id = s.Id,
+                        name = s.Name,
+                        unit = s.Unit,
+                        available = v is not null,
+                        value = v is { } d ? Math.Round(d, 2) : (double?)null,
+                        used = used.Contains(s.Id),
+                        group = s.Group,
+                    };
+                }).Cast<object>()),
             }, ProtocolJson.Options);
         });
+
+        // ---- integrations (Settings > Integrations); credentials stay on this PC ----
+        app.MapGet("/api/integrations", () =>
+        {
+            var b = integrations.Beszel;
+            return Results.Json(new
+            {
+                beszel = new
+                {
+                    settings = new { enabled = b.Enabled, url = b.Url, email = b.Email, has_password = !string.IsNullOrEmpty(b.Password), refresh_s = b.RefreshS, insecure_tls = b.InsecureTls },
+                    status = beszel.Status,
+                },
+            }, ProtocolJson.Options);
+        });
+        app.MapPut("/api/integrations/beszel", async (HttpRequest req) =>
+        {
+            var s = await ReadBeszelAsync(req);
+            if (s is null)
+            {
+                return Results.BadRequest(new { error = "url must be http:// or https://" });
+            }
+            integrations.SetBeszel(s);
+            return Results.Json(new { saved = true });
+        });
+        // Signs in and lists the systems with the posted settings, without saving them.
+        app.MapPost("/api/integrations/beszel/test", async (HttpRequest req, CancellationToken ct) =>
+        {
+            var s = await ReadBeszelAsync(req);
+            if (s is null)
+            {
+                return Results.BadRequest(new { error = "url must be http:// or https://" });
+            }
+            return Results.Json(await beszel.TestAsync(s with { Password = s.Password ?? integrations.Beszel.Password }, ct), ProtocolJson.Options);
+        });
+        app.MapGet("/api/integrations/beszel/raw", () => beszel.Raw is { } raw ? Results.Text(raw, "application/json") : Results.NotFound());
         // What the host sends as NOW_PLAYING and VOLUME right now (debugging aid).
         app.MapGet("/api/media", () =>
         {
@@ -225,7 +294,8 @@ internal sealed class WebServer(int port, WebServices services)
             themes = ConfigCatalog.Themes,
             actions = ConfigCatalog.Actions,
             rotate_actions = ConfigCatalog.RotateActions,
-            sources = stats.Catalog.Select(s => new { id = s.Id, name = s.Name, style = ConfigCatalog.SourceDefaults(s.Id) }),
+            sources = stats.Catalog.Select(s => new { id = s.Id, name = s.Name, style = ConfigCatalog.SourceDefaults(s.Id) })
+                .Concat(beszel.Sources.Select(s => new { id = s.Id, name = s.Name, style = ConfigCatalog.SourceDefaults(s.Id) })),
         }, ProtocolJson.Options));
         // Live validation while editing; same validator as PUT, nothing is saved.
         app.MapPost("/api/config/validate", async (HttpRequest req) =>

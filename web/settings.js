@@ -6,6 +6,7 @@ import { state, on, get, set, change, h, api, postJson, toast } from "./state.js
 import { THEMES, ACCENTS } from "./preview.js";
 import { icon } from "./icons.js";
 import { ACTION_NAMES, bindingControl, keysRecorder } from "./bindings.js";
+import { sourceButton } from "./sources.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -141,10 +142,7 @@ function statusBar() {
         if (e.target.value === "metric") list[i].source = sources[0]?.id ?? "sys.cpu.load";
       }),
     }, ...STATUS_TYPES.map(([v, t]) => h("option", { value: v, text: t, selected: v === it.type })));
-    const src = it.type === "metric" ? h("select", {
-      onchange: (e) => update((list) => { list[i].source = e.target.value; }),
-    }, ...(sources.some((s) => s.id === it.source) ? [] : [h("option", { value: it.source, text: it.source, selected: true })]),
-    ...sources.map((s) => h("option", { value: s.id, text: s.name ? `${s.name} (${s.id})` : s.id, selected: s.id === it.source }))) : null;
+    const src = it.type === "metric" ? sourceButton(it.source, (id) => update((list) => { list[i].source = id; })) : null;
     const label = h("input", {
       type: "text", maxlength: 7, value: it.label ?? "", placeholder: it.type === "metric" ? "e.g. CPU" : "optional",
       oninput: (e) => {
@@ -162,6 +160,81 @@ function statusBar() {
   return panel("Status bar", "Up to 3 small items on the right of the status bar, on every page. The page dots show at most 5 pages at a time and slide with the current page.",
     ...rows,
     items.length < 3 ? h("button", { type: "button", class: "ghost", onclick: () => update((list) => list.push({ type: "date" })) }, icon("plus", 16), "Add an item") : null);
+}
+
+// ---- integrations (host-only settings; the password is stored encrypted on this PC) ----
+
+let beszelInfo = null;  // GET /api/integrations answer
+let beszelTest = null;  // last Test result
+let beszelDraft = null; // what is typed in the form (survives re-renders; never saved in the browser)
+
+async function loadIntegrations() {
+  const r = await api("/api/integrations").catch(() => null);
+  if (r?.ok) {
+    beszelInfo = r.body.beszel;
+    renderSettings();
+  }
+}
+
+function integrations() {
+  if (!beszelInfo) {
+    loadIntegrations();
+    return panel("Integrations", "Loading...");
+  }
+  const s = beszelInfo.settings;
+  const st = beszelTest || beszelInfo.status;
+  beszelDraft ??= { enabled: s.enabled, url: s.url, email: s.email, password: "", refresh_s: s.refresh_s, insecure_tls: s.insecure_tls };
+  const d = beszelDraft;
+  const text = (key, attrs) => h("input", { ...attrs, value: d[key], oninput: (e) => { d[key] = e.target.value; } });
+  const form = {
+    enabled: h("input", { type: "checkbox", checked: d.enabled, onchange: (e) => { d.enabled = e.target.checked; } }),
+    url: text("url", { type: "url", placeholder: "http://10.0.0.5:8090" }),
+    email: text("email", { type: "email", placeholder: "read-only hub user", autocomplete: "off" }),
+    password: text("password", { type: "password", placeholder: s.has_password ? "saved (leave empty to keep)" : "password", autocomplete: "new-password" }),
+    refresh: text("refresh_s", { type: "number", min: 5, max: 300 }),
+    insecure: h("input", { type: "checkbox", checked: d.insecure_tls, onchange: (e) => { d.insecure_tls = e.target.checked; } }),
+  };
+  const body = () => ({
+    enabled: d.enabled, url: String(d.url).trim(), email: String(d.email).trim(),
+    password: d.password, refresh_s: Number(d.refresh_s) || 15, insecure_tls: d.insecure_tls,
+  });
+  const test = async () => {
+    beszelTest = { connected: false, error: "Testing..." };
+    renderSettings();
+    const r = await postJson("/api/integrations/beszel/test", body()).catch(() => null);
+    beszelTest = r?.ok ? r.body : { connected: false, error: r?.body?.error || "the host did not answer" };
+    renderSettings();
+  };
+  const save = async () => {
+    const r = await api("/api/integrations/beszel", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body()) }).catch(() => null);
+    if (!r?.ok) {
+      toast(r?.body?.error || "Could not save", true);
+      return;
+    }
+    toast("Beszel settings saved on this PC");
+    beszelTest = null;
+    beszelDraft = null;
+    setTimeout(loadIntegrations, 1500);
+  };
+  const systems = st?.systems || [];
+  const statusLine = st?.connected
+    ? `Connected: ${systems.length} system${systems.length === 1 ? "" : "s"} visible to this user.`
+    : st?.error ? `Not connected: ${st.error}` : s.enabled ? "Waiting for the first answer..." : "Off.";
+  return panel("Integrations", "Apps on your network the host reads for you. Their values appear as data sources (group \"Beszel: <machine>\") for value, bar, gauge and graph widgets and the status bar. Addresses and passwords stay on this PC; the device only gets the values.",
+    h("h3", { text: "Beszel", style: { fontSize: "13px", margin: "4px 0 8px" } }),
+    h("label", { class: "check" }, form.enabled, "Read systems from a Beszel hub"),
+    h("div", { class: "form-grid" },
+      field("Hub address", form.url, "The hub's own address, e.g. http://10.20.0.20:8090"),
+      field("Hub user (email)", form.email, "A read-only user; it sees the systems shared with it"),
+      field("Password", form.password),
+      field("Refresh every (s)", form.refresh)),
+    h("label", { class: "check" }, form.insecure, "Accept a self-signed HTTPS certificate"),
+    h("div", { class: "setup-row" },
+      h("button", { type: "button", class: "ghost", onclick: test }, "Test connection"),
+      h("button", { type: "button", class: "primary", onclick: save }, "Save")),
+    h("p", { class: "hint", style: { color: st?.connected ? "var(--ok, #66BB6A)" : st?.error ? "var(--warn, #FFB300)" : "var(--muted)" }, text: statusLine }),
+    systems.length ? h("ul", { class: "plain-list" }, ...systems.map((x) =>
+      h("li", {}, h("b", { text: x.name }), ` (${x.status || "?"}), sources bz.${x.slug}.*`))) : null);
 }
 
 function knobs() {
@@ -347,7 +420,7 @@ function sensorMedia() {
 export function renderSettings() {
   if (!state.cfg) return;
   const scroll = window.scrollY;
-  $("view-settings").replaceChildren(appearance(), screen(), statusBar(), knobs(), macros(), weather(), ...sensorMedia());
+  $("view-settings").replaceChildren(appearance(), screen(), statusBar(), knobs(), macros(), weather(), integrations(), ...sensorMedia());
   window.scrollTo(0, scroll);
   renderLive();
 }

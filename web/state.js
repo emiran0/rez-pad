@@ -201,6 +201,9 @@ export function openPopover(anchor, fill) {
   }
   popAnchor = anchor;
   p.replaceChildren();
+  // A fresh look for every popover (fill() may add classes or a width).
+  p.className = "popover";
+  p.style.width = "";
   fill(p);
   p.hidden = false;
   const r = anchor.getBoundingClientRect();

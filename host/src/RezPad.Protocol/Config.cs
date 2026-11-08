@@ -19,7 +19,7 @@ public static class ConfigCatalog
     public const int MaxConfigBytes = 32768;
 
     /// <summary>Different data sources over all pages (the device keeps 16 SYS_STATS values).</summary>
-    public const int MaxSources = 16;
+    public const int MaxSources = 32;
 
     public const int MaxButtons = 4;
     public const int MaxStatusItems = 3;
@@ -55,6 +55,7 @@ public static class ConfigCatalog
         ["label"] = (16, 14),
         ["image"] = (16, 16),
         ["spectrum"] = (60, 30),
+        ["server"] = (110, 60),
         ["mixer"] = (110, 50),
     };
 
@@ -148,15 +149,30 @@ public static class ConfigCatalog
         {
             foreach (var w in (page?["widgets"] as JsonArray) ?? [])
             {
-                if (w?["type"] is JsonValue t && t.TryGetValue<string>(out var type) && IsMetric(type) &&
-                    w["source"] is JsonValue s && s.TryGetValue<string>(out var id) && id.Length > 0 && !list.Contains(id))
+                var type = w?["type"] is JsonValue t && t.TryGetValue<string>(out var tv) ? tv : "";
+                if (IsMetric(type) && w!["source"] is JsonValue s && s.TryGetValue<string>(out var id) && id.Length > 0 && !list.Contains(id))
                 {
                     list.Add(id);
+                }
+                else if (type == "server" && w?["system"] is JsonValue sys && sys.TryGetValue<string>(out var slug) && slug.Length > 0)
+                {
+                    foreach (var m in ServerMetrics)
+                    {
+                        var sid = $"{ExternalIds.BeszelPrefix}{slug}.{m}";
+                        if (!list.Contains(sid))
+                        {
+                            list.Add(sid);
+                        }
+                    }
                 }
             }
         }
         return list;
     }
+
+    /// <summary>Sources a server card (Beszel machine) shows: bz.&lt;system&gt;.&lt;metric&gt;. Same list as the firmware's kServerMetrics.</summary>
+    public static readonly IReadOnlyList<string> ServerMetrics =
+        ["online", "cpu_load", "mem_used_pct", "disk_used_pct", "load1", "temp", "net_rx_kbps", "net_tx_kbps"];
 
     /// <summary>App ids pinned by mixer widgets ("apps"), in order, without repeats.</summary>
     public static IReadOnlyList<string> MixerPins(JsonNode? root)
@@ -534,6 +550,14 @@ public static class ConfigValidator
                 throw Fail(P(path, "asset"), "required for image");
             }
             Choice(w, "fit", path, "cover", "contain");
+        }
+        if (type == "server")
+        {
+            var sys = Str(w, "system", path, 15) ?? "";
+            if (sys.Length == 0 || !sys.All(ch => ch is >= 'a' and <= 'z' or >= '0' and <= '9' or '-'))
+            {
+                throw Fail(P(path, "system"), "required, a Beszel system id (a-z, 0-9, -)");
+            }
         }
         if (type == "mixer")
         {

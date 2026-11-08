@@ -65,6 +65,13 @@ Quick check on a new PC: run the host, then save `http://127.0.0.1:47800/api/sou
 - **Changes made on the PC show within 1 s** (the host polls the mixer; session events are not used).
 - **Only the default output device's** sessions are listed, like the Windows mixer's main section.
 
+## Integrations
+
+- **Values update every 15 s by default** (Beszel's own data changes about once a minute for network up/down, used GB and sensor temperatures). Nothing updates while the PC or the host app is off; the device keeps the last values until the host disconnects.
+- **Machine ids come from the names**: renaming a machine in Beszel changes its `bz.<machine>` id, and widgets using the old id show "--" until they are pointed at the new one.
+- **Only systems shared with the hub user** are visible; a read-only user needs each system shared with it in Beszel.
+- **Self-signed HTTPS** needs the "accept a self-signed certificate" option (plain http to the hub's LAN address works without it).
+
 ## Packaging
 
 - **The host exe is about 175 MB** (self-contained .NET 10 with WinForms, ASP.NET Core and WinRT projections, not trimmable; 64 MB zipped). Private memory is unchanged (about 63 MB). A framework-dependent build would be about 10 MB but needs the .NET 10 Desktop and ASP.NET Core runtimes installed first.

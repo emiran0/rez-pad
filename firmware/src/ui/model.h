@@ -49,7 +49,7 @@ struct Art {
   const uint16_t* px = nullptr;
 };
 
-constexpr int kMaxStats = 16;
+constexpr int kMaxStats = 32;
 struct Stat {
   char id[32] = "";
   float value = 0;

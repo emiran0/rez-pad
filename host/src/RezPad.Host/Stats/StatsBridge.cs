@@ -13,13 +13,16 @@ internal sealed class StatsBridge
     private readonly SerialLink _link;
     private readonly SystemStatsService _stats;
     private readonly ConfigService _config;
+    private readonly Func<string, double?> _external;
     private IReadOnlyList<string> _sources = [];
 
-    public StatsBridge(SerialLink link, SystemStatsService stats, ConfigService config)
+    /// <param name="external">Values of integration sources (e.g. Beszel's bz.*), null when unknown.</param>
+    public StatsBridge(SerialLink link, SystemStatsService stats, ConfigService config, Func<string, double?> external)
     {
         _link = link;
         _stats = stats;
         _config = config;
+        _external = external;
         Reload();
         _config.Changed += Reload;
         _stats.Sampled += Send;
@@ -44,7 +47,7 @@ internal sealed class StatsBridge
         foreach (var id in sources)
         {
             // One decimal is all the widgets show; keeps the message small.
-            values[id] = _stats.Value(id) is { } v ? Math.Round(v, 1) : null;
+            values[id] = (_stats.Value(id) ?? _external(id)) is { } v ? Math.Round(v, 1) : null;
         }
         _link.SendJson(MsgType.SysStats, new SysStatsMsg(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), values));
     }

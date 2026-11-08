@@ -4,6 +4,7 @@
 #include "metric_widgets.h"
 #include "image_widget.h"
 #include "mixer_widget.h"
+#include "server_widget.h"
 #include "spectrum_widget.h"
 #include "text_widgets.h"
 #include "weather_widgets.h"
@@ -32,6 +33,7 @@ Widget* create(const Spec& s) {
   if (strcmp(t, "image") == 0) return new ImageWidget(s);
   if (strcmp(t, "spectrum") == 0) return new SpectrumWidget(s);
   if (strcmp(t, "mixer") == 0) return new MixerWidget(s);
+  if (strcmp(t, "server") == 0) return new ServerWidget(s);
   return nullptr;
 }
 

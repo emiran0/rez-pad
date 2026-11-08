@@ -268,6 +268,27 @@ main { flex: 1; min-height: 0; }
 .setup-row { display: flex; gap: 8px; margin: 6px 0; }
 .setup-row select { flex: 1; min-width: 0; }
 .pin-row { display: flex; align-items: center; gap: 4px; }
+.plain-list { margin: 4px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.6; }
+
+/* data source browser (sources.js) */
+.popover.sb { display: flex; flex-direction: column; gap: 8px; max-height: min(70vh, 560px); }
+.sb-crumbs { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); min-height: 20px; flex-wrap: wrap; }
+.sb-crumbs .link { border: none; background: none; padding: 0; color: var(--accent); cursor: pointer; font: inherit; }
+.sb-crumbs .link:hover { text-decoration: underline; }
+.sb-crumbs .sep { opacity: 0.6; }
+.sb-body { overflow-y: auto; min-height: 0; }
+.sb-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.sb-tiles.one { grid-template-columns: minmax(0, 1fr); }
+.sb-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); cursor: pointer; position: relative; min-width: 0; }
+.sb-tile:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: var(--hover); }
+.sb-tile.on { border-color: var(--accent); background: var(--accent-soft); }
+.sb-tile.na .sb-sub { opacity: 0.6; }
+.sb-tile.place .sb-title, .sb-tile.cat .sb-title { font-weight: 600; }
+.sb-title { font-size: 13px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-sub { font-size: 12px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-dot { position: absolute; top: 10px; right: 10px; width: 8px; height: 8px; border-radius: 50%; }
+.sb-dot.up { background: #66BB6A; }
+.sb-dot.down { background: #EF5350; }
 .pin-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .status-row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(180px, 2fr) 120px auto; gap: 10px; align-items: end; }
 @media (max-width: 760px) { .status-row { grid-template-columns: 1fr; } }

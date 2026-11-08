@@ -176,7 +176,7 @@ const TypeInfo kTypes[] = {
     {"metric_value", 50, 30},   {"metric_bar", 60, 30},   {"metric_gauge", 44, 44},
     {"metric_graph", 80, 40},   {"clock", 50, 26},        {"room_climate", 60, 30},
     {"weather_now", 60, 34},    {"weather_forecast", 90, 46}, {"label", 16, 14},
-    {"image", 16, 16},          {"spectrum", 60, 30},
+    {"image", 16, 16},          {"spectrum", 60, 30},       {"server", 110, 60},
     {"mixer", 110, 50},
 };
 
@@ -579,6 +579,13 @@ bool parseWidget(JsonVariantConst v, const char* path, const Page& page, bool us
 
   if (!getString(o, "source", path, w.source, sizeof(w.source), set, c)) return false;
   if (isMetric(w.type) && !w.source[0]) return c.fail(Path(path, "source").s, "required for %s", w.type);
+  if (strcmp(w.type, "server") == 0) {
+    // "system": the Beszel machine's slug (lowercase letters, digits, '-', up to 14).
+    if (!getString(o, "system", path, w.source, 15, set, c)) return false;
+    bool ok = w.source[0] != '\0';
+    for (const char* q = w.source; *q && ok; ++q) ok = (*q >= 'a' && *q <= 'z') || (*q >= '0' && *q <= '9') || *q == '-';
+    if (!ok) return c.fail(Path(path, "system").s, "required, a Beszel system id (a-z, 0-9, -)");
+  }
   if (!getString(o, "label", path, w.label, sizeof(w.label), set, c)) return false;
   bool unitSet = false;
   if (!getString(o, "unit", path, w.unit, sizeof(w.unit), unitSet, c)) return false;
@@ -759,32 +766,48 @@ bool parsePages(JsonObjectConst root, Config& cfg, Ctx& c) {
   }
   cfg.pageCount = static_cast<uint8_t>(i);
 
-  const char* seen[kMaxSources];
+  // Different data sources over the whole config: metric widgets, server cards (8 each) and
+  // status bar items. Static: too big for a task stack; parse() is never run concurrently.
+  static char seen[kMaxSources][32];
   int n = 0;
+  auto add = [&](const char* id) {
+    for (int k = 0; k < n; ++k) {
+      if (strcmp(seen[k], id) == 0) return true;
+    }
+    if (n == kMaxSources) return false;
+    snprintf(seen[n++], sizeof(seen[0]), "%s", id);
+    return true;
+  };
   for (int p = 0; p < cfg.pageCount; ++p) {
     for (int w = 0; w < cfg.pages[p].widgetCount; ++w) {
       const WidgetSpec& ws = cfg.pages[p].widgets[w];
-      if (!isMetric(ws.type)) continue;
-      bool known = false;
-      for (int k = 0; k < n && !known; ++k) known = strcmp(seen[k], ws.source) == 0;
-      if (known) continue;
-      if (n == kMaxSources) return c.fail("pages", "at most %d different data sources", kMaxSources);
-      seen[n++] = ws.source;
+      bool ok = true;
+      if (isMetric(ws.type)) {
+        ok = add(ws.source);
+      } else if (strcmp(ws.type, "server") == 0) {
+        for (int m = 0; m < kServerMetricCount && ok; ++m) {
+          char id[32];
+          snprintf(id, sizeof(id), "bz.%s.%s", ws.source, kServerMetrics[m]);
+          ok = add(id);
+        }
+      }
+      if (!ok) return c.fail("pages", "at most %d different data sources", kMaxSources);
     }
   }
   for (int s = 0; s < cfg.statusCount; ++s) {
     const StatusItem& it = cfg.status[s];
-    if (it.type != StatusType::kMetric) continue;
-    bool known = false;
-    for (int k = 0; k < n && !known; ++k) known = strcmp(seen[k], it.source) == 0;
-    if (known) continue;
-    if (n == kMaxSources) return c.fail("pages", "at most %d different data sources", kMaxSources);
-    seen[n++] = it.source;
+    if (it.type == StatusType::kMetric && !add(it.source)) {
+      return c.fail("pages", "at most %d different data sources", kMaxSources);
+    }
   }
   return true;
 }
 
 }  // namespace
+
+const char* const kServerMetrics[kServerMetricCount] = {
+    "online", "cpu_load", "mem_used_pct", "disk_used_pct", "load1", "temp", "net_rx_kbps", "net_tx_kbps",
+};
 
 bool knownType(const char* type) { return findType(type) != nullptr; }
 

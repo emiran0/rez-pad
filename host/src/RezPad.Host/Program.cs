@@ -97,7 +97,9 @@ internal static class Program
         };
 
         using var stats = new SystemStatsService(config.StatsRateHz);
-        _ = new StatsBridge(link, stats, config);
+        var integrations = new Integrations.IntegrationStore();
+        using var beszel = new Integrations.BeszelService(integrations);
+        _ = new StatsBridge(link, stats, config, beszel.Value);
         using var weather = new WeatherService(config);
         _ = new WeatherBridge(link, weather);
         using var spectrum = new SpectrumBridge(link, config);
@@ -106,7 +108,8 @@ internal static class Program
         media.Start();
         stats.Start();
         weather.Start();
-        var web = new WebServer(port, new WebServices(link, media, audio, stats, config, weather, room, configSync, assets, spectrum));
+        beszel.Start();
+        var web = new WebServer(port, new WebServices(link, media, audio, stats, config, weather, room, configSync, assets, spectrum, integrations, beszel));
         web.Start();
         link.Start();
 
