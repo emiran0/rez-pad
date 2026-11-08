@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+using RezPad.Host.Assets;
 using RezPad.Host.Config;
 using RezPad.Protocol;
 
@@ -11,18 +13,23 @@ namespace RezPad.Host.Device;
 internal sealed class ConfigSync
 {
     private static readonly TimeSpan AckTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan AssetTimeout = TimeSpan.FromSeconds(60);  // 1 MB at about 80 KB/s
 
     private readonly SerialLink _link;
     private readonly ConfigService _config;
+    private readonly AssetStore _assets;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ConfigTransfer.Receiver _receiver = new();
     private TaskCompletionSource<ConfigAckMsg>? _ack;
     private TaskCompletionSource<byte[]?>? _data;
+    private TaskCompletionSource<AssetAckMsg>? _assetAck;
+    private TaskCompletionSource<AssetListMsg?>? _assetList;
 
-    public ConfigSync(SerialLink link, ConfigService config)
+    public ConfigSync(SerialLink link, ConfigService config, AssetStore assets)
     {
         _link = link;
         _config = config;
+        _assets = assets;
         _link.Connected += ack =>
         {
             DeviceCrc = ack.CfgCrc;
@@ -55,7 +62,10 @@ internal sealed class ConfigSync
     /// <summary>The last push result: the device's CONFIG_ACK, or an error from the host side.</summary>
     public PushResult? Last { get; private set; }
 
-    public sealed record PushResult(bool Ok, string? Error, DateTimeOffset At, long Ms);
+    public sealed record PushResult(bool Ok, string? Error, DateTimeOffset At, long Ms, int ImagesSent = 0);
+
+    /// <summary>What a running push is doing ("Sending image 2 of 3"), null when idle.</summary>
+    public string? Progress { get; private set; }
 
     /// <summary>Sends the current config and waits for CONFIG_ACK. Pushes run one at a time.</summary>
     public async Task<PushResult> PushAsync()
@@ -66,6 +76,13 @@ internal sealed class ConfigSync
             var bytes = _config.Bytes;
             var started = DateTimeOffset.UtcNow;
             var sw = System.Diagnostics.Stopwatch.StartNew();
+            // Image files first: the device builds image widgets from them when the config arrives.
+            var (imagesSent, assetError) = await SendAssetsAsync(bytes);
+            if (assetError is not null)
+            {
+                return Finish(new PushResult(false, assetError, started, sw.ElapsedMilliseconds, imagesSent));
+            }
+            Progress = "Sending the config";
             var tcs = new TaskCompletionSource<ConfigAckMsg>(TaskCreationOptions.RunContinuationsAsynchronously);
             Volatile.Write(ref _ack, tcs);
             foreach (var (type, body) in ConfigTransfer.Packets(bytes))
@@ -86,15 +103,105 @@ internal sealed class ConfigSync
                 DeviceCrc = ack.Crc32;
                 Log.Info($"config: device applied {bytes.Length} bytes (crc {ack.Crc32:X8}) in {sw.ElapsedMilliseconds} ms");
                 Applied?.Invoke(ack);
-                return Finish(new PushResult(true, null, started, sw.ElapsedMilliseconds));
+                return Finish(new PushResult(true, null, started, sw.ElapsedMilliseconds, imagesSent));
             }
             return Finish(new PushResult(false, $"device rejected the config: {ack.Error}", started, sw.ElapsedMilliseconds));
         }
         finally
         {
             Volatile.Write(ref _ack, null);
+            Progress = null;
             _gate.Release();
         }
+    }
+
+    /// <summary>
+    /// Plans the frame budget of every image widget (docs/protocol.md, "Assets"), asks the device which
+    /// files it has and sends the missing or changed ones. Returns the number sent and an error.
+    /// </summary>
+    private async Task<(int Sent, string? Error)> SendAssetsAsync(byte[] config)
+    {
+        var placements = AssetFormat.Placements(JsonNode.Parse(config));
+        if (placements.Count == 0)
+        {
+            return (0, null);
+        }
+        Progress = "Preparing images";
+        var files = new Dictionary<string, byte[]>();
+        try
+        {
+            foreach (var (p, maxFrames) in Budget(placements))
+            {
+                files.TryAdd(p.FileName, _assets.Variant(p, maxFrames));
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or ArgumentException)
+        {
+            return (0, ex.Message);
+        }
+
+        var listTcs = new TaskCompletionSource<AssetListMsg?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Volatile.Write(ref _assetList, listTcs);
+        if (!_link.Send(MsgType.AssetList, []))
+        {
+            return (0, "device not connected");
+        }
+        var done = await Task.WhenAny(listTcs.Task, Task.Delay(AckTimeout));
+        Volatile.Write(ref _assetList, null);
+        if (done != listTcs.Task || listTcs.Task.Result is not { } onDevice)
+        {
+            return (0, "the device did not list its images (firmware too old?)");
+        }
+        var have = onDevice.Files.ToDictionary(f => f.Name, f => f.Size);
+        var missing = files.Where(f => !have.TryGetValue(f.Key, out var size) || size != f.Value.Length).ToList();
+        var need = missing.Sum(f => (long)f.Value.Length);
+        if (need > onDevice.Free + have.Where(h => !files.ContainsKey(h.Key)).Sum(h => h.Value))
+        {
+            return (0, $"not enough flash on the device for the images ({need / 1024} KB needed, {onDevice.Free / 1024} KB free)");
+        }
+
+        var sent = 0;
+        foreach (var (name, file) in missing)
+        {
+            Progress = $"Sending image {sent + 1} of {missing.Count} ({file.Length / 1024} KB)";
+            var ackTcs = new TaskCompletionSource<AssetAckMsg>(TaskCreationOptions.RunContinuationsAsynchronously);
+            Volatile.Write(ref _assetAck, ackTcs);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            foreach (var (type, body) in AssetTransfer.Packets(name, file))
+            {
+                if (!_link.Send(type, body))
+                {
+                    return (sent, "device not connected");
+                }
+            }
+            var acked = await Task.WhenAny(ackTcs.Task, Task.Delay(AssetTimeout));
+            Volatile.Write(ref _assetAck, null);
+            if (acked != ackTcs.Task)
+            {
+                return (sent, $"no answer from the device for image {name}");
+            }
+            if (!ackTcs.Task.Result.Ok)
+            {
+                return (sent, $"the device did not take image {name}: {ackTcs.Task.Result.Error}");
+            }
+            Log.Info($"assets: sent {name} ({file.Length} bytes) in {sw.ElapsedMilliseconds} ms");
+            sent++;
+        }
+        return (sent, null);
+    }
+
+    // Frames per widget: everything that plays, at most 2 MB decoded per widget and 4 MB in total.
+    private IEnumerable<(AssetFormat.Placement P, int MaxFrames)> Budget(IReadOnlyList<AssetFormat.Placement> placements)
+    {
+        var plan = placements.Select(p =>
+        {
+            var frameBytes = (long)p.W * p.H * 2;
+            var natural = Math.Max(1, _assets.PlayableFrames(p.Asset));
+            return (P: p, FrameBytes: frameBytes, Frames: (int)Math.Max(1, Math.Min(natural, AssetFormat.MaxDecodedPerWidget / frameBytes)));
+        }).ToList();
+        var total = plan.Sum(x => x.Frames * x.FrameBytes);
+        var factor = total > AssetFormat.MaxDecodedTotal ? (double)AssetFormat.MaxDecodedTotal / total : 1;
+        return plan.Select(x => (x.P, Math.Max(1, (int)(x.Frames * factor))));
     }
 
     /// <summary>The device's stored config (CONFIG_GET), or null on timeout or a bad transfer.</summary>
@@ -145,6 +252,15 @@ internal sealed class ConfigSync
                 return true;
             case MsgType.ConfigDataChunk:
                 _receiver.Chunk(packet.Body);
+                return true;
+            case MsgType.AssetAck:
+                if (ProtocolJson.Deserialize<AssetAckMsg>(packet.Body) is { } assetAck)
+                {
+                    Volatile.Read(ref _assetAck)?.TrySetResult(assetAck);
+                }
+                return true;
+            case MsgType.AssetListData:
+                Volatile.Read(ref _assetList)?.TrySetResult(ProtocolJson.Deserialize<AssetListMsg>(packet.Body));
                 return true;
             case MsgType.ConfigDataEnd:
                 Volatile.Read(ref _data)?.TrySetResult(_receiver.End());

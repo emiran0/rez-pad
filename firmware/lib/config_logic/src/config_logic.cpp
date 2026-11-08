@@ -66,32 +66,22 @@ using actions::Action;
 
 // ---- widget catalog (docs/config-schema.md) ----
 
-struct Size {
-  uint8_t w, h;
-};
-
+// Smallest content area (card minus padding) each type can draw in, in px.
 struct TypeInfo {
   const char* type;
-  Size sizes[4];
-  uint8_t count;  // 0 = any size
+  uint16_t minW, minH;
 };
 
 const TypeInfo kTypes[] = {
-    {"album_art", {{2, 2}}, 1},
-    {"track_info", {{2, 1}, {2, 2}, {4, 1}}, 3},
-    {"media_controls", {{2, 1}, {3, 1}, {4, 1}}, 3},
-    {"progress", {{2, 1}, {4, 1}}, 2},
-    {"volume", {{1, 1}, {2, 1}}, 2},
-    {"metric_value", {{1, 1}, {2, 1}}, 2},
-    {"metric_bar", {{2, 1}, {4, 1}}, 2},
-    {"metric_gauge", {{1, 1}, {2, 2}}, 2},
-    {"metric_graph", {{2, 1}, {2, 2}, {4, 1}}, 3},
-    {"clock", {{1, 1}, {2, 1}}, 2},
-    {"room_climate", {{2, 1}, {2, 2}}, 2},
-    {"weather_now", {{2, 1}, {2, 2}}, 2},
-    {"weather_forecast", {{4, 1}}, 1},
-    {"label", {}, 0},
+    {"album_art", 40, 40},      {"track_info", 80, 18},   {"media_controls", 60, 24},
+    {"progress", 60, 10},       {"volume", 40, 34},       {"now_playing", 150, 60},
+    {"metric_value", 50, 30},   {"metric_bar", 60, 30},   {"metric_gauge", 44, 44},
+    {"metric_graph", 80, 40},   {"clock", 50, 26},        {"room_climate", 60, 30},
+    {"weather_now", 60, 34},    {"weather_forecast", 90, 46}, {"label", 16, 14},
+    {"image", 16, 16},
 };
+
+const char* const kThemes[kThemeCount] = {"dark", "midnight", "black", "graphite"};
 
 const TypeInfo* findType(const char* type) {
   for (const auto& t : kTypes) {
@@ -280,13 +270,9 @@ bool parseGrid(JsonObjectConst root, Config& cfg, Ctx& c) {
   return getInt(g, "cols", "grid", 1, kMaxGrid, cfg.cols, c) && getInt(g, "rows", "grid", 1, kMaxGrid, cfg.rows, c);
 }
 
-bool parseTheme(JsonObjectConst root, Config& cfg, Ctx& c) {
-  JsonObjectConst t;
-  if (!getObject(root, "theme", "", t, c)) return false;
-  if (t.isNull()) return true;
-  char name[16];
-  bool set = false;
-  if (!getString(t, "name", "theme", name, sizeof(name), set, c)) return false;
+// "theme" (global) or a page's "theme": preset name and accent color, each optional.
+bool parseThemeObject(JsonObjectConst t, const char* path, uint8_t& theme, uint32_t& accent, Ctx& c) {
+  if (!getChoice(t, "name", path, kThemes, kThemeCount, theme, c)) return false;
   JsonVariantConst a = t["accent"];
   if (a.isNull()) return true;
   const char* s = a.is<const char*>() ? a.as<const char*>() : "";
@@ -301,9 +287,16 @@ bool parseTheme(JsonObjectConst root, Config& cfg, Ctx& c) {
     ok = d >= 0;
     rgb = (rgb << 4) | static_cast<uint32_t>(d < 0 ? 0 : d);
   }
-  if (!ok) return c.fail("theme.accent", "must be a color \"#RRGGBB\"");
-  cfg.accent = rgb;
+  if (!ok) return c.fail(Path(path, "accent").s, "must be a color \"#RRGGBB\"");
+  accent = rgb;
   return true;
+}
+
+bool parseTheme(JsonObjectConst root, Config& cfg, Ctx& c) {
+  JsonObjectConst t;
+  if (!getObject(root, "theme", "", t, c)) return false;
+  if (t.isNull()) return true;
+  return parseThemeObject(t, "theme", cfg.theme, cfg.accent, c);
 }
 
 bool parseUnits(JsonObjectConst root, Config& cfg, Ctx& c) {
@@ -386,7 +379,7 @@ bool parseInputs(JsonObjectConst root, Config& cfg, Ctx& c) {
   return parseGestures(in, "inputs", cfg.inputs, c);
 }
 
-bool parseWidget(JsonVariantConst v, const char* path, const Config& cfg, bool used[kMaxGrid][kMaxGrid],
+bool parseWidget(JsonVariantConst v, const char* path, const Page& page, bool used[kMaxGrid][kMaxGrid],
                  WidgetSpec& w, Ctx& c) {
   if (!v.is<JsonObjectConst>()) return c.fail(path, "must be an object");
   JsonObjectConst o = v.as<JsonObjectConst>();
@@ -401,11 +394,14 @@ bool parseWidget(JsonVariantConst v, const char* path, const Config& cfg, bool u
     return false;
   }
   if (x < 0 || y < 0 || ww == 0 || hh == 0) return c.fail(path, "x, y, w and h are required");
-  if (x + ww > cfg.cols || y + hh > cfg.rows) {
-    return c.fail(path, "outside the %ux%u grid", cfg.cols, cfg.rows);
+  if (x + ww > page.cols || y + hh > page.rows) {
+    return c.fail(path, "outside the %ux%u grid", page.cols, page.rows);
   }
-  if (!sizeAllowed(w.type, ww, hh)) {
-    return c.fail(path, "size %ldx%ld not allowed for %s", ww, hh, w.type);
+  const int contentW = cardW(ww, page.cols) - 2 * kCardPad;
+  const int contentH = cardH(hh, page.rows) - 2 * kCardPad;
+  if (contentW < info->minW || contentH < info->minH) {
+    return c.fail(path, "%ldx%ld is too small for %s on a %ux%u grid (needs %ux%u px, has %dx%d)", ww, hh, w.type,
+                  page.cols, page.rows, info->minW, info->minH, contentW, contentH);
   }
   for (long cy = y; cy < y + hh; ++cy) {
     for (long cx = x; cx < x + ww; ++cx) {
@@ -432,6 +428,14 @@ bool parseWidget(JsonVariantConst v, const char* path, const Config& cfg, bool u
   }
   if (!getString(o, "text", path, w.text, sizeof(w.text), set, c)) return false;
   if (strcmp(w.type, "label") == 0 && !w.text[0]) return c.fail(Path(path, "text").s, "required for label");
+  if (!getString(o, "asset", path, w.asset, sizeof(w.asset), set, c)) return false;
+  if (strcmp(w.type, "image") == 0) {
+    if (!w.asset[0]) return c.fail(Path(path, "asset").s, "required for image");
+    static const char* const kFits[] = {"cover", "contain"};
+    uint8_t fit = 0;
+    if (!getChoice(o, "fit", path, kFits, 2, fit, c)) return false;
+    w.fit = static_cast<Fit>(fit);
+  }
 
   const SourceStyle def = sourceDefaults(w.source);
   if (!unitSet) strcpy(w.unit, def.unit);
@@ -464,6 +468,26 @@ bool parsePage(JsonVariantConst v, int index, Config& cfg, Ctx& c) {
   if (!getString(o, "name", path, page.name, sizeof(page.name), set, c)) return false;
   if (!page.name[0]) strcpy(page.name, page.id);
 
+  // Own grid and theme, falling back to the global ones.
+  page.cols = cfg.cols;
+  page.rows = cfg.rows;
+  JsonObjectConst g;
+  if (!getObject(o, "grid", path, g, c)) return false;
+  if (!g.isNull()) {
+    Path gp(path, "grid");
+    if (!getInt(g, "cols", gp.s, 1, kMaxGrid, page.cols, c) || !getInt(g, "rows", gp.s, 1, kMaxGrid, page.rows, c)) {
+      return false;
+    }
+  }
+  page.theme = cfg.theme;
+  page.accent = cfg.accent;
+  JsonObjectConst t;
+  if (!getObject(o, "theme", path, t, c)) return false;
+  if (!t.isNull()) {
+    Path tp(path, "theme");
+    if (!parseThemeObject(t, tp.s, page.theme, page.accent, c)) return false;
+  }
+
   JsonVariantConst ws = o["widgets"];
   if (!ws.isNull()) {
     if (!ws.is<JsonArrayConst>()) return c.fail(Path(path, "widgets").s, "must be an array");
@@ -476,7 +500,7 @@ bool parsePage(JsonVariantConst v, int index, Config& cfg, Ctx& c) {
     for (JsonVariantConst w : arr) {
       char wpath[40];
       snprintf(wpath, sizeof(wpath), "%s.widgets[%d]", path, i);
-      if (!parseWidget(w, wpath, cfg, used, page.widgets[i], c)) return false;
+      if (!parseWidget(w, wpath, page, used, page.widgets[i], c)) return false;
       ++i;
     }
     page.widgetCount = static_cast<uint8_t>(i);
@@ -526,15 +550,15 @@ bool parsePages(JsonObjectConst root, Config& cfg, Ctx& c) {
 
 bool knownType(const char* type) { return findType(type) != nullptr; }
 
-bool sizeAllowed(const char* type, int w, int h) {
+bool minContent(const char* type, int& w, int& h) {
   const TypeInfo* t = findType(type);
   if (!t) return false;
-  if (t->count == 0) return w > 0 && h > 0;
-  for (uint8_t i = 0; i < t->count; ++i) {
-    if (t->sizes[i].w == w && t->sizes[i].h == h) return true;
-  }
-  return false;
+  w = t->minW;
+  h = t->minH;
+  return true;
 }
+
+const char* themeName(int index) { return index >= 0 && index < kThemeCount ? kThemes[index] : "dark"; }
 
 SourceStyle sourceDefaults(const char* s) {
   static const char kDeg[] = "\xC2\xB0" "C";

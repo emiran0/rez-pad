@@ -25,6 +25,9 @@ class Widget {
   // Creates the LVGL children inside `card`; (w, h) is the card's content area in px.
   virtual void build(lv_obj_t* card, int w, int h) = 0;
 
+  // True for widgets drawn edge to edge (no card padding), e.g. images.
+  virtual bool fullBleed() const { return false; }
+
   // Which ui::Changed bits this widget cares about.
   virtual uint32_t interests() const = 0;
 

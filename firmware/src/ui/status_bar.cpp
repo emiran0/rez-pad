@@ -24,7 +24,7 @@ void build(lv_obj_t* parent) {
   lv_obj_remove_style_all(gBar);
   lv_obj_set_size(gBar, kScreenW, kStatusH);
   lv_obj_set_pos(gBar, 0, 0);
-  lv_obj_set_style_bg_color(gBar, lv_color_hex(0x15181D), 0);
+  lv_obj_set_style_bg_color(gBar, color::status(), 0);
   lv_obj_set_style_bg_opa(gBar, LV_OPA_COVER, 0);
   lv_obj_set_style_pad_hor(gBar, 8, 0);
   lv_obj_set_scrollable(gBar, false);
@@ -58,6 +58,10 @@ void setWarning(const char* text) {
 }
 
 void setPage(int index, int count, const char* name) {
+  // The shown page's palette (pages::show made it current).
+  lv_obj_set_style_bg_color(gBar, color::status(), 0);
+  lv_obj_set_style_text_color(gClock, color::text(), 0);
+  lv_obj_set_style_text_color(gPageName, color::dim(), 0);
   widgets::setText(gPageName, name);
   if (count > kMaxDots) count = kMaxDots;
   const int spacing = 12;

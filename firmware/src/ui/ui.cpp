@@ -3,6 +3,7 @@
 #include <Arduino.h>
 
 #include "app/settings.h"
+#include "assets/assets.h"
 #include "config/store.h"
 #include "link/link.h"
 #include "lvgl_port.h"
@@ -14,11 +15,10 @@
 #include "sensors/sensors.h"
 #include "status_bar.h"
 #include "theme.h"
+#include "widgets/image_widget.h"
 
 namespace rp {
 namespace ui {
-
-uint32_t gAccentRgb = 0x4FC3F7;
 
 namespace {
 
@@ -28,6 +28,7 @@ constexpr uint32_t kSensorSendMs = 10000;  // SENSOR to the host (docs/protocol.
 
 lv_obj_t* gGrid = nullptr;
 uint32_t gPending = 0;
+uint32_t gAssetGen = 0;  // assets::generation() the pages were built with
 uint32_t gArtRequested = 0;  // track id we already sent ART_REQUEST for
 uint32_t gLastSensorSend = 0;
 uint32_t gLastTick = 0;
@@ -154,7 +155,8 @@ void setUnits(const cfg::Config& c) {
 // Builds the pages of the active config (the grid must be empty).
 void buildPages() {
   const cfg::Config& c = config::active();
-  gAccentRgb = c.accent;
+  widgets::ImageWidget::resetMissing();
+  gAssetGen = assets::generation();
   pages::build(gGrid, c);
   status_bar::setWarning(config::warning());
 }
@@ -174,11 +176,23 @@ void applyConfig(cfg::Config* next) {
   gPending |= kChangedAll;
   Serial.printf("[ui] config applied: %u pages, rebuilt in %lu ms\n", next->pageCount,
                 static_cast<unsigned long>(millis() - t0));
+  assets::collectGarbage(*next);
   // `art`: album art edge the new layout wants (0 = no album_art), like HELLO_ACK.
   char body[96];
   snprintf(body, sizeof(body), "{\"ok\":true,\"crc32\":%lu,\"error\":\"\",\"art\":%d}",
            static_cast<unsigned long>(config::storedCrc()), media::artSize());
   link::send(proto::kConfigAck, body);
+}
+
+// Same config, fresh pages (an image file a widget was missing has arrived).
+void rebuildPages() {
+  const int page = pages::current();
+  pages::clear();
+  buildPages();
+  pages::show(page < pages::count() ? page : 0);
+  updatePageIndicator();
+  gPending |= kChangedAll;
+  Serial.println("[ui] pages rebuilt for new image files");
 }
 
 }  // namespace
@@ -210,6 +224,8 @@ void loop(uint32_t nowMs) {
     gPending |= kChangedTick;
   }
   if (cfg::Config* next = config::take()) applyConfig(next);
+  // An image widget was built before its file arrived: rebuild once new files are stored.
+  if (widgets::ImageWidget::missing() > 0 && assets::generation() != gAssetGen) rebuildPages();
   gPending |= pollRoom();
   gPending |= pollLink(nowMs);
   if (model().hostConnected && nowMs - gLastSensorSend >= kSensorSendMs) {

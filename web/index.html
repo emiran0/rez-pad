@@ -7,53 +7,48 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="topbar">
-    <h1>rez-pad</h1>
-    <span id="pill-device" class="pill">...</span>
-    <span id="pill-sync" class="pill" hidden></span>
+  <header class="appbar">
+    <div class="brand">rez-pad</div>
+    <nav class="views" role="tablist" aria-label="Sections">
+      <button type="button" role="tab" data-view="layout">Layout</button>
+      <button type="button" role="tab" data-view="settings">Settings</button>
+      <button type="button" role="tab" data-view="device">Device</button>
+    </nav>
+    <div class="spacer"></div>
+    <span id="status-chip" class="chip">...</span>
+    <button type="button" id="btn-undo" class="ghost" disabled title="Ctrl+Z (Ctrl+Y redoes)">Undo</button>
+    <button type="button" id="btn-save" class="primary" disabled title="Ctrl+S">Save to device</button>
   </header>
-
-  <nav class="tabs" role="tablist">
-    <button type="button" role="tab" data-tab="layout">Layout</button>
-    <button type="button" role="tab" data-tab="inputs">Knobs</button>
-    <button type="button" role="tab" data-tab="display">Display</button>
-    <button type="button" role="tab" data-tab="weather">Weather</button>
-    <button type="button" role="tab" data-tab="sensor">Sensor &amp; media</button>
-    <button type="button" role="tab" data-tab="device">Device</button>
-  </nav>
+  <div id="banner" class="banner" hidden></div>
 
   <main>
-    <section id="tab-layout" class="layout" hidden>
-      <div class="layout-main">
-        <div id="page-tabs" class="page-tabs" role="tablist" aria-label="Pages"></div>
-        <div id="screen-wrap" class="screen-wrap">
-          <div id="screen" class="screen" tabindex="0" aria-label="Device screen preview"></div>
-        </div>
-        <div id="page-props" class="panel"></div>
-      </div>
-      <aside class="layout-side">
-        <div class="panel">
-          <h2>Add a widget</h2>
-          <div id="palette" class="palette"></div>
-        </div>
-        <div class="panel">
-          <h2>Selected widget</h2>
-          <div id="props"></div>
-        </div>
+    <section id="view-layout" class="layout" hidden>
+      <aside class="rail" aria-label="Pages">
+        <div class="rail-head">Pages</div>
+        <ol id="page-list" class="page-list"></ol>
+        <button type="button" id="page-add" class="ghost wide-btn"></button>
       </aside>
+
+      <section class="stage">
+        <div class="stage-head">
+          <input id="page-name" class="page-name" aria-label="Page name" maxlength="31" autocomplete="off">
+          <div id="page-tools" class="page-tools"></div>
+        </div>
+        <div id="screen-wrap" class="screen-wrap">
+          <div id="screen" class="screen" tabindex="0" aria-label="Device screen: drag widgets to move, drag the corner to resize"></div>
+        </div>
+        <p id="stage-hint" class="stage-hint"></p>
+      </section>
+
+      <aside id="inspector" class="inspector" aria-label="Widgets"></aside>
     </section>
-    <section id="tab-inputs" hidden></section>
-    <section id="tab-display" hidden></section>
-    <section id="tab-weather" hidden></section>
-    <section id="tab-sensor" hidden></section>
-    <section id="tab-device" hidden></section>
+
+    <section id="view-settings" class="settings" hidden></section>
+    <section id="view-device" class="settings" hidden></section>
   </main>
 
-  <footer id="savebar" class="savebar">
-    <span id="save-msg" class="save-msg">Loading...</span>
-    <button type="button" id="btn-revert" disabled>Undo changes</button>
-    <button type="button" id="btn-save" class="primary" disabled title="Ctrl+S">Save to device</button>
-  </footer>
+  <div id="popover" class="popover" hidden></div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
 
   <script type="module" src="app.js"></script>
 </body>

@@ -26,6 +26,9 @@ Quick check on a new PC: run the host, then save `http://127.0.0.1:47800/api/sou
 ## Firmware
 
 - **Full page redraw about 153 ms** (target 120 ms). Measured with `page <n>` on the System and Weather pages at 40 MHz SPI; the page switch still looks instant on the hardware. The flush waits for each strip to go out over SPI before LVGL renders the next one. Fix if it matters: convert RGB565 to RGB666 into a separate DMA buffer and return from the flush right away (see measurements.md, "UI rendering").
+- **Animated images cost SPI time**: each frame redraws the image area over the 40 MHz SPI link (about 25 ms for a 234x144 frame). Several large GIFs on one page at 20 fps would keep the link busy; frames are limited to one per 50 ms or slower.
+- **Asset transfer about 57 KB/s** (Arduino `USBCDC` byte queue, see below): a 1 MB animation takes about 20 s to reach the device the first time. Faster transfers need direct TinyUSB reads.
+- **No light theme**: the four presets are dark; the weather icons are drawn for dark cards.
 - **Night dimming and "screen off while the PC sleeps"** are in the config and the editor but not applied by the firmware until Phase 11.
 - **Unexplained restart on 2026-11-08 around 01:21**: seen afterwards from the sensor sample count; the host log showed no link drop (the host was being restarted at that time) and the reset reason was not recorded yet. `info` now prints the reset reason; check it if the device restarts again. The AHT20 has had a loose contact before.
 

@@ -63,6 +63,22 @@ constexpr int kMaxGrid = 8;      // cols and rows
 constexpr size_t kMaxConfigBytes = 32768;
 constexpr int kMaxSources = 16;  // different data sources over all pages (SYS_STATS keeps 16)
 
+// Screen geometry the sizes are checked against (firmware/src/ui/pages.cpp uses the same numbers).
+constexpr int kScreenW = 480;
+constexpr int kGridH = 300;  // below the 20 px status bar
+constexpr int kCellGap = 4;  // between cards
+constexpr int kCardPad = 7;  // inside a card
+
+// Theme presets (docs/config-schema.md, "Themes"), in this order.
+constexpr int kThemeCount = 4;
+const char* themeName(int index);  // "dark", "midnight", "black", "graphite"
+
+// Card size in px for a widget of w x h cells on a cols x rows grid.
+inline int cardW(int w, int cols) { return w * (kScreenW / cols) - kCellGap; }
+inline int cardH(int h, int rows) { return h * (kGridH / rows) - kCellGap; }
+
+enum class Fit : uint8_t { kCover, kContain };
+
 // One widget on a page (a "widgets" entry). Strings are empty when not set; style fields that
 // are not set get defaults from the data source (sourceDefaults) after parsing.
 struct WidgetSpec {
@@ -73,6 +89,8 @@ struct WidgetSpec {
   char unit[12] = "";
   char mode[8] = "";   // weather_forecast: "daily" or "hourly"
   char text[64] = "";  // label widget
+  char asset[40] = ""; // image widget: asset id
+  Fit fit = Fit::kCover;
   float min = 0, max = 100;
   float warn = NAN, crit = NAN;  // color thresholds (NAN = none)
   int8_t decimals = -1;          // -1 = automatic
@@ -81,6 +99,9 @@ struct WidgetSpec {
 struct Page {
   char id[24] = "";
   char name[32] = "";
+  uint8_t cols = 4, rows = 3;  // this page's grid (the global grid unless the page sets one)
+  uint8_t theme = 0;           // theme preset (the global one unless the page sets one)
+  uint32_t accent = 0x4FC3F7;  // accent color (likewise)
   uint8_t widgetCount = 0;
   WidgetSpec widgets[kMaxWidgets];
   actions::Map inputs;  // global inputs with this page's inputs_override applied
@@ -94,9 +115,10 @@ struct Config {
   uint8_t nightBrightness = 15;
   bool sleepOnPcSleep = true;
   uint32_t spiHz = 40000000;
-  // grid
+  // grid (default for pages without their own)
   uint8_t cols = 4, rows = 3;
-  // theme
+  // theme (default for pages without their own)
+  uint8_t theme = 0;
   uint32_t accent = 0x4FC3F7;
   // units
   bool fahrenheit = false;
@@ -120,9 +142,10 @@ struct Config {
 // (path like "pages[1].widgets[2].source", matching the host's validator); `out` is then undefined.
 bool parse(const char* json, size_t len, Config& out, char* err, size_t errLen);
 
-// Allowed sizes per widget type (docs/config-schema.md, "Widget catalog"). False for unknown types.
+// Widget types (docs/config-schema.md, "Widget catalog"). A widget may have any size whose
+// content area (card minus padding) is at least the type's minimum.
 bool knownType(const char* type);
-bool sizeAllowed(const char* type, int w, int h);
+bool minContent(const char* type, int& w, int& h);  // false for unknown types
 
 // Unit, range and thresholds for a data source when the widget does not set them.
 struct SourceStyle {

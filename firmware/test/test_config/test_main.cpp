@@ -103,6 +103,25 @@ void test_page_override_merges() {
   TEST_ASSERT_EQUAL_STRING("a", gCfg->pages[0].name);  // name defaults to the id
 }
 
+void test_page_grid_and_theme_fall_back_to_global() {
+  const char* json =
+      "{\"schema\":1,\"grid\":{\"cols\":3,\"rows\":2},\"theme\":{\"name\":\"black\",\"accent\":\"#112233\"},"
+      "\"pages\":[{\"id\":\"a\",\"grid\":{\"cols\":8,\"rows\":4},\"theme\":{\"accent\":\"#FF7043\"},"
+      "\"widgets\":[{\"type\":\"image\",\"x\":7,\"y\":3,\"w\":1,\"h\":1,\"asset\":\"pic\",\"fit\":\"contain\"}]},{\"id\":\"b\"}]}";
+  TEST_ASSERT_TRUE_MESSAGE(parseText(json), gErr);
+  const Config& c = *gCfg;
+  TEST_ASSERT_EQUAL(8, c.pages[0].cols);
+  TEST_ASSERT_EQUAL(4, c.pages[0].rows);
+  TEST_ASSERT_EQUAL(2, c.pages[0].theme);  // "black" from the global theme
+  TEST_ASSERT_EQUAL_HEX32(0xFF7043, c.pages[0].accent);
+  TEST_ASSERT_EQUAL(3, c.pages[1].cols);
+  TEST_ASSERT_EQUAL(2, c.pages[1].rows);
+  TEST_ASSERT_EQUAL_HEX32(0x112233, c.pages[1].accent);
+  TEST_ASSERT_EQUAL_STRING("pic", c.pages[0].widgets[0].asset);
+  TEST_ASSERT_TRUE(c.pages[0].widgets[0].fit == rp::cfg::Fit::kContain);
+  TEST_ASSERT_EQUAL_STRING("black", rp::cfg::themeName(2));
+}
+
 void test_invalid_json() {
   TEST_ASSERT_FALSE(parseText("{\"schema\":1,"));
   TEST_ASSERT_EQUAL(0, strncmp(gErr, "config:", 7));
@@ -159,6 +178,7 @@ int main(int, char**) {
   RUN_TEST(test_default_config);
   RUN_TEST(test_source_defaults_fill_style);
   RUN_TEST(test_page_override_merges);
+  RUN_TEST(test_page_grid_and_theme_fall_back_to_global);
   RUN_TEST(test_invalid_json);
   RUN_TEST(test_too_large);
   RUN_TEST(test_shared_vectors);

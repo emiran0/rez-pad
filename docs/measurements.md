@@ -175,6 +175,16 @@ Not checked on the screen yet: icon placement and readability, the `clock` widge
 | 2026-11-08 | Full page redraw (`page <n>`, System and Weather pages, 40 MHz SPI) | 152-155 ms on PSRAM, 153-157 ms on malloc: same, the SPI transfer dominates. Above the 120 ms target, see known-issues.md |
 | 2026-11-08 | Repeated config pushes | Heap stays flat (68, 67, 67 KB over 3 pushes): no leak in the rebuild |
 
+## Widget sizes, themes and images (2026-11-08)
+
+| Item | Result |
+|---|---|
+| GIF 200x150, 16 frames, 24 KB, and a PNG 300x160 uploaded | Converted in 2-60 ms per size; 234x144 cover variant 40 KB, 129x69 contain 2.8 KB, 92x69 contain 21 KB (JPEG quality 85) |
+| Asset transfer to the device | 40 KB in 701 ms, 21 KB in 388 ms (about 57 KB/s); the whole push with 3 images and the config took 2.0 s |
+| Page redraw with images (`page <n>`) | 165 ms (4x4 page with two GIFs, a PNG, a gauge and a 4x2 now_playing), 188-197 ms (page of small widgets), 146 ms (Now Playing) |
+| Internal heap after boot with 6 pages and 3 image widgets | 105 KB free (lowest 102 KB) |
+| Firmware | RAM 34.9 % static, flash image about 1.6 MB |
+
 ## Display power (2026-11-07)
 
 | Item | Before | After |

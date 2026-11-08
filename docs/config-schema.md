@@ -15,9 +15,10 @@ Implemented twice, tested against the same cases ([`config-test-vectors.json`](c
 - `schema` must be 1 and `pages` must exist; every other section may be missing (struct defaults). Unknown keys are ignored. A JSON `null` counts as missing.
 - Numbers are range-checked (see below), whole numbers where the schema says so; strings have byte limits (UTF-8): page `id` 23, page `name` 31, widget `type` 19, `source` 39, `label` 31, `unit` 11, `text` 63.
 - 1 to 8 pages, page ids unique and not empty (`name` defaults to the id), up to 16 widgets per page, at most 16 different data sources over all pages (the device keeps 16 SYS_STATS values).
-- Widgets: known type, `x`/`y`/`w`/`h` inside the grid, an allowed size, no overlap. `metric_*` need a `source`, `label` needs `text`, `weather_forecast` `mode` is `daily` (default) or `hourly`, `decimals` 0 to 3, and `min` must be below `max` after source defaults.
+- Pages may set their own `grid` (`{cols, rows}`, 1 to 8) and `theme` (`{name, accent}`, each optional); otherwise the global ones apply.
+- Widgets: known type, `x`/`y`/`w`/`h` inside the page's grid, big enough for the type (see "Widget catalog"), no overlap. `metric_*` need a `source`, `label` needs `text`, `image` needs `asset` (and `fit` is `cover` or `contain`), `weather_forecast` `mode` is `daily` (default) or `hourly`, `decimals` 0 to 3, and `min` must be below `max` after source defaults.
 - Actions: known names; `nav.page`, `media.seek`, `media.volume`, `display.brightness` take a rotation and are only allowed on `rotate`/`rotate_pressed`; all others only on presses (`click`, `double`, `long`).
-- Ranges: `display.brightness` and `night.brightness` 0 to 100, `night.from`/`to` `"HH:MM"`, `spi_hz` 1 to 80 MHz, `grid` 1 to 8, `theme.accent` `"#RRGGBB"`, `sensor.temp_offset_c` -10 to 10, `hum_offset_pct` -20 to 20, `trend_threshold_hpa` 0.1 to 10, `media.volume_step` 1 to 20, `seek_step_s` 1 to 60, `inputs.buttons` 0 to 2, `counts_per_detent` 1 to 8.
+- Ranges: `display.brightness` and `night.brightness` 0 to 100, `night.from`/`to` `"HH:MM"`, `spi_hz` 1 to 80 MHz, `grid` 1 to 8, `theme.name` one of `dark`, `midnight`, `black`, `graphite`, `theme.accent` `"#RRGGBB"`, `sensor.temp_offset_c` -10 to 10, `hum_offset_pct` -20 to 20, `trend_threshold_hpa` 0.1 to 10, `media.volume_step` 1 to 20, `seek_step_s` 1 to 60, `inputs.buttons` 0 to 2, `counts_per_detent` 1 to 8.
 - Host only (the device ignores these sections): `weather.lat` -90 to 90 and `lon` -180 to 180 (both or neither), `refresh_min` 5 to 180, `media.art_size` 32 to 480, `media.app_priority` up to 16 names, `stats.rate_hz` 0.2 to 4.
 
 Style fields a metric widget leaves out come from its source: temperatures `°C` 20 to 100 (warn 75, crit 90), loads `%` (80/95), `used_pct`/`vram_pct` `%` (85/95, disks 90/97), other `_pct` `%`, `_kbps` `kB/s` 0 to 10000, `_mhz` `MHz`, `_w` `W`, `_gb` `GB`, `rpm`. `"unit": ""` means no unit.
@@ -40,25 +41,37 @@ Pages may still carry `inputs_override` (same shape as `inputs`, only the keys t
 
 ## Widget catalog (firmware implements, web editor offers)
 
-| Type | Allowed sizes (w x h) | Data |
+A widget may have any size (in cells) whose content area is at least the type's minimum. Content area = card minus 7 px padding on each side; a card is `w * floor(480 / cols) - 4` by `h * floor(300 / rows) - 4` px. On the default 4x3 grid a 1x1 card has a 102 x 82 px content area. Every widget picks fonts and parts to fit its size (firmware `src/widgets/`, mirrored by `web/preview.js`), so for example a 1x1 album art, a 2x1 forecast (4 columns) and a 1x1 media control (buttons only) all work.
+
+| Type | Minimum content (px) | Data |
 |---|---|---|
-| `album_art` | 2x2 | media art |
-| `track_info` | 2x1, 2x2, 4x1 | title, artist, album, app; long text scrolls (marquee) |
-| `media_controls` | 2x1, 3x1, 4x1 | prev/play/next state, progress bar, elapsed/duration |
-| `progress` | 2x1, 4x1 | progress bar only |
-| `volume` | 1x1, 2x1 | volume level, mute |
-| `metric_value` | 1x1, 2x1 | any numeric source, label, unit |
-| `metric_bar` | 2x1, 4x1 | any numeric source with min/max |
-| `metric_gauge` | 1x1, 2x2 | arc gauge, min/max, warning/critical thresholds |
-| `metric_graph` | 2x1, 2x2, 4x1 | sparkline history (device keeps a ring buffer per source) |
-| `clock` | 1x1, 2x1 | time and date, 12/24 h |
-| `room_climate` | 2x1, 2x2 | temp, humidity, pressure, trend arrow |
-| `weather_now` | 2x1, 2x2 | icon, temp, feels like, humidity, wind |
-| `weather_forecast` | 4x1 | `hourly` or `daily` |
-| `label` | any | static `text`, optional small `label` above it |
-| `spectrum` | 4x1 | stretch goal, not in the validators yet |
+| `now_playing` | 150 x 60 | album art, title, artist and controls in one card: art left when wide (2x1, 3x2, 4x2), on top when tall (2x2, 2x3) |
+| `album_art` | 40 x 40 | media art, square, centered |
+| `track_info` | 80 x 18 | title (scrolls), then artist, album, app as height allows |
+| `media_controls` | 60 x 24 | prev/play/next; progress bar from 44 px high, times from 70 px |
+| `progress` | 60 x 10 | progress bar; times from 30 px high |
+| `volume` | 40 x 34 | volume ring and level, mute icon from 64 px |
+| `metric_value` | 50 x 30 | any numeric source, label, unit |
+| `metric_bar` | 60 x 30 | bar with min/max and thresholds; one row below 44 px high |
+| `metric_gauge` | 44 x 44 | ring gauge; the number is sized to fit inside the ring, the unit in small type under it |
+| `metric_graph` | 80 x 40 | sparkline history (device keeps a ring buffer per source) |
+| `clock` | 50 x 26 | time, and the date when there is room |
+| `room_climate` | 60 x 30 | temp, humidity, pressure, trend |
+| `weather_now` | 60 x 34 | icon, temp, condition; location, age and details when big |
+| `weather_forecast` | 90 x 46 | `daily` or `hourly`, one column per 48 px (up to 5) |
+| `label` | 16 x 14 | static `text`, optional small `label` above it |
+| `image` | 16 x 16 | uploaded picture or animated GIF (`asset`, `fit` `cover` or `contain`), edge to edge in the card |
+| `spectrum` | | stretch goal, not in the validators yet |
 
 Widgets may have optional style fields (`label`, `unit`, `min`, `max`, `warn`, `crit`, `decimals`); see "Validation" for the rules and defaults.
+
+## Themes
+
+`theme.name` picks a preset (screen, card, border, text and status bar colors), `theme.accent` the highlight color. Presets: `dark` (default), `midnight` (deep blue), `black` (pure black background), `graphite` (lighter grey cards). Their colors are in `firmware/src/ui/theme.cpp`, `web/preview.js` and, for the card color images are composited on, `host/src/RezPad.Protocol/Assets.cs`; change all three together. A page's own `theme` overrides either value for that page; the screen, status bar and every widget on it use the page's colors.
+
+## Images
+
+`image` widgets show pictures uploaded on the web page (`POST /api/assets`, PNG, JPEG, GIF or BMP up to 20 MB, kept in `%APPDATA%\rez-pad\assets`). The host converts each one to the widget's exact size and the page's card color and sends it before the config (docs/protocol.md, "Assets"). Animated GIFs play on the device: frames shorter than 50 ms are merged, and frames are dropped evenly so each widget stays under 2 MB of decoded frames and all of them under 4 MB.
 
 ## Data source IDs
 
@@ -86,15 +99,15 @@ Stable dotted IDs. The host publishes the catalog of what exists on this PC (`GE
 
 ## Web config editor
 
-`web/` in the repo, copied next to the host exe and served at `http://127.0.0.1:47800`. Plain HTML/CSS/JS as ES modules, no build step and no third-party code:
+`web/` in the repo, copied next to the host exe and served at `http://127.0.0.1:47800`. Plain HTML/CSS/JS as ES modules, no build step and no third-party code. Three views:
 
-- `app.js`: loading, live data polling, live validation, save and undo.
-- `state.js`: the working copy of the config, change events, API helpers.
-- `editor.js`: Layout tab. Page tabs (add, rename, reorder, remove), the device screen with draggable widget cards, the widget palette (only types with room for an allowed size), the selected widget's properties (allowed sizes that fit, source dropdown with live values, style fields with the source defaults as placeholders), grid size, and per-page knob overrides.
-- `preview.js`: draws the 480x320 screen like the firmware does (same card geometry, colors, fonts sizes and widget layouts, weather icons exported by `tools/gen_weather_icons.py --web web/img/weather`), fed with live data: stats, now playing with album art, weather, room sensor.
-- `settings.js`: Knobs, Display (brightness, accent color, SPI clock, night settings for Phase 11), Weather (city search, refresh, units), Sensor & media (offsets with the live reading, app priority, steps, stats rate), Device (status, compare with the device's copy, restart, clear device config, data source table).
+- **Layout**: pages on the left (live thumbnails, new page), the device screen in the middle and the inspector on the right. On the screen: drag a widget to move it (dropping it on one other widget swaps the two when both fit), drag the corner of the selected widget to resize, click an empty cell to add a widget there; arrow keys move, Shift + arrows resize, Delete removes. Above the screen: the page name and the page's grid, colors, knob overrides and more (duplicate, reorder, delete). The inspector shows the widget gallery (live previews; click to add, or drag onto the screen) or the selected widget's settings: data source picker with live values and search, labels, size chips (every size that fits), look (unit, range, thresholds, decimals), forecast mode, text, image picker with upload.
+- **Settings**: appearance (theme presets and accent), screen, knobs and buttons, weather and units, room sensor, media and system data.
+- **Device**: status, compare with the device's copy, restart, clear the device's config, the uploaded images, the data sources of this PC.
 
-Editing changes only the working copy. Every change is validated by the host (`POST /api/config/validate`, same validator as saving); an error blocks saving and "Show" jumps to the widget it names. Save (or Ctrl+S) sends `PUT /api/config?base=<crc>`: the host refuses (409) when the config changed elsewhere since the page loaded, otherwise it saves, pushes to the device and the page shows the device's answer. Live data is polled (status every 2 s, stats and media every 1 s, weather and room every 5 s, paused while the tab is hidden).
+Files: `app.js` (loading, polling, validation, saving, views), `state.js` (working copy, undo history, API, popover, toasts), `editor.js` (Layout), `preview.js` (device-look rendering, themes, widget catalog for the UI), `settings.js` (Settings, Device), `icons.js`.
+
+Every change is checked by the host (`POST /api/config/validate`, the same validator as saving); an error shows in a banner with "Show me", and Save stays disabled. Ctrl+Z / Ctrl+Y undo and redo, Ctrl+S saves. Save sends `PUT /api/config?base=<crc>`: the host refuses (409) when the config changed elsewhere since the page loaded, otherwise it saves, sends images and config to the device and the page shows the device's answer. Live data is polled (status every 1.5 s, stats and media every 1 s, weather and room every 5 s, paused while the tab is hidden).
 
 ## Host API (localhost only)
 
@@ -102,5 +115,6 @@ Editing changes only the working copy. Every change is validated by the host (`P
 - `GET /api/config` (current config, its CRC in the `X-Config-Crc` header), `PUT /api/config[?base=<crc>]` (validates, saves, pushes; `400 {error}` with the validator's message, `409` when `base` is not the current CRC, otherwise `{saved, crc, device}` where `device` is the push result or null when no device is connected), `POST /api/config/validate` (`{error, bytes}`, saves nothing), `GET /api/config/default`.
 - `GET /api/catalog`: widget types with allowed sizes, actions and which of them take a rotation, limits, and every data source on this PC with its style defaults.
 - `GET /api/device/config` (the device's stored copy via CONFIG_GET), `POST /api/device/cmd`.
+- `GET /api/assets` (uploaded images), `POST /api/assets` (multipart field `file`), `GET /api/assets/{id}` (the original), `DELETE /api/assets/{id}` (refused while a widget uses it).
 - `GET /api/sources`, `GET /api/media`, `GET /api/media/art?size=` (current album art as JPEG), `GET /api/weather`, `PUT /api/weather`, `GET /api/geocode?q=`, `GET /api/sensor`, `GET /api/hardware`, `GET /api/log`.
 - Bind to `127.0.0.1` only. No remote access.

@@ -2,6 +2,7 @@
 
 #include "media_widgets.h"
 #include "metric_widgets.h"
+#include "image_widget.h"
 #include "text_widgets.h"
 #include "weather_widgets.h"
 #include "widget.h"
@@ -15,6 +16,7 @@ Widget* create(const Spec& s) {
   if (strcmp(t, "track_info") == 0) return new TrackInfo(s);
   if (strcmp(t, "media_controls") == 0) return new MediaControls(s, true);
   if (strcmp(t, "progress") == 0) return new MediaControls(s, false);
+  if (strcmp(t, "now_playing") == 0) return new NowPlayingWidget(s);
   if (strcmp(t, "volume") == 0) return new VolumeWidget(s);
   if (strcmp(t, "metric_value") == 0) return new MetricValue(s);
   if (strcmp(t, "metric_bar") == 0) return new MetricBar(s);
@@ -25,6 +27,7 @@ Widget* create(const Spec& s) {
   if (strcmp(t, "room_climate") == 0) return new RoomClimate(s);
   if (strcmp(t, "clock") == 0) return new Clock(s);
   if (strcmp(t, "label") == 0) return new Label(s);
+  if (strcmp(t, "image") == 0) return new ImageWidget(s);
   return nullptr;  // spectrum (stretch)
 }
 

@@ -33,6 +33,7 @@ class WeatherForecast : public Widget {
 
  private:
   static constexpr int kCols = 5;
+  int count_ = kCols;  // columns that fit the card
   bool hourly_ = false;
   lv_obj_t* label_[kCols] = {};
   lv_obj_t* icon_[kCols] = {};

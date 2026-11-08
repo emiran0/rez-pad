@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging;
+using RezPad.Host.Assets;
 using RezPad.Host.Audio;
 using RezPad.Host.Config;
 using RezPad.Host.Device;
@@ -16,7 +17,7 @@ namespace RezPad.Host.Web;
 
 /// <summary>Kestrel bound to 127.0.0.1 only. Serves web/ and the /api endpoints (docs/config-schema.md).</summary>
 internal sealed record WebServices(SerialLink Link, MediaService Media, AudioService Audio, SystemStatsService Stats,
-    ConfigService Config, WeatherService Weather, RoomSensor Room, ConfigSync ConfigSync);
+    ConfigService Config, WeatherService Weather, RoomSensor Room, ConfigSync ConfigSync, AssetStore Assets);
 
 internal sealed class WebServer(int port, WebServices services)
 {
@@ -26,6 +27,7 @@ internal sealed class WebServer(int port, WebServices services)
     private readonly SystemStatsService stats = services.Stats;
     private readonly ConfigService config = services.Config;
     private readonly ConfigSync configSync = services.ConfigSync;
+    private readonly AssetStore assets = services.Assets;
     private readonly WeatherService weather = services.Weather;
     private readonly RoomSensor room = services.Room;
 
@@ -66,7 +68,7 @@ internal sealed class WebServer(int port, WebServices services)
                 Elevated: StartupTask.IsElevated(),
                 LogFileError: Log.FileError,
                 Sensors: stats.Access,
-                Config: new ConfigStatusDto(config.Crc, configSync.DeviceCrc, configSync.InSync, configSync.Last),
+                Config: new ConfigStatusDto(config.Crc, configSync.DeviceCrc, configSync.InSync, configSync.Last, configSync.Progress),
                 BadFrames: decoder is null ? 0 : decoder.BadCobs + decoder.BadCrc + decoder.TooShort + decoder.TooLarge + decoder.BadVersion));
         });
         app.MapGet("/api/log", () => Results.Json(Log.Recent()));
@@ -192,12 +194,16 @@ internal sealed class WebServer(int port, WebServices services)
                 sources = ConfigCatalog.MaxSources,
                 bytes = ConfigCatalog.MaxConfigBytes,
             },
-            widgets = ConfigCatalog.WidgetSizes.Select(kv => new
+            // Any size is allowed whose content area (card minus padding) is at least min_w x min_h px.
+            geometry = new
             {
-                type = kv.Key,
-                sizes = kv.Value.Select(s => new[] { s.W, s.H }),
-                any_size = kv.Value.Length == 0,
-            }),
+                screen_w = ConfigCatalog.ScreenW,
+                grid_h = ConfigCatalog.GridH,
+                gap = ConfigCatalog.CellGap,
+                pad = ConfigCatalog.CardPad,
+            },
+            widgets = ConfigCatalog.WidgetMin.Select(kv => new { type = kv.Key, min_w = kv.Value.W, min_h = kv.Value.H }),
+            themes = ConfigCatalog.Themes,
             actions = ConfigCatalog.Actions,
             rotate_actions = ConfigCatalog.RotateActions,
             sources = stats.Catalog.Select(s => new { id = s.Id, name = s.Name, style = ConfigCatalog.SourceDefaults(s.Id) }),
@@ -246,6 +252,44 @@ internal sealed class WebServer(int port, WebServices services)
             }
             var jpeg = await ArtProcessor.ToJpegAsync(art.Source, Math.Clamp(size ?? 192, 32, 480));
             return jpeg is null ? Results.NotFound() : Results.File(jpeg, "image/jpeg");
+        });
+        // Uploaded images for image widgets (docs/protocol.md, "Assets").
+        app.MapGet("/api/assets", () => Results.Json(assets.List(), ProtocolJson.Options));
+        app.MapPost("/api/assets", async (HttpRequest req) =>
+        {
+            if (!req.HasFormContentType)
+            {
+                return Results.BadRequest(new { error = "send the image as multipart/form-data field \"file\"" });
+            }
+            var form = await req.ReadFormAsync();
+            if (form.Files.GetFile("file") is not { } file)
+            {
+                return Results.BadRequest(new { error = "no file" });
+            }
+            if (file.Length > AssetStore.MaxUploadBytes)
+            {
+                return Results.BadRequest(new { error = $"images up to {AssetStore.MaxUploadBytes / 1024 / 1024} MB" });
+            }
+            using var ms = new MemoryStream();
+            await file.CopyToAsync(ms);
+            try
+            {
+                return Results.Json(assets.Add(ms.ToArray(), file.FileName), ProtocolJson.Options);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        }).DisableAntiforgery();
+        app.MapGet("/api/assets/{id}", (string id) =>
+            assets.Original(id) is { } o ? Results.File(o.Path, o.ContentType) : Results.NotFound());
+        app.MapDelete("/api/assets/{id}", (string id) =>
+        {
+            if (AssetFormat.Placements(config.Snapshot()).Any(p => p.Asset == id))
+            {
+                return Results.Conflict(new { error = "an image widget uses this image; remove the widget first" });
+            }
+            return assets.Delete(id) ? Results.Ok() : Results.NotFound();
         });
         // The device's stored copy (CONFIG_GET), for diagnostics.
         app.MapGet("/api/device/config", async () =>
@@ -311,5 +355,5 @@ internal sealed class WebServer(int port, WebServices services)
         ConfigStatusDto Config,
         uint BadFrames);
 
-    private sealed record ConfigStatusDto(uint Crc, uint? DeviceCrc, bool InSync, ConfigSync.PushResult? LastPush);
+    private sealed record ConfigStatusDto(uint Crc, uint? DeviceCrc, bool InSync, ConfigSync.PushResult? LastPush, string? Progress);
 }

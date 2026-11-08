@@ -47,6 +47,9 @@ internal sealed class ConfigService
         Crc = Crc32.Compute(_bytes);
     }
 
+    /// <summary>Whether an uploaded image exists (image widgets may only use those). Set by Program.</summary>
+    public Func<string, bool>? AssetExists { get; set; }
+
     /// <summary>Raised after a change was saved (on the caller's thread).</summary>
     public event Action? Changed;
 
@@ -103,6 +106,11 @@ internal sealed class ConfigService
         if (error is not null)
         {
             return error;
+        }
+        if (AssetExists is { } exists &&
+            AssetFormat.Placements(JsonNode.Parse(bytes)).FirstOrDefault(p => !exists(p.Asset)) is { } gone)
+        {
+            return $"{gone.Path}.asset: no uploaded image \"{gone.Asset}\"";
         }
         lock (_lock)
         {

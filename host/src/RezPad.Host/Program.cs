@@ -1,4 +1,5 @@
 using System.Reflection;
+using RezPad.Host.Assets;
 using RezPad.Host.Audio;
 using RezPad.Host.Config;
 using RezPad.Host.Device;
@@ -66,7 +67,9 @@ internal static class Program
         var config = new ConfigService();
         var room = new RoomSensor();
         using var link = new SerialLink(Version);
-        var configSync = new ConfigSync(link, config);
+        var assets = new AssetStore();
+        config.AssetExists = assets.Exists;
+        var configSync = new ConfigSync(link, config, assets);
         using var audio = new AudioService();
         using var media = new MediaService(() => config.Media);
         using var bridge = new MediaBridge(link, media, audio, () => config.Media);
@@ -88,7 +91,7 @@ internal static class Program
         media.Start();
         stats.Start();
         weather.Start();
-        var web = new WebServer(port, new WebServices(link, media, audio, stats, config, weather, room, configSync));
+        var web = new WebServer(port, new WebServices(link, media, audio, stats, config, weather, room, configSync, assets));
         web.Start();
         link.Start();
 

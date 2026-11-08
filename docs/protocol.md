@@ -57,6 +57,10 @@ The host opens the port with DTR and RTS on (TinyUSB only sends while DTR is set
 | 0x41 | CONFIG_CHUNK | binary `[offset u32][data]` | |
 | 0x42 | CONFIG_END | empty | Device validates, saves, applies, replies CONFIG_ACK |
 | 0x43 | CONFIG_GET | empty | Device replies with its config (chunked, same scheme reversed) |
+| 0x44 | ASSET_BEGIN | JSON `{name, size, crc32}` | Image file for an `image` widget, see "Assets" |
+| 0x45 | ASSET_CHUNK | binary `[offset u32][data]` | |
+| 0x46 | ASSET_END | empty | Device verifies, stores, replies ASSET_ACK |
+| 0x47 | ASSET_LIST | empty | Device replies ASSET_LIST_DATA |
 | 0x50 | SPECTRUM | binary `[n u8][bins u8 * n]` | Stretch goal, ~30 Hz |
 | 0x60 | CMD | JSON `{cmd, args}` | Debug/maintenance: `set_spi_hz`, `reboot`, `factory_reset`, `bench_display`, `identify` |
 
@@ -132,6 +136,17 @@ The host opens the port with DTR and RTS on (TinyUSB only sends while DTR is set
 - `cfg_crc` in HELLO_ACK is the CRC32 of the stored file, 0 when none is stored (the device then runs on its built-in default). The host pushes its config when that differs from the CRC32 of its own compact bytes, and after every saved change.
 - CONFIG_GET: the device replies CONFIG_DATA_BEGIN `{size, crc32}`, CONFIG_DATA_CHUNKs `[offset u32][data]` of up to 1024 bytes, CONFIG_DATA_END. Without a stored file it sends the built-in default.
 
+### Assets (images for `image` widgets)
+
+Added within v1 (unreleased; older firmware ignores the unknown types). The host converts an uploaded image or GIF into one file per widget size and sends it before the config that uses it.
+
+- File name: `<id>_<w>x<h>_<fit>_<bg>.rpa`, e.g. `3f9a0c1d2e4b_118x98_c_1b1f25.rpa`. `id` is the asset id (12 hex digits), `w` x `h` the image box (the card minus its 1 px border), `fit` `c` (cover: cropped to fill the box) or `f` (contain: whole image, centered), `bg` the card color it was composited on (transparency, letterboxing), 6 lowercase hex digits. Both sides compute the name from the config, so the device knows which file a widget needs.
+- File format (little endian): `"RPA1"`, `w u16`, `h u16`, `frames u16`, `reserved u16 = 0`, then per frame `[delay_ms u16][len u32][baseline JPEG, len bytes]`. `w` x `h` is the image size (equal to the box for cover, at most the box for contain). Still images have one frame with delay 0.
+- Transfer: ASSET_BEGIN `{name, size, crc32}`, ASSET_CHUNKs `[offset u32][data]` contiguous from 0, ASSET_END. At most 1048576 bytes per file. The device checks size and CRC32, writes `/a/<name>` atomically and answers ASSET_ACK. Only one asset transfer at a time.
+- ASSET_LIST: the device answers ASSET_LIST_DATA with every stored file and the free flash space; the host sends only what is missing.
+- After applying a config the device deletes asset files no `image` widget of that config uses.
+- Limits enforced by the host: at most 2 MB of decoded frames (w x h x 2 bytes each) per widget and 4 MB over the whole config; animations are slowed to at least 50 ms per frame and frames are dropped evenly to fit.
+
 ## Device -> Host
 
 | Type | Name | Body | Notes |
@@ -145,6 +160,8 @@ The host opens the port with DTR and RTS on (TinyUSB only sends while DTR is set
 | 0xC1 | CONFIG_DATA_BEGIN | JSON `{size, crc32}` | Reply to CONFIG_GET |
 | 0xC2 | CONFIG_DATA_CHUNK | binary `[offset u32][data]` | |
 | 0xC3 | CONFIG_DATA_END | empty | |
+| 0xC4 | ASSET_ACK | JSON `{ok, name, error}` | Reply to every asset transfer |
+| 0xC5 | ASSET_LIST_DATA | JSON `{files: [{name, size}], free}` | Stored asset files and free flash bytes |
 | 0xE0 | LOG | JSON `{lvl, msg}` | Mirrors important device logs to the host |
 | 0xE1 | ERROR | JSON `{code, msg}` | Codes: `proto_mismatch` (HELLO with another version), `need_hello` (PINGs without a HELLO, e.g. after a device reset; the host re-sends HELLO), `bad_json` |
 | 0xE2 | CMD_RESULT | JSON `{cmd, ok, data}` | |

@@ -16,6 +16,7 @@ constexpr int kMaxWidgets = cfg::kMaxWidgets;
 
 struct Page {
   const cfg::Page* spec = nullptr;
+  Palette pal{};
   lv_obj_t* root = nullptr;
   widgets::Widget* widgets[kMaxWidgets] = {};
   int widgetCount = 0;
@@ -54,13 +55,16 @@ void errorCard(lv_obj_t* card, const char* type, const char* why) {
 
 void build(lv_obj_t* parent, const cfg::Config& cfg) {
   gCount = cfg.pageCount > kMaxPages ? kMaxPages : cfg.pageCount;
-  const int cellW = kScreenW / cfg.cols;
-  const int cellH = kGridH / cfg.rows;
 
   for (int p = 0; p < gCount; ++p) {
     Page& page = gPages[p];
     page.spec = &cfg.pages[p];
     page.widgetCount = 0;
+    // Each page has its own grid and palette; widgets read the current palette while building.
+    const int cellW = kScreenW / page.spec->cols;
+    const int cellH = kGridH / page.spec->rows;
+    page.pal = makePalette(page.spec->theme, page.spec->accent);
+    setPalette(page.pal);
     page.root = lv_obj_create(parent);
     lv_obj_remove_style_all(page.root);
     lv_obj_set_size(page.root, kScreenW, kGridH);
@@ -81,12 +85,23 @@ void build(lv_obj_t* parent, const cfg::Config& cfg) {
         errorCard(card, ws.type, "not supported");
         continue;
       }
-      widget->build(card, w - 14, h - 14);  // content area inside the 7 px padding
+      if (widget->fullBleed()) {
+        // Edge to edge inside the 1 px border (images), clipped to the rounded corners.
+        lv_obj_set_style_pad_all(card, 0, 0);
+        lv_obj_set_style_clip_corner(card, true, 0);
+        widget->build(card, w - 2, h - 2);
+      } else {
+        widget->build(card, w - 14, h - 14);  // content area inside the 7 px padding
+      }
       page.widgets[page.widgetCount++] = widget;
     }
   }
   gCurrent = 0;
-  if (gCount > 0) lv_obj_set_hidden(gPages[0].root, false);
+  if (gCount > 0) {
+    lv_obj_set_hidden(gPages[0].root, false);
+    setPalette(gPages[0].pal);
+    lv_obj_set_style_bg_color(lv_screen_active(), color::bg(), 0);
+  }
 }
 
 void clear() {
@@ -113,6 +128,8 @@ void show(int index) {
   if (index != gCurrent) lv_obj_set_hidden(gPages[gCurrent].root, true);
   gCurrent = index;
   lv_obj_set_hidden(gPages[gCurrent].root, false);
+  setPalette(gPages[gCurrent].pal);
+  lv_obj_set_style_bg_color(lv_screen_active(), color::bg(), 0);
 }
 
 void step(int delta) {
@@ -124,6 +141,7 @@ void step(int delta) {
 
 void refresh(const Model& m, uint32_t changed, uint32_t nowMs) {
   for (int p = 0; p < gCount; ++p) {
+    setPalette(gPages[p].pal);
     for (int i = 0; i < gPages[p].widgetCount; ++i) {
       widgets::Widget* w = gPages[p].widgets[i];
       const uint32_t mine = w->interests() & changed;
@@ -133,6 +151,7 @@ void refresh(const Model& m, uint32_t changed, uint32_t nowMs) {
       w->refresh(m, mine, nowMs);
     }
   }
+  if (gCount > 0) setPalette(gPages[gCurrent].pal);  // the status bar uses the shown page's colors
 }
 
 }  // namespace pages

@@ -1,8 +1,10 @@
-// Settings tabs: inputs, display, weather, sensor & media, and the device tab (status, data
-// sources, maintenance). Forms write straight into the working copy (state.cfg).
+// Settings view (appearance, screen, knobs, weather, sensor, media) and Device view (status,
+// maintenance, image library, data sources). Forms change the working copy through set().
 "use strict";
 
-import { state, on, get, set, h, api, postJson } from "./state.js";
+import { state, on, get, set, change, h, api, postJson, toast } from "./state.js";
+import { THEMES, ACCENTS } from "./preview.js";
+import { icon } from "./icons.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -22,7 +24,7 @@ export const ACTION_NAMES = {
   "display.brightness": "Brightness",
 };
 
-/** Action dropdown; rotate gestures only get rotate actions and presses only press actions. */
+/** Action dropdown; turn gestures only get turn actions and presses only press actions. */
 export function actionSelect(rotate, value, emptyLabel, onChange) {
   const allowed = state.catalog.actions.filter((a) => a === "none" || state.catalog.rotate_actions.includes(a) === rotate);
   const sel = h("select", { onchange: (e) => onChange(e.target.value) });
@@ -32,10 +34,29 @@ export function actionSelect(rotate, value, emptyLabel, onChange) {
   return sel;
 }
 
-// ---- field helpers bound to a config path ----
+/** Accent color swatches plus a custom color. */
+export function swatches(current, onPick) {
+  const cur = (current || "").toUpperCase();
+  const custom = h("input", { type: "color", value: cur.toLowerCase() || "#4fc3f7", title: "Custom color", "aria-label": "Custom color", onchange: (e) => onPick(e.target.value.toUpperCase()) });
+  return h("div", { class: "swatches" },
+    ...ACCENTS.map((c) => h("button", { type: "button", class: c === cur ? "on" : "", title: c, "aria-label": `Accent ${c}`, style: { background: c }, onclick: () => onPick(c) })),
+    custom);
+}
+
+/** Theme preset cards with a small sample of their colors. */
+export function themeCards(current, onPick) {
+  return h("div", { class: "themes" }, ...Object.entries(THEMES).map(([name, t]) =>
+    h("button", { type: "button", class: "theme-card" + (name === current ? " on" : ""), onclick: () => onPick(name) },
+      h("div", { class: "demo", style: { background: t.bg } },
+        h("i", { style: { background: t.card, borderColor: t.border } }),
+        h("i", { style: { background: t.card, borderColor: t.border } })),
+      h("span", { text: t.label }))));
+}
+
+// ---- form helpers bound to config paths ----
 
 function field(label, control, hint) {
-  return h("label", { class: "field" }, h("span", { text: label }), control, hint ? h("small", { class: "dim", text: hint }) : null);
+  return h("label", { class: "field" }, h("span", { text: label }), control, hint ? h("small", { text: hint }) : null);
 }
 
 function num(path, opts = {}) {
@@ -48,8 +69,8 @@ function num(path, opts = {}) {
   });
 }
 
-function check(path, fallback = false) {
-  return h("input", { type: "checkbox", checked: get(path, fallback), onchange: (e) => set(path, e.target.checked) });
+function check(label, path, fallback = false) {
+  return h("label", { class: "check" }, h("input", { type: "checkbox", checked: get(path, fallback), onchange: (e) => set(path, e.target.checked) }), label);
 }
 
 function choice(path, options, fallback) {
@@ -65,82 +86,86 @@ function time(path, fallback) {
 
 function range(path, fallback) {
   const out = h("output", { text: `${get(path, fallback)} %` });
-  const input = h("input", {
-    type: "range", min: 0, max: 100, step: 1, value: get(path, fallback),
-    oninput: (e) => {
-      out.textContent = `${e.target.value} %`;
-      set(path, Number(e.target.value));
-    },
-  });
-  return h("span", { class: "row tight" }, input, out);
+  return h("div", { class: "range-row" },
+    h("input", {
+      type: "range", min: 0, max: 100, step: 1, value: get(path, fallback),
+      oninput: (e) => {
+        out.textContent = `${e.target.value} %`;
+        set(path, Number(e.target.value));
+      },
+    }), out);
 }
 
-function section(title, hint, ...fields) {
-  return h("section", { class: "card-section" }, h("h3", { text: title }), hint ? h("p", { class: "hint", text: hint }) : null, h("div", { class: "fields" }, ...fields));
+function panel(title, hint, ...children) {
+  return h("section", { class: "panel" }, h("h2", { text: title }), hint ? h("p", { class: "hint", text: hint }) : null, ...children);
 }
 
-// ---- tabs ----
+// ---- settings view ----
 
-function renderInputs() {
+let searchResults = [];
+
+function appearance() {
+  return panel("Appearance", "The look of every page. A page can pick its own colors in Layout.",
+    h("div", { class: "field" }, h("span", { text: "Theme" }), themeCards(get("theme.name", "dark"), (name) => { set("theme.name", name); renderSettings(); })),
+    h("div", { class: "field" }, h("span", { text: "Accent color" }), swatches(get("theme.accent", "#4FC3F7"), (c) => { set("theme.accent", c); renderSettings(); })));
+}
+
+function screen() {
+  return panel("Screen", null,
+    h("div", { class: "form-grid" },
+      field("Brightness", range("display.brightness", 80)),
+      field("SPI clock", choice("display.spi_hz", [[20000000, "20 MHz"], [26666667, "26.7 MHz"], [40000000, "40 MHz (tested)"], [80000000, "80 MHz (not tested)"]], 40000000),
+        "The ESP32-S3 divides 80 MHz, so these are the clocks it can run")),
+    h("h3", { text: "Night", style: { fontSize: "13px", margin: "8px 0 4px" } }),
+    h("p", { style: { margin: "0 0 10px", color: "var(--muted)", fontSize: "12.5px" }, text: "Dimming at night and turning off with the PC arrive in Phase 11; these settings are kept until then." }),
+    check("Dim at night", "display.night.enabled"),
+    h("div", { class: "form-grid" },
+      field("From", time("display.night.from", "23:00")),
+      field("To", time("display.night.to", "07:30")),
+      field("Night brightness", range("display.night.brightness", 15))),
+    check("Screen off while the PC sleeps", "display.sleep_on_pc_sleep", true));
+}
+
+function knobs() {
   const buttons = get("inputs.buttons", 0);
-  const gestures = [["rotate", "Turn", true], ["rotate_pressed", "Press and turn", true], ["click", "Click", false],
-    ["double", "Double click", false], ["long", "Long press", false]];
-  const enc = (dev, title) => section(title, null,
+  const gestures = [["rotate", "Turn", true], ["rotate_pressed", "Press and turn", true], ["click", "Click", false], ["double", "Double click", false], ["long", "Long press", false]];
+  const enc = (dev, title) => h("div", {}, h("h3", { text: title }),
     ...gestures.map(([g, label, rotate]) => field(label, actionSelect(rotate, get(["inputs", dev, g], "none"), null, (v) => set(["inputs", dev, g], v)))),
-    field("Steps per click", choice(["inputs", dev, "counts_per_detent"], [[1, "1"], [2, "2"], [4, "4 (KY-040)"], [8, "8"]], 4), "Pulses the encoder gives per click"),
-    field("Reverse direction", check(["inputs", dev, "invert"])));
-  const btn = (dev, title) => section(title, null,
+    field("Steps per click", choice(["inputs", dev, "counts_per_detent"], [[1, "1"], [2, "2"], [4, "4 (KY-040)"], [8, "8"]], 4)),
+    check("Reverse direction", ["inputs", dev, "invert"]));
+  const btn = (dev, title) => h("div", {}, h("h3", { text: title }),
     field("Click", actionSelect(false, get(["inputs", dev, "click"], "none"), null, (v) => set(["inputs", dev, "click"], v))),
     field("Long press", actionSelect(false, get(["inputs", dev, "long"], "none"), null, (v) => set(["inputs", dev, "long"], v))));
-  $("tab-inputs").replaceChildren(
-    h("p", { class: "hint", text: "What the knobs and buttons do on every page. A page can change single gestures (Layout tab, \"Knobs on this page\"). Turning actions only fit turns, the others only fit presses. A double click makes single clicks wait 0.3 s for a possible second click." }),
-    h("div", { class: "sections" },
+  return panel("Knobs and buttons", "What they do on every page; a page can change single gestures in Layout. A double click makes single clicks wait 0.3 s for a second one.",
+    h("div", { class: "knob-grid" },
       enc("enc1", "Knob 1"),
       enc("enc2", "Knob 2"),
-      section("Buttons", "Extra push buttons wired to the board.",
-        field("Buttons fitted", h("select", {
-          onchange: (e) => {
-            set("inputs.buttons", Number(e.target.value));
-            renderInputs();
-          },
-        }, ...[0, 1, 2].map((n) => h("option", { value: n, text: String(n), selected: n === buttons }))))),
+      h("div", {}, h("h3", { text: "Extra buttons" }),
+        field("Buttons fitted", h("select", { onchange: (e) => { set("inputs.buttons", Number(e.target.value)); renderSettings(); } },
+          ...[0, 1, 2].map((n) => h("option", { value: n, text: String(n), selected: n === buttons }))))),
       buttons >= 1 ? btn("btn1", "Button 1") : null,
       buttons >= 2 ? btn("btn2", "Button 2") : null));
 }
 
-function renderDisplay() {
-  $("tab-display").replaceChildren(h("div", { class: "sections" },
-    section("Screen", null,
-      field("Brightness", range("display.brightness", 80)),
-      field("Accent color", h("input", { type: "color", value: (get("theme.accent", "#4FC3F7")).toLowerCase(), oninput: (e) => set("theme.accent", e.target.value.toUpperCase()) })),
-      field("SPI clock", choice("display.spi_hz", [[20000000, "20 MHz"], [26666667, "26.7 MHz"], [40000000, "40 MHz (tested)"], [80000000, "80 MHz (not tested)"]], 40000000),
-        "The ESP32-S3 divides 80 MHz, so these are the clocks it can run")),
-    section("Night", "Dimming at night and turning off when the PC sleeps arrive with Phase 11; the settings are kept until then.",
-      field("Dim at night", check("display.night.enabled")),
-      field("From", time("display.night.from", "23:00")),
-      field("To", time("display.night.to", "07:30")),
-      field("Night brightness", range("display.night.brightness", 15)),
-      field("Screen off while the PC sleeps", check("display.sleep_on_pc_sleep", true)))));
-}
-
-let searchResults = [];
-
-function renderWeather() {
+function weather() {
   const loc = get("weather.name", "");
   const lat = get("weather.lat", null);
   const lon = get("weather.lon", null);
+  const q = h("input", { type: "search", placeholder: "Search a city", "aria-label": "City", autocomplete: "off" });
   const results = h("ul", { class: "results" }, ...searchResults.map((it) =>
     h("li", {}, h("button", {
-      type: "button",
+      type: "button", class: "ghost",
       onclick: () => {
-        set("weather.name", it.name.slice(0, 100));
-        set("weather.lat", Math.round(it.lat * 1e5) / 1e5);
-        set("weather.lon", Math.round(it.lon * 1e5) / 1e5);
+        change((cfg) => {
+          cfg.weather ??= {};
+          cfg.weather.name = it.name.slice(0, 100);
+          cfg.weather.lat = Math.round(it.lat * 1e5) / 1e5;
+          cfg.weather.lon = Math.round(it.lon * 1e5) / 1e5;
+        });
         searchResults = [];
-        renderWeather();
+        renderSettings();
       },
     }, [it.name, it.admin1, it.country].filter(Boolean).join(", ") + ` (${it.lat.toFixed(2)}, ${it.lon.toFixed(2)})`))));
-  const q = h("input", { type: "search", placeholder: "Search a city", "aria-label": "City", autocomplete: "off" });
   const form = h("form", {
     class: "row",
     onsubmit: async (e) => {
@@ -149,68 +174,53 @@ function renderWeather() {
       if (!text) return;
       const r = await api("/api/geocode?q=" + encodeURIComponent(text));
       searchResults = r.ok ? r.body : [];
-      renderWeather();
-      if (!searchResults.length) $("tab-weather").querySelector(".results").replaceChildren(h("li", { class: "dim", text: r.ok ? "No places found" : "Search failed" }));
+      if (!searchResults.length) toast(r.ok ? "No places found" : "Search failed", !r.ok);
+      renderSettings();
     },
-  }, q, h("button", { type: "submit" }, "Search"));
-  $("tab-weather").replaceChildren(h("div", { class: "sections" },
-    section("Location", "Weather comes from Open-Meteo (no account needed).",
-      h("div", { class: "field wide" }, h("span", { text: "Place" }),
-        h("strong", { text: lat === null ? "Not set: search for a city" : `${loc} (${lat.toFixed(2)}, ${lon.toFixed(2)})` })),
-      h("div", { class: "field wide" }, form, results),
-      field("Update every", choice("weather.refresh_min", [[5, "5 min"], [10, "10 min"], [15, "15 min"], [30, "30 min"], [60, "1 hour"], [180, "3 hours"]], 15))),
-    section("Units", "Used for the weather and the room sensor on the device.",
+  }, h("div", { style: { flex: "1" } }, q), h("button", { type: "submit" }, icon("search", 16), "Search"));
+  return panel("Weather and units", "Weather comes from Open-Meteo, no account needed.",
+    h("div", { class: "field" }, h("span", { text: "Place" }), h("strong", { text: lat === null ? "Not set: search for a city" : `${loc} (${lat.toFixed(2)}, ${lon.toFixed(2)})` })),
+    form, results,
+    h("p", { id: "wx-now", style: { color: "var(--muted)", fontSize: "12.5px" } }),
+    h("div", { class: "form-grid" },
+      field("Update every", choice("weather.refresh_min", [[5, "5 min"], [10, "10 min"], [15, "15 min"], [30, "30 min"], [60, "1 hour"], [180, "3 hours"]], 15)),
       field("Temperature", choice("units.temp", [["c", "°C"], ["f", "°F"]], "c")),
       field("Wind", choice("units.wind", [["kmh", "km/h"], ["ms", "m/s"], ["mph", "mph"]], "kmh")),
-      field("Pressure", choice("units.pressure", [["hpa", "hPa"], ["inhg", "inHg"]], "hpa"))),
-    h("section", { class: "card-section" }, h("h3", { text: "Now" }), h("p", { id: "wx-now", class: "hint" }))));
-  renderWeatherLive();
+      field("Pressure", choice("units.pressure", [["hpa", "hPa"], ["inhg", "inHg"]], "hpa"))));
 }
 
-function renderWeatherLive() {
-  const el = $("wx-now");
-  if (!el) return;
-  const w = state.data.weather;
-  const now = w?.latest?.now;
-  const u = w?.units;
-  const wind = { kmh: "km/h", ms: "m/s", mph: "mph" };
-  el.textContent = now
-    ? `${w.latest.loc}: ${now.temp}°${u.temp.toUpperCase()}, feels ${now.feels}°, ${now.hum} % RH, wind ${now.wind} ${wind[u.wind]}, updated ${Math.round(w.age_s / 60)} min ago`
-    : w?.error ? `Error: ${w.error}` : "No weather data yet.";
+function sensorMedia() {
+  return [
+    panel("Room sensor", "The sensor runs a little warm from the board; the offset corrects it (humidity follows).",
+      h("div", { class: "field" }, h("span", { text: "Now, with the saved offsets" }), h("strong", { id: "room-now", text: "..." })),
+      h("div", { class: "form-grid" },
+        field("Temperature offset (°C)", num("sensor.temp_offset_c", { min: -10, max: 10, step: 0.1 })),
+        field("Humidity offset (%)", num("sensor.hum_offset_pct", { min: -20, max: 20, step: 0.5 })),
+        field("Pressure trend threshold (hPa / 3 h)", num("sensor.trend_threshold_hpa", { min: 0.1, max: 10, step: 0.1 })))),
+    panel("Media and system data", null,
+      h("div", { class: "form-grid" },
+        field("Prefer apps (in order)", h("input", {
+          type: "text", value: get("media.app_priority", ["Spotify", "*"]).join(", "),
+          oninput: (e) => {
+            const list = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
+            set("media.app_priority", list.length ? list : undefined);
+          },
+        }), "Comma separated, * means any app"),
+        field("Volume step per click (%)", num("media.volume_step", { min: 1, max: 20 })),
+        field("Seek step per click (s)", num("media.seek_step_s", { min: 1, max: 60 })),
+        field("System data updates per second", choice("stats.rate_hz", [[0.5, "0.5"], [1, "1"], [2, "2"], [4, "4"]], 1), "More often costs a little more CPU"))),
+  ];
 }
 
-function renderSensorMedia() {
-  $("tab-sensor").replaceChildren(h("div", { class: "sections" },
-    section("Room sensor", "The sensor runs a little warm from the board; the offset corrects it. Humidity is corrected for the temperature offset first.",
-      h("div", { class: "field wide" }, h("span", { text: "Now (with the current offsets)" }), h("strong", { id: "room-now", text: "..." })),
-      field("Temperature offset (°C)", num("sensor.temp_offset_c", { min: -10, max: 10, step: 0.1 })),
-      field("Humidity offset (%)", num("sensor.hum_offset_pct", { min: -20, max: 20, step: 0.5 })),
-      field("Pressure trend threshold (hPa / 3 h)", num("sensor.trend_threshold_hpa", { min: 0.1, max: 10, step: 0.1 }))),
-    section("Media", null,
-      field("Prefer apps (in order)", h("input", {
-        type: "text", value: (get("media.app_priority", ["Spotify", "*"])).join(", "),
-        oninput: (e) => {
-          const list = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
-          set("media.app_priority", list.length ? list : undefined);
-        },
-      }), "Comma separated, * means any app. A playing app always wins over paused ones."),
-      field("Volume step per click (%)", num("media.volume_step", { min: 1, max: 20 })),
-      field("Seek step per click (s)", num("media.seek_step_s", { min: 1, max: 60 }))),
-    section("System data", null,
-      field("Updates per second", choice("stats.rate_hz", [[0.5, "0.5"], [1, "1"], [2, "2"], [4, "4"]], 1), "More often costs a little more CPU on the PC"))));
-  renderRoomLive();
+export function renderSettings() {
+  if (!state.cfg) return;
+  const scroll = window.scrollY;
+  $("view-settings").replaceChildren(appearance(), screen(), knobs(), weather(), ...sensorMedia());
+  window.scrollTo(0, scroll);
+  renderLive();
 }
 
-function renderRoomLive() {
-  const el = $("room-now");
-  if (!el) return;
-  const r = state.data.room;
-  el.textContent = r
-    ? `${r.temp_c?.toFixed(1) ?? "--"} °C, ${r.hum_pct?.toFixed(0) ?? "--"} % RH, ${r.press_hpa?.toFixed(1) ?? "--"} hPa, trend ${r.trend}`
-    : "No reading (device not connected)";
-}
-
-// ---- device tab ----
+// ---- device view ----
 
 const STATE_TEXT = {
   Connected: "Connected",
@@ -224,19 +234,35 @@ export function linkText(s) {
   return STATE_TEXT[s.linkState] || s.linkState;
 }
 
-function renderDevice() {
-  $("tab-device").replaceChildren(h("div", { class: "sections" },
-    h("section", { class: "card-section" }, h("h3", { text: "Device" }), h("dl", { id: "dev-status" })),
-    h("section", { class: "card-section" }, h("h3", { text: "Maintenance" }),
+export function renderDevice() {
+  if (!state.cfg) return;
+  const used = new Set(state.cfg.pages.flatMap((p) => (p.widgets || []).filter((w) => w.type === "image").map((w) => w.asset)));
+  $("view-device").replaceChildren(
+    panel("Device", null, h("dl", { id: "dev-status", class: "status" })),
+    panel("Maintenance", null,
       h("div", { class: "row" },
         h("button", { type: "button", onclick: compareDevice }, "Compare the device's copy"),
         h("button", { type: "button", onclick: () => cmd("reboot", "Restart the device?") }, "Restart device"),
-        h("button", { type: "button", class: "danger", onclick: () => cmd("factory_reset", "Delete the config stored on the device? It restarts on the built-in default, and this host sends its config again right after.") }, "Clear device config")),
-      h("p", { id: "dev-msg", class: "hint" })),
-    h("section", { class: "card-section wide" }, h("h3", { text: "Data sources on this PC" }),
-      h("p", { class: "hint", text: "Everything the editor can offer for system widgets. \"On screen\" marks the ones the saved layout uses." }),
-      h("table", { id: "sources" }, h("thead", {}, h("tr", {}, h("th", { text: "Source" }), h("th", { text: "Name" }), h("th", { class: "num", text: "Value" }), h("th"))), h("tbody")))));
-  renderDeviceLive();
+        h("button", { type: "button", class: "danger", onclick: () => cmd("factory_reset", "Delete the config stored on the device? It restarts on the built-in default, and this PC sends its config again right after.") }, "Clear device config")),
+      h("p", { id: "dev-msg", style: { marginTop: "10px", color: "var(--muted)" } })),
+    panel("Images", "Pictures uploaded for image widgets. The device gets a copy sized for each widget.",
+      state.assets.length ? h("div", { class: "library" }, ...state.assets.map((a) => h("div", { class: "lib-item" },
+        h("img", { src: `/api/assets/${a.id}`, alt: a.name, loading: "lazy" }),
+        h("div", { class: "meta" }, h("span", { title: a.name, text: `${a.name} · ${a.w}×${a.h}${a.frames > 1 ? `, ${a.frames} frames` : ""}` }),
+          h("button", {
+            type: "button", class: "icon-btn danger", title: used.has(a.id) ? "Used by an image widget" : "Delete", "aria-label": "Delete image", disabled: used.has(a.id),
+            onclick: async () => {
+              if (!confirm(`Delete ${a.name}?`)) return;
+              const r = await api(`/api/assets/${a.id}`, { method: "DELETE" });
+              if (!r.ok) toast(r.body?.error || "Could not delete", true);
+              const l = await api("/api/assets");
+              state.assets = l.ok ? l.body : [];
+              renderDevice();
+            },
+          }, icon("trash", 16)))))) : h("p", { class: "dim", text: "No images yet. Add an Image widget in Layout to upload one." })),
+    panel("Data sources on this PC", "Everything system widgets can show. \"On screen\" marks the ones in the saved layout.",
+      h("table", { id: "sources" }, h("thead", {}, h("tr", {}, h("th", { text: "Source" }), h("th", { text: "Name" }), h("th", { class: "num", text: "Value" }), h("th"))), h("tbody"))));
+  renderLive();
 }
 
 async function compareDevice() {
@@ -248,8 +274,9 @@ async function compareDevice() {
     return;
   }
   const host = await api("/api/config");
-  const same = JSON.stringify(r.body) === JSON.stringify(host.body);
-  msg.textContent = same ? "The device has the same config as this PC." : "The device has a different config; saving here sends this PC's config to it.";
+  msg.textContent = JSON.stringify(r.body) === JSON.stringify(host.body)
+    ? "The device has the same config as this PC."
+    : "The device has a different config; saving sends this PC's config to it.";
 }
 
 async function cmd(name, question) {
@@ -258,42 +285,55 @@ async function cmd(name, question) {
   $("dev-msg").textContent = r.ok ? "Sent." : r.body?.error || `Failed (${r.status})`;
 }
 
-function renderDeviceLive() {
+// Live parts of both views.
+function renderLive() {
+  const wxEl = $("wx-now");
+  if (wxEl) {
+    const w = state.data.weather;
+    const now = w?.latest?.now;
+    const u = w?.units;
+    const wind = { kmh: "km/h", ms: "m/s", mph: "mph" };
+    wxEl.textContent = now
+      ? `Now in ${w.latest.loc}: ${now.temp}°${u.temp.toUpperCase()}, feels ${now.feels}°, ${now.hum} % RH, wind ${now.wind} ${wind[u.wind]} (updated ${Math.round(w.age_s / 60)} min ago)`
+      : w?.error ? `Error: ${w.error}` : "No weather data yet.";
+  }
+  const roomEl = $("room-now");
+  if (roomEl) {
+    const r = state.data.room;
+    roomEl.textContent = r ? `${r.temp_c?.toFixed(1) ?? "--"} °C, ${r.hum_pct?.toFixed(0) ?? "--"} % RH, ${r.press_hpa?.toFixed(1) ?? "--"} hPa, trend ${r.trend}` : "No reading (device not connected)";
+  }
   const dl = $("dev-status");
-  if (!dl || !state.cfg) return;
-  const s = state.data.status;
-  const rows = [["Host", s ? `rez-pad ${s.hostVersion}, protocol v${s.protocolVersion}${s.elevated ? ", administrator" : ""}` : "not reachable"],
-    ["Device", linkText(s) + (s?.deviceConnected ? ` on ${s.port}, firmware ${s.firmwareVersion} (protocol v${s.firmwareProtocol}), ${s.serial}` : s?.error && s.linkState === "Incompatible" ? `: ${s.error}` : "")],
-    ["Config", s?.config ? (s.config.inSync ? "Same on the device" : s.deviceConnected ? "Not on the device yet" : "Device not connected") : ""],
-    ["Last send", s?.config?.lastPush ? (s.config.lastPush.ok ? `OK, ${s.config.lastPush.ms} ms` : s.config.lastPush.error) : "none yet"],
-    ["Sensors", s?.sensors?.message ?? "All readable"]];
-  dl.replaceChildren(...rows.flatMap(([k, v]) => [h("dt", { text: k }), h("dd", { text: v })]));
-
+  if (dl) {
+    const s = state.data.status;
+    const c = s?.config;
+    const rows = [
+      ["Host", s ? `rez-pad ${s.hostVersion}, protocol v${s.protocolVersion}${s.elevated ? ", administrator" : ""}` : "not reachable"],
+      ["Device", linkText(s) + (s?.deviceConnected ? ` on ${s.port}, firmware ${s.firmwareVersion} (protocol v${s.firmwareProtocol}), ${s.serial}` : s?.error && s.linkState === "Incompatible" ? `: ${s.error}` : "")],
+      ["Config", c ? (c.progress ?? (c.inSync ? "Same on the device" : s.deviceConnected ? "Not on the device yet" : "Device not connected")) : ""],
+      ["Last send", c?.lastPush ? (c.lastPush.ok ? `OK in ${c.lastPush.ms} ms${c.lastPush.imagesSent ? `, ${c.lastPush.imagesSent} image(s)` : ""}` : c.lastPush.error) : "none yet"],
+      ["Sensors", s?.sensors?.message ?? "All readable"],
+    ];
+    dl.replaceChildren(...rows.flatMap(([k, v]) => [h("dt", { text: k }), h("dd", { text: v })]));
+  }
   const body = document.querySelector("#sources tbody");
-  if (!body) return;
-  const used = new Set(state.cfg ? JSON.parse(state.savedJson || "{}").pages?.flatMap((p) => (p.widgets || []).map((w) => w.source)) ?? [] : []);
-  body.replaceChildren(...[...state.data.sources.entries()].map(([id, src]) =>
-    h("tr", {},
-      h("td", { class: "id", text: id }),
-      h("td", { text: src.name }),
-      h("td", { class: src.available ? "num" : "num dim", text: src.available ? `${src.value} ${src.unit}` : "unavailable" }),
-      h("td", { class: "dim", text: used.has(id) ? "on screen" : "" }))));
-}
-
-export function renderSettings() {
-  if (!state.cfg) return;
-  renderInputs();
-  renderDisplay();
-  renderWeather();
-  renderSensorMedia();
-  renderDevice();
+  if (body) {
+    const saved = JSON.parse(state.savedJson || "{}");
+    const used = new Set((saved.pages || []).flatMap((p) => (p.widgets || []).map((w) => w.source)));
+    body.replaceChildren(...[...state.data.sources.entries()].map(([id, src]) =>
+      h("tr", {},
+        h("td", { class: "id", text: id }),
+        h("td", { text: src.name }),
+        h("td", { class: "num" + (src.available ? "" : " dim"), text: src.available ? `${src.value} ${src.unit}` : "unavailable" }),
+        h("td", { class: "dim", text: used.has(id) ? "on screen" : "" }))));
+  }
 }
 
 export function initSettings() {
-  on("live", () => {
-    renderWeatherLive();
-    renderRoomLive();
-    renderDeviceLive();
+  on("live", renderLive);
+  on("status", renderLive);
+  on("structure", () => {
+    renderSettings();
+    renderDevice();
   });
-  on("status", renderDeviceLive);
+  on("assets", () => !$("view-device").hidden && renderDevice());
 }

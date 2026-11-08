@@ -21,24 +21,47 @@ public static class ConfigCatalog
     /// <summary>Different data sources over all pages (the device keeps 16 SYS_STATS values).</summary>
     public const int MaxSources = 16;
 
-    /// <summary>Allowed (w, h) per widget type; an empty list means any size.</summary>
-    public static readonly IReadOnlyDictionary<string, (int W, int H)[]> WidgetSizes = new Dictionary<string, (int, int)[]>
+    // Screen geometry the sizes are checked against (firmware/src/ui/pages.cpp uses the same numbers).
+    public const int ScreenW = 480;
+    public const int GridH = 300;
+    public const int CellGap = 4;
+    public const int CardPad = 7;
+
+    /// <summary>
+    /// Smallest content area (card minus padding) in px each widget type can draw in. Any size whose
+    /// content area is at least this big is allowed, on any grid.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, (int W, int H)> WidgetMin = new Dictionary<string, (int, int)>
     {
-        ["album_art"] = [(2, 2)],
-        ["track_info"] = [(2, 1), (2, 2), (4, 1)],
-        ["media_controls"] = [(2, 1), (3, 1), (4, 1)],
-        ["progress"] = [(2, 1), (4, 1)],
-        ["volume"] = [(1, 1), (2, 1)],
-        ["metric_value"] = [(1, 1), (2, 1)],
-        ["metric_bar"] = [(2, 1), (4, 1)],
-        ["metric_gauge"] = [(1, 1), (2, 2)],
-        ["metric_graph"] = [(2, 1), (2, 2), (4, 1)],
-        ["clock"] = [(1, 1), (2, 1)],
-        ["room_climate"] = [(2, 1), (2, 2)],
-        ["weather_now"] = [(2, 1), (2, 2)],
-        ["weather_forecast"] = [(4, 1)],
-        ["label"] = [],
+        ["album_art"] = (40, 40),
+        ["track_info"] = (80, 18),
+        ["media_controls"] = (60, 24),
+        ["progress"] = (60, 10),
+        ["volume"] = (40, 34),
+        ["now_playing"] = (150, 60),
+        ["metric_value"] = (50, 30),
+        ["metric_bar"] = (60, 30),
+        ["metric_gauge"] = (44, 44),
+        ["metric_graph"] = (80, 40),
+        ["clock"] = (50, 26),
+        ["room_climate"] = (60, 30),
+        ["weather_now"] = (60, 34),
+        ["weather_forecast"] = (90, 46),
+        ["label"] = (16, 14),
+        ["image"] = (16, 16),
     };
+
+    /// <summary>Theme presets, in the firmware's order.</summary>
+    public static readonly IReadOnlyList<string> Themes = ["dark", "midnight", "black", "graphite"];
+
+    public static int CardW(int w, int cols) => w * (ScreenW / cols) - CellGap;
+
+    public static int CardH(int h, int rows) => h * (GridH / rows) - CellGap;
+
+    /// <summary>Whether a w x h widget of this type fits its minimum content size on a cols x rows grid.</summary>
+    public static bool SizeAllowed(string type, int w, int h, int cols, int rows) =>
+        WidgetMin.TryGetValue(type, out var min) &&
+        CardW(w, cols) - 2 * CardPad >= min.W && CardH(h, rows) - 2 * CardPad >= min.H;
 
     public static readonly IReadOnlyList<string> Actions =
     [
@@ -49,9 +72,6 @@ public static class ConfigCatalog
     /// <summary>Actions that take a detent count: allowed on rotate gestures only, the others on presses only.</summary>
     public static readonly IReadOnlySet<string> RotateActions =
         new HashSet<string> { "nav.page", "media.seek", "media.volume", "display.brightness" };
-
-    public static bool SizeAllowed(string type, int w, int h) =>
-        WidgetSizes.TryGetValue(type, out var sizes) && (sizes.Length == 0 ? w > 0 && h > 0 : sizes.Contains((w, h)));
 
     public static bool IsMetric(string type) => type.StartsWith("metric_", StringComparison.Ordinal);
 
@@ -201,15 +221,7 @@ public static class ConfigValidator
 
         if (Obj(o, "theme", "") is { } t)
         {
-            Str(t, "name", "theme", 16);
-            if (t["accent"] is not null)
-            {
-                var a = t["accent"] is JsonValue av && av.TryGetValue<string>(out var s) ? s : "";
-                if (a.Length != 7 || a[0] != '#' || !a[1..].All(Uri.IsHexDigit))
-                {
-                    throw Fail("theme.accent", "must be a color \"#RRGGBB\"");
-                }
-            }
+            Theme(t, "theme");
         }
 
         if (Obj(o, "units", "") is { } u)
@@ -319,6 +331,15 @@ public static class ConfigValidator
         }
         ids.Add(id);
         Str(p, "name", path, 32);
+        if (Obj(p, "grid", path) is { } g)
+        {
+            cols = Int(g, "cols", P(path, "grid"), 1, ConfigCatalog.MaxGrid) ?? cols;
+            rows = Int(g, "rows", P(path, "grid"), 1, ConfigCatalog.MaxGrid) ?? rows;
+        }
+        if (Obj(p, "theme", path) is { } t)
+        {
+            Theme(t, P(path, "theme"));
+        }
 
         if (p["widgets"] is { } wn)
         {
@@ -350,7 +371,7 @@ public static class ConfigValidator
             throw Fail(path, "must be an object");
         }
         var type = Str(w, "type", path, 20);
-        if (type is null || !ConfigCatalog.WidgetSizes.ContainsKey(type))
+        if (type is null || !ConfigCatalog.WidgetMin.ContainsKey(type))
         {
             throw Fail(path, $"unknown widget type \"{type}\"");
         }
@@ -366,9 +387,12 @@ public static class ConfigValidator
         {
             throw Fail(path, $"outside the {cols}x{rows} grid");
         }
-        if (!ConfigCatalog.SizeAllowed(type, wv, hv))
+        if (!ConfigCatalog.SizeAllowed(type, wv, hv, cols, rows))
         {
-            throw Fail(path, $"size {wv}x{hv} not allowed for {type}");
+            var need = ConfigCatalog.WidgetMin[type];
+            var cw = ConfigCatalog.CardW(wv, cols) - 2 * ConfigCatalog.CardPad;
+            var ch = ConfigCatalog.CardH(hv, rows) - 2 * ConfigCatalog.CardPad;
+            throw Fail(path, $"{wv}x{hv} is too small for {type} on a {cols}x{rows} grid (needs {need.W}x{need.H} px, has {cw}x{ch})");
         }
         for (var cy = cy0; cy < cy0 + hv; cy++)
         {
@@ -404,6 +428,15 @@ public static class ConfigValidator
         {
             throw Fail(P(path, "text"), "required for label");
         }
+        var asset = Str(w, "asset", path, 40) ?? "";
+        if (type == "image")
+        {
+            if (asset.Length == 0)
+            {
+                throw Fail(P(path, "asset"), "required for image");
+            }
+            Choice(w, "fit", path, "cover", "contain");
+        }
         var def = ConfigCatalog.SourceDefaults(source);
         var min = Num(w, "min", path) ?? def.Min;
         var max = Num(w, "max", path) ?? def.Max;
@@ -413,6 +446,19 @@ public static class ConfigValidator
         if (!(min < max))
         {
             throw Fail(path, "min must be below max");
+        }
+    }
+
+    private static void Theme(JsonObject t, string path)
+    {
+        Choice(t, "name", path, [.. ConfigCatalog.Themes]);
+        if (t["accent"] is not null)
+        {
+            var a = t["accent"] is JsonValue av && av.TryGetValue<string>(out var s) ? s : "";
+            if (a.Length != 7 || a[0] != '#' || !a[1..].All(Uri.IsHexDigit))
+            {
+                throw Fail(P(path, "accent"), "must be a color \"#RRGGBB\"");
+            }
         }
     }
 

@@ -73,11 +73,19 @@ void ageText(char* buf, size_t n, const ui::Model& m) {
 // ---- weather_now ----
 
 void WeatherNow::build(lv_obj_t* card, int w, int h) {
-  tall_ = h >= 150;
-  iconPx_ = tall_ ? 72 : 48;
+  tall_ = h >= 140 && w >= 160;
+  const bool narrow = !tall_ && w < 140;
+  iconPx_ = tall_ ? 72 : (h >= 70 && !narrow) || (narrow && h >= 80 && w >= 110) ? 48 : 32;
   icon_ = lv_image_create(card);
   lv_obj_set_hidden(icon_, true);
-  if (tall_) {
+  if (narrow) {
+    // Small card: icon and temperature on top, condition below; no location or age.
+    lv_obj_align(icon_, LV_ALIGN_TOP_LEFT, 0, 0);
+    temp_ = makeLabel(card, h >= 50 ? ui::font::large() : ui::font::body(), ui::color::text(), "--");
+    lv_obj_align(temp_, LV_ALIGN_TOP_RIGHT, 0, 0);
+    cond_ = makeEllipsis(card, ui::font::small(), ui::color::dim(), w);
+    lv_obj_align(cond_, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+  } else if (tall_) {
     loc_ = makeEllipsis(card, ui::font::small(), ui::color::accent(), w - 80);
     lv_obj_align(loc_, LV_ALIGN_TOP_LEFT, 0, 0);
     age_ = makeLabel(card, ui::font::small(), ui::color::dim(), "");
@@ -106,8 +114,8 @@ void WeatherNow::build(lv_obj_t* card, int w, int h) {
 void WeatherNow::refresh(const ui::Model& m, uint32_t, uint32_t) {
   const auto& wx = m.weather;
   if (!fresh(m)) {
-    setText(loc_, wx.valid ? wx.loc : "Weather");
-    setText(age_, "");
+    if (loc_) setText(loc_, wx.valid ? wx.loc : "Weather");
+    if (age_) setText(age_, "");
     setText(temp_, "--");
     setText(cond_, m.hostConnected ? "waiting for data" : "no data");
     if (details_) setText(details_, "");
@@ -115,9 +123,9 @@ void WeatherNow::refresh(const ui::Model& m, uint32_t, uint32_t) {
     return;
   }
   char buf[80];
-  setText(loc_, wx.loc);
+  if (loc_) setText(loc_, wx.loc);
   ageText(buf, sizeof(buf), m);
-  setText(age_, buf);
+  if (age_) setText(age_, buf);
   snprintf(buf, sizeof(buf), "%.0f\xC2\xB0", wx.temp);
   setText(temp_, buf);
   setText(cond_, wmoText(wx.code));
@@ -135,10 +143,15 @@ void WeatherNow::refresh(const ui::Model& m, uint32_t, uint32_t) {
 // ---- weather_forecast ----
 
 void WeatherForecast::build(lv_obj_t* card, int w, int h) {
-  (void)h;
   hourly_ = strcmp(spec_.mode, "hourly") == 0;
-  const int colW = w / kCols;
-  for (int i = 0; i < kCols; ++i) {
+  // As many columns as fit (about 48 px each), up to 5; icons when there is height for them.
+  count_ = w / 48;
+  if (count_ > kCols) count_ = kCols;
+  if (count_ < 1) count_ = 1;
+  const int colW = w / count_;
+  const bool icons = h >= 60;
+  const lv_font_t* tempF = colW >= 70 && h >= 60 ? ui::font::body() : ui::font::small();
+  for (int i = 0; i < count_; ++i) {
     lv_obj_t* col = lv_obj_create(card);
     lv_obj_remove_style_all(col);
     lv_obj_set_size(col, colW, LV_PCT(100));
@@ -146,9 +159,11 @@ void WeatherForecast::build(lv_obj_t* card, int w, int h) {
     lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(col, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     label_[i] = makeLabel(col, ui::font::small(), ui::color::dim(), "--");
-    icon_[i] = lv_image_create(col);
-    lv_obj_set_size(icon_[i], 32, 32);
-    temps_[i] = makeLabel(col, ui::font::body(), ui::color::text(), "");
+    if (icons) {
+      icon_[i] = lv_image_create(col);
+      lv_obj_set_size(icon_[i], 32, 32);
+    }
+    temps_[i] = makeLabel(col, tempF, ui::color::text(), "");
     lv_label_set_recolor(temps_[i], true);
     if (i > 0) {
       lv_obj_t* sep = lv_obj_create(card);
@@ -167,7 +182,9 @@ void WeatherForecast::refresh(const ui::Model& m, uint32_t, uint32_t) {
   struct tm today = {};
   const bool haveToday = localTm(m, m.unixTime, today);
   char buf[40];
-  for (int i = 0; i < kCols; ++i) {
+  char dim[8];
+  snprintf(dim, sizeof(dim), "%06lX", static_cast<unsigned long>(ui::palette().dim));
+  for (int i = 0; i < count_; ++i) {
     bool show = false;
     if (ok && hourly_) {
       // Every 2 h from the next hour (hourly[0] is the current hour).
@@ -178,7 +195,7 @@ void WeatherForecast::refresh(const ui::Model& m, uint32_t, uint32_t) {
         localTm(m, hr.t, t);
         snprintf(buf, sizeof(buf), "%02d:00", t.tm_hour);
         setText(label_[i], buf);
-        setIcon(icon_[i], hr.code, hr.isDay, 32);
+        if (icon_[i]) setIcon(icon_[i], hr.code, hr.isDay, 32);
         snprintf(buf, sizeof(buf), "%.0f\xC2\xB0", hr.temp);
         setText(temps_[i], buf);
         show = true;
@@ -188,8 +205,8 @@ void WeatherForecast::refresh(const ui::Model& m, uint32_t, uint32_t) {
       const bool isToday = haveToday && d.year == today.tm_year + 1900 && d.month == today.tm_mon + 1 &&
                            d.day == today.tm_mday;
       setText(label_[i], isToday ? "Today" : kWeekdays[weekday(d.year, d.month, d.day)]);
-      setIcon(icon_[i], d.code, true, 32);
-      snprintf(buf, sizeof(buf), "%.0f\xC2\xB0 #8A939E %.0f\xC2\xB0#", d.max, d.min);
+      if (icon_[i]) setIcon(icon_[i], d.code, true, 32);
+      snprintf(buf, sizeof(buf), "%.0f\xC2\xB0 #%s %.0f\xC2\xB0#", d.max, dim, d.min);
       setText(temps_[i], buf);
       show = true;
     }
@@ -197,15 +214,28 @@ void WeatherForecast::refresh(const ui::Model& m, uint32_t, uint32_t) {
       setText(label_[i], "--");
       setText(temps_[i], "");
     }
-    lv_obj_set_hidden(icon_[i], !show);
+    if (icon_[i]) lv_obj_set_hidden(icon_[i], !show);
   }
 }
 
 // ---- room_climate ----
 
 void RoomClimate::build(lv_obj_t* card, int w, int h) {
-  (void)w;
-  tall_ = h >= 150;
+  tall_ = h >= 140 && w >= 140;
+  if (!tall_ && w < 160) {
+    // Small card: temperature, humidity under it; pressure only when there is height.
+    if (h >= 60) makeLabel(card, ui::font::small(), ui::color::accent(), "Room");
+    temp_ = makeLabel(card, h >= 50 ? ui::font::large() : ui::font::body(), ui::color::text(), "--");
+    lv_obj_align(temp_, h >= 60 ? LV_ALIGN_LEFT_MID : LV_ALIGN_TOP_LEFT, 0, h >= 60 ? 0 : -2);
+    hum_ = makeLabel(card, ui::font::small(), ui::color::text(), "");
+    lv_obj_align(hum_, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    press_ = makeLabel(card, ui::font::small(), ui::color::dim(), "");
+    lv_obj_align(press_, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+    lv_obj_set_hidden(press_, h < 70 || w < 120);
+    trend_ = makeLabel(card, ui::font::small(), ui::color::dim(), "");
+    lv_obj_set_hidden(trend_, true);
+    return;
+  }
   makeLabel(card, ui::font::small(), ui::color::accent(), "Room");
   temp_ = makeLabel(card, tall_ ? ui::font::huge() : ui::font::large(), ui::color::text(), "--");
   lv_obj_align(temp_, tall_ ? LV_ALIGN_TOP_LEFT : LV_ALIGN_LEFT_MID, 0, tall_ ? 24 : 6);
@@ -257,20 +287,21 @@ void RoomClimate::refresh(const ui::Model& m, uint32_t, uint32_t) {
 // ---- clock ----
 
 void Clock::build(lv_obj_t* card, int w, int h) {
-  (void)h;
-  wide_ = w >= 200;
+  wide_ = w >= 160;
   lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(card, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_row(card, 2, 0);
-  time_ = makeLabel(card, wide_ ? ui::font::huge() : ui::font::large(), ui::color::text(), "--:--");
-  date_ = makeLabel(card, ui::font::small(), ui::color::dim(), "");
+  // "00:00" is 5 characters; the date needs one small line under it.
+  const lv_font_t* f = w >= 150 && h >= 70 ? ui::font::huge() : w >= 80 && h >= 40 ? ui::font::large() : ui::font::body();
+  time_ = makeLabel(card, f, ui::color::text(), "--:--");
+  if (h - lv_font_get_line_height(f) >= 16) date_ = makeLabel(card, ui::font::small(), ui::color::dim(), "");
 }
 
 void Clock::refresh(const ui::Model& m, uint32_t, uint32_t) {
   struct tm t = {};
   if (m.clockMinutes < 0 || !localTm(m, m.unixTime, t)) {
     setText(time_, "--:--");
-    setText(date_, "");
+    if (date_) setText(date_, "");
     return;
   }
   char buf[24];
@@ -278,7 +309,7 @@ void Clock::refresh(const ui::Model& m, uint32_t, uint32_t) {
   setText(time_, buf);
   if (wide_) snprintf(buf, sizeof(buf), "%s %d %s", kWeekdays[t.tm_wday], t.tm_mday, kMonths[t.tm_mon]);
   else snprintf(buf, sizeof(buf), "%s %d", kWeekdays[t.tm_wday], t.tm_mday);
-  setText(date_, buf);
+  if (date_) setText(date_, buf);
 }
 
 }  // namespace widgets
