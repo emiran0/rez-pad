@@ -27,7 +27,7 @@ try {
     }
     $tags = @(git tag --points-at HEAD)
     if ($tags -notcontains "v$version") {
-        Write-Warning "HEAD is not tagged v$version: tag the release commit (git tag -a v$version -m ""rez-pad $version"")"
+        Write-Warning "HEAD is not tagged v${version}; tag the release commit (git tag -a v$version -m ""rez-pad $version"")"
     }
 } finally {
     Pop-Location
