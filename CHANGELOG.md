@@ -2,6 +2,22 @@
 
 All notable changes, newest first. Version rules: [docs/versioning.md](docs/versioning.md).
 
+## 0.3.0 (2026-11-09)
+
+Flash the new firmware together with this host, once more with esptool or the web flasher if the board runs 0.2.0 (0.2.0 cannot restart into update mode by itself; from 0.3.0 on, updates run from the config page). The USB protocol is still v1, the config schema still 1.
+
+### New
+- **Firmware updates from the config page** (Device > Firmware): the host has the matching firmware built in and writes it over the same native USB cable through the chip's built-in loader (about 35 s, checked with MD5). Layout, settings and pictures stay. It can also install a `.bin` file, and installs rez-pad onto a new board or one held in update mode (BOOT while plugging in).
+- **Knob and button numbering** (Settings > Knobs and buttons): choose which physical knob or button is Knob 1, Button 2 and so on by clicking Assign and turning or pressing it. Numbers swap when a control already had one; actions stay with the number.
+- **Third knob**: knob port 3 on GPIO 39, 40, 41 (not yet verified on a board).
+- Up to **128 data sources** (was 32), enough for several Beszel server cards plus a full PC page.
+- Editor: new top bar with the logo, a device pill (connection, sync, update available, update progress), undo and redo buttons; page names as a title with a pencil to rename in place; a remove button on the selected widget.
+
+### Changed
+- New value, bar, gauge and graph widgets start without a data source and open the source browser right away; new server cards start without a machine.
+- The source browser starts at the categories when there is only this PC (no Beszel).
+- Setup guide: install the app first, then install the firmware from the config page.
+
 ## 0.2.0 (2026-11-09)
 
 Flash the new firmware together with this host (new widgets and messages; the USB protocol is still v1).
