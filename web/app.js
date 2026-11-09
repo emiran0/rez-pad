@@ -176,13 +176,20 @@ function friendly(error) {
     .replace(/ \(system\): required.*$/, ": pick a machine");
 }
 
+// A widget that was just added and has no data source or machine yet is not a mistake while the
+// user is still setting it up: its error only shows once they try to save.
+const unfinished = (error) => /^pages\[\d+\]\.widgets\[\d+\]\.(source|system): required/.test(error || "");
+let saveTried = false;
+
 function updateBar() {
   const changed = dirty();
-  $("btn-save").disabled = !changed || !!state.error;
+  if (!unfinished(state.error)) saveTried = false;
+  const quiet = unfinished(state.error) && !saveTried;
+  $("btn-save").disabled = !changed || (!!state.error && !quiet);
   $("btn-undo").disabled = !canUndo();
   $("btn-redo").disabled = !canRedo();
   const banner = $("banner");
-  if (state.error) {
+  if (state.error && !quiet) {
     const t = errorTarget(state.error);
     banner.replaceChildren(...[icon("warn", 18), h("span", { class: "msg", text: `Can't save yet: ${friendly(state.error)}` }),
       t ? h("button", { type: "button", class: "ghost", onclick: () => showTarget(t) }, "Show me") : null].filter(Boolean));
@@ -210,6 +217,14 @@ function showTarget(t) {
 async function save() {
   if ($("btn-save").disabled) return;
   closePopover();
+  if (unfinished(state.error)) {
+    // Now it counts: show the error and take the user to the widget.
+    saveTried = true;
+    updateBar();
+    const t = errorTarget(state.error);
+    if (t) showTarget(t);
+    return;
+  }
   const btn = $("btn-save");
   btn.disabled = true;
   btn.textContent = "Saving...";
@@ -224,6 +239,7 @@ async function save() {
     if (confirm("The config was changed somewhere else (another tab, or the weather location). Load that version? Your changes here are dropped.")) await loadConfig();
   } else if (!r.ok) {
     state.error = r.body?.error || `save failed (${r.status})`;
+    saveTried = true;  // the save was refused: say why, also for an unfinished widget
   } else {
     const keep = { page: state.page, selected: state.selected };
     await loadConfig();
