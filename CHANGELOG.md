@@ -2,6 +2,13 @@
 
 All notable changes, newest first. Version rules: [docs/versioning.md](docs/versioning.md).
 
+## 0.3.1 (2026-11-09)
+
+Host only (the editor); the firmware is the same as 0.3.0 apart from its version number. Update the board from the Device page anyway to keep the versions in step.
+
+### Fixed
+- Adding a value, bar, gauge, graph or server widget showed a "Can't save yet" error right away, before there was a chance to pick its value or machine. That error now waits until you try to save; then it shows and takes you to the widget.
+
 ## 0.3.0 (2026-11-09)
 
 Flash the new firmware together with this host, once more with esptool or the web flasher if the board runs 0.2.0 (0.2.0 cannot restart into update mode by itself; from 0.3.0 on, updates run from the config page). The USB protocol is still v1, the config schema still 1.
