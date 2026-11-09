@@ -4,9 +4,10 @@
 
 import { state, on, emit, dirty, reset, api, postJson, h, toast, undo, redo, canUndo, canRedo, closePopover } from "./state.js";
 import { initEditor, renderAll, selectPage, loadAssets } from "./editor.js";
-import { initSettings, renderSettings, renderDevice, linkText } from "./settings.js";
+import { initSettings, renderSettings, renderDevice } from "./settings.js";
 import { icon } from "./icons.js";
 import { updateSpectrum } from "./preview.js";
+import { pollFirmware } from "./firmware.js";
 
 const $ = (id) => document.getElementById(id);
 const HISTORY = 120;
@@ -35,8 +36,8 @@ async function start() {
     await Promise.all([pollLive(), pollSlow(), pollStatus(), loadAssets()]);
     await loadConfig();
   } catch (e) {
-    $("status-chip").textContent = "Host not reachable";
-    $("status-chip").className = "chip bad";
+    state.data.status = null;
+    renderPill();
     console.error(e);
     setTimeout(start, 3000);
     return;
@@ -44,6 +45,9 @@ async function start() {
   setInterval(() => !document.hidden && pollLive(), 1000);
   setInterval(() => !document.hidden && pollStatus(), 1500);
   setInterval(() => !document.hidden && pollSlow(), 5000);
+  // Firmware: the pill says when an update is available (the Device view polls faster).
+  pollFirmware();
+  setInterval(() => !document.hidden && pollFirmware(), 30000);
   pollSpectrum();
 }
 
@@ -53,22 +57,33 @@ async function pollStatus() {
   const r = await api("/api/status").catch(() => null);
   state.data.status = r?.ok ? r.body : null;
   state.data.connected = !!state.data.status?.deviceConnected;
-  const s = state.data.status;
-  const chip = $("status-chip");
-  if (!s) {
-    chip.textContent = "Host not reachable";
-    chip.className = "chip bad";
-  } else if (!s.deviceConnected) {
-    chip.textContent = linkText(s);
-    chip.className = "chip bad";
-  } else if (s.config?.progress) {
-    chip.textContent = s.config.progress;
-    chip.className = "chip warn";
-  } else {
-    chip.textContent = s.config?.inSync ? "Device up to date" : "Device not up to date";
-    chip.className = "chip " + (s.config?.inSync ? "ok" : "warn");
-  }
+  renderPill();
   emit("status");
+}
+
+// The device pill in the app bar: one dot color and two short lines.
+export function renderPill() {
+  const s = state.data.status;
+  const [st, main, sub] = pillState(s);
+  const pill = $("status-chip");
+  pill.dataset.state = st;
+  $("pill-main").textContent = main;
+  $("pill-sub").textContent = sub;
+  pill.title = sub ? `${main}: ${sub}` : main;
+  document.getElementById("brand-logo")?.classList.toggle("on", !!s?.deviceConnected);
+}
+
+function pillState(s) {
+  if (!s) return ["bad", "Host not running", "Start rez-pad on this PC"];
+  if (state.data.flash?.active) return ["busy", "Updating firmware", state.data.flash.message || ""];
+  if (s.linkState === "Incompatible") return ["bad", "Incompatible firmware", "Update it under Device"];
+  if (!s.deviceConnected) {
+    return [s.linkState === "Connecting" ? "wait" : "off", s.linkState === "Connecting" ? "Connecting..." : "Not connected",
+      s.linkState === "Searching" ? "Plug in the native USB port" : ""];
+  }
+  if (s.config?.progress) return ["busy", "Sending", s.config.progress];
+  const update = state.data.firmware?.update_available ? " · update available" : "";
+  return s.config?.inSync ? ["ok", "Connected", `Up to date${update}`] : ["warn", "Connected", `Layout not on the device yet${update}`];
 }
 
 async function pollLive() {
@@ -155,13 +170,17 @@ function friendly(error) {
     .replace(/^macros\[(\d+)\](?:\.steps\[(\d+)\])?(?:\.(\w+))?/, (_, m, st, f) => {
       const mac = state.cfg.macros?.[Number(m)];
       return `macro "${mac?.name || mac?.id || Number(m) + 1}"${st === undefined ? "" : `, step ${Number(st) + 1}`}${field(f)}`;
-    });
+    })
+    // A widget just added and not set up yet (no data source or machine picked).
+    .replace(/ \(source\): required for \w+$/, ": pick the value it shows")
+    .replace(/ \(system\): required.*$/, ": pick a machine");
 }
 
 function updateBar() {
   const changed = dirty();
   $("btn-save").disabled = !changed || !!state.error;
   $("btn-undo").disabled = !canUndo();
+  $("btn-redo").disabled = !canRedo();
   const banner = $("banner");
   if (state.error) {
     const t = errorTarget(state.error);
@@ -237,7 +256,17 @@ function showView(name) {
 }
 
 function initViews() {
-  for (const b of document.querySelectorAll("[data-view]")) b.addEventListener("click", () => showView(b.dataset.view));
+  for (const b of document.querySelectorAll("[data-view]")) {
+    b.prepend(icon(b.dataset.icon, 16));
+    b.addEventListener("click", () => showView(b.dataset.view));
+  }
+  $("btn-undo").append(icon("undo", 18));
+  $("btn-redo").append(icon("redo", 18));
+  $("status-chip").addEventListener("click", () => showView("device"));
+  document.querySelector(".brand").addEventListener("click", (e) => {
+    e.preventDefault();
+    showView("layout");
+  });
   let last = "layout";
   try {
     last = localStorage.getItem("rezpad.view") || "layout";
@@ -256,8 +285,10 @@ on("config", () => {
   updateBar();
   scheduleValidate();
 });
+on("firmware", renderPill);
 $("btn-save").addEventListener("click", save);
 $("btn-undo").addEventListener("click", () => undo());
+$("btn-redo").addEventListener("click", () => canRedo() && redo());
 document.addEventListener("keydown", (e) => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {

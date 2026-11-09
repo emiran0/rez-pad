@@ -722,7 +722,7 @@ function metric(ctx) {
   const style = effectiveStyle(wd, ctx.catalog);
   const src = ctx.data.sources?.get(wd.source);
   const value = ctx.data.connected && src && src.available ? src.value : null;
-  return { value, style, label: wd.label || wd.source || "", history: ctx.data.history?.get(wd.source) };
+  return { value, style, label: wd.label || wd.source || "Pick a value", history: ctx.data.history?.get(wd.source) };
 }
 
 // 270 degree ring like the firmware's lv_arc (rotation 135, bg 0..270).

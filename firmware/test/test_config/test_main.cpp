@@ -205,6 +205,34 @@ void test_bindings() {
   TEST_ASSERT_TRUE(b.lng.action == Action::kMute);
   TEST_ASSERT_TRUE(gCfg->pages[0].inputs.btn[3].dbl.kind == rp::actions::Binding::Kind::kMacro);
   TEST_ASSERT_EQUAL(4, gCfg->buttons);
+  // The older "buttons" count means ports 1 to n.
+  TEST_ASSERT_EQUAL(1, gCfg->buttonPorts[0]);
+  TEST_ASSERT_EQUAL(4, gCfg->buttonPorts[3]);
+}
+
+void test_numbering() {
+  const char* json =
+      "{\"schema\":1,\"inputs\":{\"buttons\":4,\"knob_ports\":[2,0,1],\"button_ports\":[2],"
+      "\"enc3\":{\"rotate\":\"media.volume\",\"counts_per_detent\":2,\"invert\":true}},\"pages\":[{\"id\":\"a\"}]}";
+  TEST_ASSERT_TRUE_MESSAGE(parseText(json), gErr);
+  TEST_ASSERT_EQUAL(2, gCfg->knobPorts[0]);
+  TEST_ASSERT_EQUAL(0, gCfg->knobPorts[1]);
+  TEST_ASSERT_EQUAL(1, gCfg->knobPorts[2]);
+  // button_ports wins over "buttons"; numbers after its end are not used.
+  TEST_ASSERT_EQUAL(2, gCfg->buttonPorts[0]);
+  TEST_ASSERT_EQUAL(0, gCfg->buttonPorts[1]);
+  TEST_ASSERT_EQUAL(0, gCfg->buttonPorts[3]);
+  TEST_ASSERT_EQUAL(1, gCfg->buttons);
+  TEST_ASSERT_TRUE(gCfg->inputs.enc[2].rotate == Action::kVolume);
+  TEST_ASSERT_TRUE(gCfg->pages[0].inputs.enc[2].rotate == Action::kVolume);
+  TEST_ASSERT_EQUAL(2, gCfg->countsPerDetent[2]);
+  TEST_ASSERT_TRUE(gCfg->invert[2]);
+  // Defaults: knob 1 = port 1, knob 2 = port 2, no buttons.
+  TEST_ASSERT_TRUE_MESSAGE(parseText("{\"schema\":1,\"pages\":[{\"id\":\"a\"}]}"), gErr);
+  TEST_ASSERT_EQUAL(1, gCfg->knobPorts[0]);
+  TEST_ASSERT_EQUAL(2, gCfg->knobPorts[1]);
+  TEST_ASSERT_EQUAL(0, gCfg->knobPorts[2]);
+  TEST_ASSERT_EQUAL(0, gCfg->buttons);
 }
 
 void test_actions() {
@@ -227,6 +255,7 @@ int main(int, char**) {
   RUN_TEST(test_shared_vectors);
   RUN_TEST(test_parse_keys);
   RUN_TEST(test_bindings);
+  RUN_TEST(test_numbering);
   RUN_TEST(test_actions);
   return UNITY_END();
 }

@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <USBCDC.h>
+#include <esp32-hal-tinyusb.h>
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
@@ -17,6 +18,7 @@
 #include "blob_assembler.h"
 #include "config/store.h"
 #include "config_logic.h"
+#include "input/input.h"
 #include "link_monitor.h"
 #include "media/media.h"
 #include "audio/mixer.h"
@@ -315,6 +317,29 @@ void onCmd(const Packet& p) {
     delay(100);
     ESP.restart();
   }
+  if (strcmp(cmd, "input_learn") == 0) {
+    // Numbering from the web page: the next control turned or pressed is reported with
+    // INPUT_LEARNED instead of acting. args.ms: how long to wait (0 cancels, at most 60 s).
+    long ms = in["args"]["ms"] | 10000L;
+    if (ms < 0) ms = 0;
+    if (ms > 60000) ms = 60000;
+    input::startLearn(static_cast<uint32_t>(ms));
+    out["ok"] = true;
+    writeJson(proto::kCmdResult, out);
+    return;
+  }
+  if (strcmp(cmd, "bootloader") == 0) {
+    // Firmware update from the host: restart into the ROM download mode on this same USB port
+    // (USB-Serial/JTAG, 303A:1001). The host writes the image with the ROM loader protocol and
+    // resets the chip; config and images in LittleFS are not touched.
+    out["ok"] = true;
+    writeJson(proto::kCmdResult, out);
+    usb::cdc().flush();
+    delay(150);
+    Serial.println("[link] restarting into the ROM download mode for a firmware update");
+    usb_persist_restart(RESTART_BOOTLOADER);
+    return;  // only if the restart could not be arranged
+  }
   out["ok"] = false;
   out["data"] = "not implemented";
   writeJson(proto::kCmdResult, out);
@@ -378,6 +403,15 @@ void task(void*) {
       Serial.printf("[link] host %s\n", gConnected ? "connected" : "lost");
     }
     if (gMonitor.takeNeedHello(now)) writeError("need_hello", "device restarted, send HELLO");
+    if (!gConnected && input::learning()) input::startLearn(0);  // nobody waits for it any more
+    input::Learned learned;
+    if (input::takeLearned(learned) && gConnected) {
+      char buf[64];
+      if (learned.port) snprintf(buf, sizeof(buf), "{\"kind\":\"%s\",\"port\":%u}", learned.knob ? "knob" : "button", learned.port);
+      else snprintf(buf, sizeof(buf), "{\"kind\":null,\"port\":0}");
+      writeFrame(proto::kInputLearned, reinterpret_cast<const uint8_t*>(buf), strlen(buf));
+      busy = true;
+    }
 
     TxItem item;
     while (xQueueReceive(gTxQueue, &item, 0) == pdTRUE) {

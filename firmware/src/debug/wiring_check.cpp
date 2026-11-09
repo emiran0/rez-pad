@@ -50,7 +50,8 @@ void printInputLevels(Print& out) {
   static const Input kInputs[] = {
       {"enc1 CLK", pins::kEnc1A}, {"enc1 DT", pins::kEnc1B}, {"enc1 SW", pins::kEnc1Sw},
       {"enc2 CLK", pins::kEnc2A}, {"enc2 DT", pins::kEnc2B}, {"enc2 SW", pins::kEnc2Sw},
-      {"btn1", pins::kBtn1},      {"btn2", pins::kBtn2},
+      {"enc3 CLK", pins::kEnc3A}, {"enc3 DT", pins::kEnc3B}, {"enc3 SW", pins::kEnc3Sw},
+      {"btn port1", pins::kBtn1}, {"btn port2", pins::kBtn2}, {"btn port3", pins::kBtn3}, {"btn port4", pins::kBtn4},
   };
   // Pins are configured (pull-ups, PCNT routing) by input::begin(); only read them here.
   out.println("input levels (pull-up on, idle should be HIGH):");

@@ -243,13 +243,15 @@ bool focusGesture(char* out, size_t n) {
   auto is = [](const actions::Binding& b) {
     return b.kind == actions::Binding::Kind::kAction && b.action == actions::Action::kMixerFocus;
   };
-  for (int e = 0; e < 2; ++e) {
+  for (int e = 0; e < actions::kMaxKnobs; ++e) {
+    if (!c.knobPorts[e]) continue;
     const actions::EncoderMap& m = map.enc[e];
     if (is(m.click)) return snprintf(out, n, "Click knob %d", e + 1) > 0;
     if (is(m.lng)) return snprintf(out, n, "Hold knob %d", e + 1) > 0;
     if (is(m.dbl)) return snprintf(out, n, "Double-click knob %d", e + 1) > 0;
   }
-  for (int b = 0; b < c.buttons && b < actions::kMaxButtons; ++b) {
+  for (int b = 0; b < actions::kMaxButtons; ++b) {
+    if (!c.buttonPorts[b]) continue;
     const actions::ButtonMap& m = map.btn[b];
     if (is(m.click)) return snprintf(out, n, "Press button %d", b + 1) > 0;
     if (is(m.lng)) return snprintf(out, n, "Hold button %d", b + 1) > 0;

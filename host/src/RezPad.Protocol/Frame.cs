@@ -34,6 +34,7 @@ public enum MsgType : byte
     Pong = 0x82,
     Action = 0x90,
     ArtRequest = 0x91,
+    InputLearned = 0x92,
     Sensor = 0xA0,
     ConfigAck = 0xC0,
     ConfigDataBegin = 0xC1,

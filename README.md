@@ -66,9 +66,9 @@ The pin map lives in [`firmware/include/pins.h`](firmware/include/pins.h) and [`
 
 1. Download `rez-pad-<version>-win-x64.zip` from the [Releases](../../releases) page, unblock it (right-click > Properties > Unblock) and extract it.
 2. Follow `README.txt` inside. In short:
-   - **Flash the firmware** through the board's **UART** port with the browser flasher at https://espressif.github.io/esptool-js/ (Chrome or Edge): file `firmware\rez-pad-firmware-<version>.bin`, address `0x0`.
-   - **Plug the native USB port** straight into the PC (not through a hub). Windows sets it up without drivers.
    - **Run `Install.cmd`**: installs the app for your user, optionally starts it with Windows, and opens the config page.
+   - **Plug the native USB port** straight into the PC (not through a hub). Windows sets it up without drivers.
+   - **Install the firmware from the config page**: Device > Firmware > "Install rez-pad" (later: "Update the board"). The app has the matching firmware built in and writes it over the same cable. The image is also in the zip (`firmware\rez-pad-firmware-<version>.bin`, address `0x0`) for esptool or https://espressif.github.io/esptool-js/ through the UART port.
 
 Requirements: Windows 10 or 11, 64-bit. CPU temperature and motherboard fans need the [PawnIO](https://pawnio.eu/) driver and "Start with Windows" (which runs the app with administrator rights); everything else works without them. The app is not code-signed yet, so SmartScreen asks once ("More info" > "Run anyway").
 

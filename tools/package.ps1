@@ -1,5 +1,6 @@
 # Builds the release package: publish\rez-pad-<version>-win-x64.zip with
-#   rez-pad.exe            self-contained single-file host (no .NET install needed)
+#   rez-pad.exe            self-contained single-file host (no .NET install needed), with the
+#                          firmware image embedded (Device > Firmware updates the board)
 #   install.ps1, Install.cmd, Uninstall.cmd
 #   firmware\rez-pad-firmware-<version>.bin   full flash image (write at 0x0)
 #   README.txt, CHANGELOG.txt, LICENSE.txt, THIRD-PARTY-NOTICES.txt
@@ -36,12 +37,6 @@ try {
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Force $stage | Out-Null
 
-Write-Host "Publishing host..."
-& dotnet publish (Join-Path $root "host\src\RezPad.Host\RezPad.Host.csproj") -c Release `
-    -p:PublishSingleFile=true --self-contained true -o (Join-Path $out "host-bin")
-if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
-Copy-Item (Join-Path $out "host-bin\rez-pad.exe") $stage
-
 if (-not $SkipFirmware) {
     Write-Host "Building firmware..."
     Push-Location (Join-Path $root "firmware")
@@ -55,6 +50,17 @@ if (-not $SkipFirmware) {
     New-Item -ItemType Directory -Force $fw | Out-Null
     Copy-Item (Join-Path $root "firmware\.pio\build\rezpad\firmware.factory.bin") (Join-Path $fw "rez-pad-firmware-$version.bin")
 }
+
+# The host embeds the firmware image built above (Device > Firmware updates the board from the
+# web page), so the firmware is built first.
+if (-not (Test-Path (Join-Path $root "firmware\.pio\build\rezpad\firmware.factory.bin"))) {
+    Write-Warning "no firmware image: this rez-pad.exe cannot update the board (build the firmware first)"
+}
+Write-Host "Publishing host..."
+& dotnet publish (Join-Path $root "host\src\RezPad.Host\RezPad.Host.csproj") -c Release `
+    -p:PublishSingleFile=true --self-contained true -o (Join-Path $out "host-bin")
+if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
+Copy-Item (Join-Path $out "host-bin\rez-pad.exe") $stage
 
 Copy-Item (Join-Path $root "setup\install.ps1") $stage
 Copy-Item (Join-Path $root "setup\Install.cmd") $stage

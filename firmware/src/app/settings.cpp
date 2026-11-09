@@ -9,9 +9,10 @@ namespace settings {
 
 input::Config inputConfig(const cfg::Config& c) {
   input::Config in;
-  for (int i = 0; i < 2; ++i) {
+  for (int i = 0; i < actions::kMaxKnobs && i < input::kMaxKnobs; ++i) {
     in.enc[i].countsPerDetent = c.countsPerDetent[i];
     in.enc[i].invert = c.invert[i];
+    in.knobPorts[i] = c.knobPorts[i];
     // With no double-click mapped on any page, clicks fire on release instead of waiting for a
     // possible second click.
     bool dbl = !c.inputs.enc[i].dbl.none();
@@ -22,8 +23,8 @@ input::Config inputConfig(const cfg::Config& c) {
     bool dbl = !c.inputs.btn[i].dbl.none();
     for (int p = 0; p < c.pageCount; ++p) dbl = dbl || !c.pages[p].inputs.btn[i].dbl.none();
     in.btnDoubleEnabled[i] = dbl;
+    in.buttonPorts[i] = c.buttonPorts[i];
   }
-  in.buttons = c.buttons;
   return in;
 }
 

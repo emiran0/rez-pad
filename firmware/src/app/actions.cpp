@@ -25,8 +25,10 @@ Binding resolve(const input::Event& e) {
   const cfg::Config& c = config::active();
   const int page = ui::pages::current();
   const Map& map = (page >= 0 && page < c.pageCount) ? c.pages[page].inputs : c.inputs;
-  if (e.source == input::Source::kEnc1 || e.source == input::Source::kEnc2) {
-    const EncoderMap& m = map.enc[e.source == input::Source::kEnc1 ? 0 : 1];
+  if (input::isKnob(e.source)) {
+    const int k = input::knobIndex(e.source);
+    if (k < 0 || k >= kMaxKnobs) return Binding();
+    const EncoderMap& m = map.enc[k];
     switch (e.kind) {
       case input::Kind::kRotate: return actionBinding(m.rotate);
       case input::Kind::kRotatePressed: return actionBinding(m.rotatePressed);
@@ -36,7 +38,7 @@ Binding resolve(const input::Event& e) {
     }
     return Binding();
   }
-  const int idx = static_cast<int>(e.source) - static_cast<int>(input::Source::kBtn1);
+  const int idx = input::buttonIndex(e.source);
   if (idx < 0 || idx >= kMaxButtons) return Binding();
   const ButtonMap& m = map.btn[idx];
   switch (e.kind) {

@@ -34,6 +34,8 @@ internal sealed class WebServer(int port, WebServices services)
     private readonly SpectrumBridge spectrum = services.Spectrum;
     private readonly Integrations.IntegrationStore integrations = services.Integrations;
     private readonly Integrations.BeszelService beszel = services.Beszel;
+    private readonly InputLearn learn = new(services.Link);
+    private readonly FirmwareUpdater firmware = new(services.Link);
 
     private WebApplication? _app;
 
@@ -66,7 +68,12 @@ internal sealed class WebServer(int port, WebServices services)
         var app = builder.Build();
 
         // The editor is embedded in the exe (RezPad.Host.csproj), so a single-file publish carries it.
-        var files = new EmbeddedFileProvider(typeof(WebServer).Assembly, "RezPad.Host.web");
+        // REZPAD_WEB_DIR (development): serve the editor from that folder instead, so web/ edits
+        // show up with a browser reload.
+        var webDir = Environment.GetEnvironmentVariable("REZPAD_WEB_DIR");
+        IFileProvider files = !string.IsNullOrEmpty(webDir) && Directory.Exists(webDir)
+            ? new PhysicalFileProvider(Path.GetFullPath(webDir))
+            : new EmbeddedFileProvider(typeof(WebServer).Assembly, "RezPad.Host.web");
         app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
         // no-cache: the browser revalidates (cheap on localhost), so an updated host never runs
         // with editor scripts left over from the previous version.
@@ -411,6 +418,68 @@ internal sealed class WebServer(int port, WebServices services)
             var sent = link.SendJson(MsgType.Cmd, cmd);
             Log.Info($"cmd {cmd.Cmd} {(sent ? "sent" : "not sent (device not connected)")}");
             return sent ? Results.Accepted() : Results.Conflict(new { error = "device not connected" });
+        });
+
+        // Firmware update (Device > Firmware): the image embedded in this host, or an uploaded .bin.
+        app.MapGet("/api/firmware", () =>
+        {
+            var s = link.Status;
+            var connected = s.State == DeviceLinkState.Connected;
+            var deviceVer = connected ? s.Device?.FwVer : null;
+            var bundled = firmware.Bundled;
+            return Results.Json(new
+            {
+                bundled = bundled is null ? null : new { version = bundled.Version, size = bundled.Bytes.Length },
+                device = new { connected, version = deviceVer },
+                bootloaderPort = FirmwareUpdater.FindBootloaderPort(),
+                updateAvailable = connected && bundled?.Version is not null && FirmwareImage.Compare(deviceVer, bundled.Version) < 0,
+                status = firmware.Current,
+            }, ProtocolJson.Options);
+        });
+        app.MapPost("/api/firmware/update", async (HttpRequest req) =>
+        {
+            FirmwareImage image;
+            if (req.HasFormContentType && (await req.ReadFormAsync()).Files.GetFile("file") is { } file)
+            {
+                if (file.Length > 16 * 1024 * 1024)
+                {
+                    return Results.BadRequest(new { error = "larger than the 16 MB flash" });
+                }
+                using var ms = new MemoryStream();
+                await file.CopyToAsync(ms);
+                try
+                {
+                    image = FirmwareImage.Parse(ms.ToArray());
+                }
+                catch (InvalidDataException ex)
+                {
+                    return Results.BadRequest(new { error = $"{file.FileName}: {ex.Message}" });
+                }
+            }
+            else if (firmware.Bundled is { } bundled)
+            {
+                image = bundled;
+            }
+            else
+            {
+                return Results.BadRequest(new { error = "this rez-pad has no firmware built in; choose a .bin file" });
+            }
+            return firmware.Start(image, out var error)
+                ? Results.Accepted(value: new { version = image.Version })
+                : Results.Conflict(new { error });
+        }).DisableAntiforgery();
+
+        // Knob and button numbering: waits for the next control turned or pressed on the device.
+        app.MapPost("/api/device/learn", async (HttpRequest req) =>
+        {
+            var ms = int.TryParse(req.Query["ms"], out var v) ? v : 15000;
+            var r = await learn.WaitAsync(ms, req.HttpContext.RequestAborted);
+            return Results.Json(new { kind = r.Kind, port = r.Port, error = r.Error });
+        });
+        app.MapDelete("/api/device/learn", () =>
+        {
+            learn.Cancel();
+            return Results.NoContent();
         });
 
         app.StartAsync().GetAwaiter().GetResult();

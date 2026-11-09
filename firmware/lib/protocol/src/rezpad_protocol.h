@@ -52,6 +52,7 @@ enum MsgType : uint8_t {
   kPong = 0x82,
   kAction = 0x90,
   kArtRequest = 0x91,
+  kInputLearned = 0x92,
   kSensor = 0xA0,
   kConfigAck = 0xC0,
   kConfigDataBegin = 0xC1,

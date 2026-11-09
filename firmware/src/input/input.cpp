@@ -18,32 +18,47 @@ constexpr int kPcntLimit = 10000;        // wraps are accumulated (accum_count)
 constexpr uint32_t kGlitchNs = 1000;     // PCNT glitch filter
 constexpr uint64_t kTickUs = 1000;       // switch sampling period
 constexpr UBaseType_t kQueueLen = 32;
+constexpr uint32_t kQuietAfterLearnMs = 800;
 
 struct EncoderHw {
   pcnt_unit_handle_t unit = nullptr;
   int8_t pinA, pinB, pinSw;
 };
 
-EncoderHw gEnc[2] = {{nullptr, pins::kEnc1A, pins::kEnc1B, pins::kEnc1Sw},
-                     {nullptr, pins::kEnc2A, pins::kEnc2B, pins::kEnc2Sw}};
+// Physical ports.
+EncoderHw gEnc[kMaxKnobs] = {{nullptr, pins::kEnc1A, pins::kEnc1B, pins::kEnc1Sw},
+                             {nullptr, pins::kEnc2A, pins::kEnc2B, pins::kEnc2Sw},
+                             {nullptr, pins::kEnc3A, pins::kEnc3B, pins::kEnc3Sw}};
 const int8_t kBtnPins[kMaxButtons] = {pins::kBtn1, pins::kBtn2, pins::kBtn3, pins::kBtn4};
-const Source kBtnSources[kMaxButtons] = {Source::kBtn1, Source::kBtn2, Source::kBtn3, Source::kBtn4};
 
 Config gCfg;
-DetentAccumulator gDetent[2];
-GestureDetector gEncSw[2];
+// Port -> number (0-based), -1 = no number. Built from gCfg by applyConfigLocked().
+int8_t gKnobOf[kMaxKnobs] = {0, 1, -1};
+int8_t gButtonOf[kMaxButtons] = {-1, -1, -1, -1};
+
+DetentAccumulator gDetent[kMaxKnobs];
+GestureDetector gEncSw[kMaxKnobs];
 GestureDetector gBtn[kMaxButtons];
+bool gEncSwPrev[kMaxKnobs] = {};
+bool gBtnPrev[kMaxButtons] = {};
 QueueHandle_t gQueue = nullptr;
 esp_timer_handle_t gTimer = nullptr;
 portMUX_TYPE gLock = portMUX_INITIALIZER_UNLOCKED;
 
 // Written by the tick, read by snapshot().
-volatile int32_t gRaw[2] = {0, 0};
-volatile int32_t gDetentTotal[2] = {0, 0};
-volatile bool gSwDown[2] = {false, false};
+volatile int32_t gRaw[kMaxKnobs] = {};
+volatile int32_t gDetentTotal[kMaxKnobs] = {};
+volatile bool gSwDown[kMaxKnobs] = {};
 volatile bool gBtnDown[kMaxButtons] = {};
 volatile uint32_t gDropped = 0;
 volatile bool gConfigDirty = false;
+
+// Learn mode (set by startLearn from the link task, run by the tick).
+volatile bool gLearning = false;
+volatile uint32_t gLearnUntil = 0;
+volatile uint32_t gQuietUntil = 0;
+bool gLearnedReady = false;
+Learned gLearned;
 
 bool setupEncoder(EncoderHw& e) {
   pcnt_unit_config_t ucfg = {};
@@ -76,7 +91,8 @@ bool setupEncoder(EncoderHw& e) {
   pcnt_unit_add_watch_point(e.unit, kPcntLimit);
   pcnt_unit_add_watch_point(e.unit, -kPcntLimit);
 
-  // KY-040 has pull-ups to its + pin; internal ones also help if a module lacks them.
+  // KY-040 has pull-ups to its + pin; internal ones also help if a module lacks them (and keep an
+  // empty port quiet).
   gpio_set_pull_mode(static_cast<gpio_num_t>(e.pinA), GPIO_PULLUP_ONLY);
   gpio_set_pull_mode(static_cast<gpio_num_t>(e.pinB), GPIO_PULLUP_ONLY);
 
@@ -100,18 +116,43 @@ void pushGesture(Source s, Gesture g, uint32_t now) {
 }
 
 void applyConfigLocked() {
-  for (int i = 0; i < 2; ++i) {
-    gDetent[i].configure(gCfg.enc[i].countsPerDetent, gCfg.enc[i].invert);
-    gDetent[i].reset(gRaw[i]);
+  for (int p = 0; p < kMaxKnobs; ++p) gKnobOf[p] = -1;
+  for (int p = 0; p < kMaxButtons; ++p) gButtonOf[p] = -1;
+  for (int n = 0; n < kMaxKnobs; ++n) {
+    const int port = gCfg.knobPorts[n];
+    if (port >= 1 && port <= kMaxKnobs && gKnobOf[port - 1] < 0) gKnobOf[port - 1] = static_cast<int8_t>(n);
+  }
+  for (int n = 0; n < kMaxButtons; ++n) {
+    const int port = gCfg.buttonPorts[n];
+    if (port >= 1 && port <= kMaxButtons && gButtonOf[port - 1] < 0) gButtonOf[port - 1] = static_cast<int8_t>(n);
+  }
+  // Each port takes the settings of the number it has (detents and direction belong to the knob
+  // number in the config); a port without a number counts with the defaults (learn mode only).
+  for (int p = 0; p < kMaxKnobs; ++p) {
+    const EncoderConfig ec = gKnobOf[p] >= 0 ? gCfg.enc[gKnobOf[p]] : EncoderConfig();
+    gDetent[p].configure(ec.countsPerDetent, ec.invert);
+    gDetent[p].reset(gRaw[p]);
     GestureConfig gc;
-    gc.doubleEnabled = gCfg.enc[i].doubleEnabled;
-    gEncSw[i].setConfig(gc);
+    gc.doubleEnabled = gKnobOf[p] >= 0 && ec.doubleEnabled;
+    gEncSw[p].setConfig(gc);
   }
-  for (int i = 0; i < kMaxButtons; ++i) {
+  for (int p = 0; p < kMaxButtons; ++p) {
     GestureConfig bc;
-    bc.doubleEnabled = gCfg.btnDoubleEnabled[i];
-    gBtn[i].setConfig(bc);
+    bc.doubleEnabled = gButtonOf[p] >= 0 && gCfg.btnDoubleEnabled[gButtonOf[p]];
+    gBtn[p].setConfig(bc);
   }
+}
+
+bool due(uint32_t now, uint32_t until) { return static_cast<int32_t>(now - until) >= 0; }
+
+void finishLearn(bool knob, uint8_t port, uint32_t now) {
+  taskENTER_CRITICAL(&gLock);
+  gLearned.knob = knob;
+  gLearned.port = port;
+  gLearnedReady = true;
+  gLearning = false;
+  taskEXIT_CRITICAL(&gLock);
+  gQuietUntil = now + kQuietAfterLearnMs;
 }
 
 // Runs every 1 ms in the esp_timer task.
@@ -123,33 +164,68 @@ void tick(void*) {
     gConfigDirty = false;
     taskEXIT_CRITICAL(&gLock);
   }
+  if (gLearning && due(now, gLearnUntil)) finishLearn(false, 0, now);
+  const bool learn = gLearning;
+  const bool quiet = !learn && !due(now, gQuietUntil);
 
-  for (int i = 0; i < 2; ++i) {
+  for (int p = 0; p < kMaxKnobs; ++p) {
     int count = 0;
-    if (gEnc[i].unit && pcnt_unit_get_count(gEnc[i].unit, &count) == ESP_OK) {
-      gRaw[i] = count;
-      const int steps = gDetent[i].update(count);
-      if (steps != 0) {
-        gDetentTotal[i] = gDetentTotal[i] + steps;
-        const bool held = gEncSw[i].pressed();
-        if (held) gEncSw[i].cancelPress();  // this press is a modifier now, not a click
-        push(i == 0 ? Source::kEnc1 : Source::kEnc2, held ? Kind::kRotatePressed : Kind::kRotate,
-             static_cast<int16_t>(steps), now);
-      }
+    int steps = 0;
+    if (gEnc[p].unit && pcnt_unit_get_count(gEnc[p].unit, &count) == ESP_OK) {
+      gRaw[p] = count;
+      steps = gDetent[p].update(count);
+      if (steps != 0) gDetentTotal[p] = gDetentTotal[p] + steps;
     }
-    const bool sw = digitalRead(gEnc[i].pinSw) == LOW;
-    pushGesture(i == 0 ? Source::kEnc1 : Source::kEnc2, gEncSw[i].update(sw, now), now);
-    gSwDown[i] = gEncSw[i].pressed();
-  }
+    const bool held = gEncSw[p].pressed();
+    const bool sw = digitalRead(gEnc[p].pinSw) == LOW;
+    const Gesture g = gEncSw[p].update(sw, now);
+    const bool down = gEncSw[p].pressed();
+    const bool pressEdge = down && !gEncSwPrev[p];
+    gEncSwPrev[p] = down;
+    gSwDown[p] = down;
 
-  for (int i = 0; i < kMaxButtons; ++i) {
-    if (i >= gCfg.buttons) {
-      gBtnDown[i] = false;
+    if (learn) {
+      if (steps != 0 || pressEdge) {
+        if (down) gEncSw[p].cancelPress();  // this press only picked the knob
+        finishLearn(true, static_cast<uint8_t>(p + 1), now);
+      }
       continue;
     }
-    const bool down = digitalRead(kBtnPins[i]) == LOW;
-    pushGesture(kBtnSources[i], gBtn[i].update(down, now), now);
-    gBtnDown[i] = gBtn[i].pressed();
+    if (quiet) {
+      if (down) gEncSw[p].cancelPress();
+      continue;
+    }
+    const int n = gKnobOf[p];
+    if (n < 0) continue;
+    const Source src = static_cast<Source>(static_cast<int>(Source::kEnc1) + n);
+    if (steps != 0) {
+      if (held) gEncSw[p].cancelPress();  // this press is a modifier now, not a click
+      push(src, held ? Kind::kRotatePressed : Kind::kRotate, static_cast<int16_t>(steps), now);
+    }
+    pushGesture(src, g, now);
+  }
+
+  for (int p = 0; p < kMaxButtons; ++p) {
+    const bool raw = digitalRead(kBtnPins[p]) == LOW;
+    const Gesture g = gBtn[p].update(raw, now);
+    const bool down = gBtn[p].pressed();
+    const bool pressEdge = down && !gBtnPrev[p];
+    gBtnPrev[p] = down;
+    gBtnDown[p] = down;
+    if (learn) {
+      if (pressEdge) {
+        gBtn[p].cancelPress();
+        finishLearn(false, static_cast<uint8_t>(p + 1), now);
+      }
+      continue;
+    }
+    if (quiet) {
+      if (down) gBtn[p].cancelPress();
+      continue;
+    }
+    const int n = gButtonOf[p];
+    if (n < 0) continue;
+    pushGesture(static_cast<Source>(static_cast<int>(Source::kBtn1) + n), g, now);
   }
 }
 
@@ -159,6 +235,7 @@ const char* sourceName(Source s) {
   switch (s) {
     case Source::kEnc1: return "enc1";
     case Source::kEnc2: return "enc2";
+    case Source::kEnc3: return "enc3";
     case Source::kBtn1: return "btn1";
     case Source::kBtn2: return "btn2";
     case Source::kBtn3: return "btn3";
@@ -210,9 +287,31 @@ const Config& config() { return gCfg; }
 
 bool poll(Event& e) { return gQueue && xQueueReceive(gQueue, &e, 0) == pdTRUE; }
 
+void startLearn(uint32_t timeoutMs) {
+  const uint32_t now = static_cast<uint32_t>(esp_timer_get_time() / 1000);
+  taskENTER_CRITICAL(&gLock);
+  gLearnedReady = false;
+  gLearnUntil = now + timeoutMs;
+  gLearning = timeoutMs > 0;
+  taskEXIT_CRITICAL(&gLock);
+}
+
+bool learning() { return gLearning; }
+
+bool takeLearned(Learned& out) {
+  taskENTER_CRITICAL(&gLock);
+  const bool ready = gLearnedReady;
+  if (ready) {
+    out = gLearned;
+    gLearnedReady = false;
+  }
+  taskEXIT_CRITICAL(&gLock);
+  return ready;
+}
+
 Snapshot snapshot() {
   Snapshot s;
-  for (int i = 0; i < 2; ++i) {
+  for (int i = 0; i < kMaxKnobs; ++i) {
     s.rawCount[i] = gRaw[i];
     s.detents[i] = gDetentTotal[i];
     s.switchDown[i] = gSwDown[i];

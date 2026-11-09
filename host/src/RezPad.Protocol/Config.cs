@@ -18,10 +18,12 @@ public static class ConfigCatalog
     public const int MaxGrid = 8;
     public const int MaxConfigBytes = 32768;
 
-    /// <summary>Different data sources over all pages (the device keeps 16 SYS_STATS values).</summary>
-    public const int MaxSources = 32;
+    /// <summary>Different data sources over all pages (the device keeps 128 SYS_STATS values).</summary>
+    public const int MaxSources = 128;
 
     public const int MaxButtons = 4;
+    public const int MaxKnobs = 3;
+    public static readonly string[] Knobs = ["enc1", "enc2", "enc3"];
     public const int MaxStatusItems = 3;
     public const int MaxMacros = 32;
     public const int MaxMacroSteps = 32;
@@ -358,7 +360,9 @@ public static class ConfigValidator
         if (Obj(o, "inputs", "") is { } inputs)
         {
             Int(inputs, "buttons", "inputs", 0, ConfigCatalog.MaxButtons);
-            foreach (var enc in new[] { "enc1", "enc2" })
+            Ports(inputs, "knob_ports", ConfigCatalog.MaxKnobs);
+            Ports(inputs, "button_ports", ConfigCatalog.MaxButtons);
+            foreach (var enc in ConfigCatalog.Knobs)
             {
                 if (Obj(inputs, enc, "inputs") is { } e)
                 {
@@ -623,9 +627,39 @@ public static class ConfigValidator
         }
     }
 
+    // "knob_ports" / "button_ports": position = number - 1, value = physical port (1 to n), 0 = not
+    // used; ports in use must differ.
+    private static void Ports(JsonObject inputs, string key, int n)
+    {
+        var node = inputs[key];
+        if (node is null)
+        {
+            return;
+        }
+        var path = P("inputs", key);
+        if (node is not JsonArray arr || arr.Count > n)
+        {
+            throw Fail(path, $"must be an array of up to {n} port numbers");
+        }
+        var seen = new List<long>();
+        foreach (var e in arr)
+        {
+            if (e is not JsonValue v || v.GetValueKind() != JsonValueKind.Number || !v.TryGetValue<long>(out var port) ||
+                port < 0 || port > n)
+            {
+                throw Fail(path, $"port numbers are 0 (not used) to {n}");
+            }
+            if (port != 0 && seen.Contains(port))
+            {
+                throw Fail(path, $"port {port} is used twice");
+            }
+            seen.Add(port);
+        }
+    }
+
     private static void Gestures(JsonObject inputs, string path, List<string> macroIds)
     {
-        foreach (var enc in new[] { "enc1", "enc2" })
+        foreach (var enc in ConfigCatalog.Knobs)
         {
             if (Obj(inputs, enc, path) is { } e)
             {

@@ -225,12 +225,17 @@ void cmdView(int argc, char** argv, Print& out) {
 // Injects a knob gesture as if it came from the hardware (goes through screen wake, the mixer focus
 // and the input map): input <enc1|enc2> <rotate N|click|double|long|rotate_pressed N>.
 void cmdInput(int argc, char** argv, Print& out) {
-  if (argc < 3 || (strcmp(argv[1], "enc1") != 0 && strcmp(argv[1], "enc2") != 0)) {
-    out.println("usage: input <enc1|enc2> <rotate N|rotate_pressed N|click|double|long>");
+  static const char* const kNames[] = {"enc1", "enc2", "enc3", "btn1", "btn2", "btn3", "btn4"};
+  int src = -1;
+  for (int i = 0; argc >= 3 && i < 7; ++i) {
+    if (strcmp(argv[1], kNames[i]) == 0) src = i;
+  }
+  if (src < 0) {
+    out.println("usage: input <enc1-3|btn1-4> <rotate N|rotate_pressed N|click|double|long>");
     return;
   }
   rp::input::Event e{};
-  e.source = strcmp(argv[1], "enc1") == 0 ? rp::input::Source::kEnc1 : rp::input::Source::kEnc2;
+  e.source = static_cast<rp::input::Source>(src);
   e.timeMs = millis();
   const char* k = argv[2];
   if (strcmp(k, "rotate") == 0) e.kind = rp::input::Kind::kRotate;
@@ -348,48 +353,86 @@ void cmdOffset(int argc, char** argv, Print& out) {
 void cmdEnc(int, char**, Print& out) {
   const auto s = rp::input::snapshot();
   const auto& c = rp::input::config();
-  for (int i = 0; i < 2; ++i) {
-    out.printf("enc%d: count %ld, detents %ld, %d counts/click, invert %d, switch %s\n", i + 1,
-               static_cast<long>(s.rawCount[i]), static_cast<long>(s.detents[i]), c.enc[i].countsPerDetent,
-               c.enc[i].invert, s.switchDown[i] ? "down" : "up");
+  for (int p = 0; p < rp::input::kMaxKnobs; ++p) {
+    int n = -1;
+    for (int k = 0; k < rp::input::kMaxKnobs; ++k) {
+      if (c.knobPorts[k] == p + 1) n = k;
+    }
+    const rp::input::EncoderConfig ec = n >= 0 ? c.enc[n] : rp::input::EncoderConfig();
+    out.printf("knob port %d (%s): count %ld, detents %ld, %d counts/click, invert %d, switch %s\n", p + 1,
+               n >= 0 ? rp::input::sourceName(static_cast<rp::input::Source>(n)) : "no number",
+               static_cast<long>(s.rawCount[p]), static_cast<long>(s.detents[p]), ec.countsPerDetent, ec.invert,
+               s.switchDown[p] ? "down" : "up");
   }
-  out.printf("buttons fitted %u, queue drops %lu\n", c.buttons, static_cast<unsigned long>(s.dropped));
+  for (int p = 0; p < rp::input::kMaxButtons; ++p) {
+    int n = -1;
+    for (int k = 0; k < rp::input::kMaxButtons; ++k) {
+      if (c.buttonPorts[k] == p + 1) n = k;
+    }
+    out.printf("button port %d: %s, %s\n", p + 1, n >= 0 ? rp::input::sourceName(static_cast<rp::input::Source>(3 + n)) : "no number",
+               s.buttonDown[p] ? "down" : "up");
+  }
+  out.printf("queue drops %lu, learning %d\n", static_cast<unsigned long>(s.dropped), rp::input::learning());
 }
 
+// Settings of knob numbers 1 to 3 (until the next config).
 void cmdCpd(int argc, char** argv, Print& out) {
   long e = 0, n = 0;
-  if (argc == 3 && parseUint(argv[1], 1, 2, e) && parseUint(argv[2], 1, 8, n)) {
+  if (argc == 3 && parseUint(argv[1], 1, rp::input::kMaxKnobs, e) && parseUint(argv[2], 1, 8, n)) {
     auto c = rp::input::config();
     c.enc[e - 1].countsPerDetent = static_cast<int>(n);
     rp::input::setConfig(c);
   } else {
-    out.println("usage: cpd <1|2> <counts per click>");
+    out.println("usage: cpd <1-3> <counts per click>");
   }
   cmdEnc(1, argv, out);
 }
 
 void cmdEncInv(int argc, char** argv, Print& out) {
   long e = 0, v = 0;
-  if (argc == 3 && parseUint(argv[1], 1, 2, e) && parseUint(argv[2], 0, 1, v)) {
+  if (argc == 3 && parseUint(argv[1], 1, rp::input::kMaxKnobs, e) && parseUint(argv[2], 0, 1, v)) {
     auto c = rp::input::config();
     c.enc[e - 1].invert = v != 0;
     rp::input::setConfig(c);
   } else {
-    out.println("usage: encinv <1|2> <0|1>");
+    out.println("usage: encinv <1-3> <0|1>");
   }
   cmdEnc(1, argv, out);
 }
 
-void cmdButtons(int argc, char** argv, Print& out) {
-  long n = 0;
-  if (argc == 2 && parseUint(argv[1], 0, rp::input::kMaxButtons, n)) {
-    auto c = rp::input::config();
-    c.buttons = static_cast<uint8_t>(n);
-    rp::input::setConfig(c);
-  } else {
-    out.println("usage: buttons <0-4>");
+// Numbering until the next config: ports <knob|button> <port for number 1> [number 2] ...
+// (0 = number not used).
+void cmdPorts(int argc, char** argv, Print& out) {
+  const bool knob = argc >= 2 && strcmp(argv[1], "knob") == 0;
+  const bool button = argc >= 2 && strcmp(argv[1], "button") == 0;
+  const int n = knob ? rp::input::kMaxKnobs : rp::input::kMaxButtons;
+  if ((!knob && !button) || argc > 2 + n) {
+    out.println("usage: ports <knob|button> <port of number 1> [number 2] ... (0 = not used)");
+    return;
   }
+  auto c = rp::input::config();
+  uint8_t* ports = knob ? c.knobPorts : c.buttonPorts;
+  for (int i = 0; i < n; ++i) {
+    long v = 0;
+    if (2 + i < argc && !parseUint(argv[2 + i], 0, n, v)) {
+      out.println("bad port number");
+      return;
+    }
+    ports[i] = static_cast<uint8_t>(2 + i < argc ? v : 0);
+  }
+  rp::input::setConfig(c);
   cmdEnc(1, argv, out);
+}
+
+// Learn mode as the web page uses it: learn [ms] (default 10 s, 0 cancels).
+void cmdLearn(int argc, char** argv, Print& out) {
+  long ms = 10000;
+  if (argc == 2 && !parseUint(argv[1], 0, 60000, ms)) {
+    out.println("usage: learn [ms]");
+    return;
+  }
+  rp::input::startLearn(static_cast<uint32_t>(ms));
+  out.printf("learning for %ld ms: turn or press a control (result in the log)\n", ms);
 }
 
 void cmdUsb(int, char**, Print& out) {
@@ -494,7 +537,7 @@ const rp::console::Command kCommands[] = {
     {"pins", "", cmdPins},
     {"bl", "<0-100>", cmdBacklight},
     {"screen", "", cmdScreen},
-    {"input", "<enc1|enc2> <gesture> [N]", cmdInput},
+    {"input", "<enc1-3|btn1-4> <gesture> [N]", cmdInput},
     {"mixer", "", cmdMixer},
     {"spi", "<MHz>", cmdSpi},
     {"pattern", "", cmdPattern},
@@ -512,9 +555,10 @@ const rp::console::Command kCommands[] = {
     {"stats", "", cmdStats},
     {"config", "", cmdConfig},
     {"enc", "", cmdEnc},
-    {"cpd", "<1|2> <counts per click>", cmdCpd},
-    {"encinv", "<1|2> <0|1>", cmdEncInv},
-    {"buttons", "<0-4>", cmdButtons},
+    {"cpd", "<knob 1-3> <counts per click>", cmdCpd},
+    {"encinv", "<knob 1-3> <0|1>", cmdEncInv},
+    {"ports", "<knob|button> <port per number...>", cmdPorts},
+    {"learn", "[ms]", cmdLearn},
     {"keys", "<shortcut>", cmdKeys},
     {"macro", "<id>", cmdMacro},
     {"sensor", "", cmdSensor},

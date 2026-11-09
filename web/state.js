@@ -221,3 +221,29 @@ document.addEventListener("pointerdown", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") closePopover();
 });
+
+// ---- knob and button numbering (inputs.knob_ports / button_ports, docs/config-schema.md) ----
+
+export const KNOB_PORTS = 3;
+export const BUTTON_PORTS = 4;
+
+/** Physical port of each knob number 1 to 3 (index = number - 1), 0 = number not used. */
+export function knobPorts(cfg = state.cfg) {
+  const a = cfg?.inputs?.knob_ports;
+  return Array.from({ length: KNOB_PORTS }, (_, i) => (Array.isArray(a) ? a[i] ?? 0 : [1, 2, 0][i]));
+}
+
+/** Physical port of each button number 1 to 4; the older "buttons" count means ports 1 to n. */
+export function buttonPorts(cfg = state.cfg) {
+  const a = cfg?.inputs?.button_ports;
+  const n = cfg?.inputs?.buttons ?? 0;
+  return Array.from({ length: BUTTON_PORTS }, (_, i) => (Array.isArray(a) ? a[i] ?? 0 : i < n ? i + 1 : 0));
+}
+
+/** Controls that have a port: [{dev: "enc1", n: 1, knob: true, label: "Knob 1"}, ...]. */
+export function controlsInUse(cfg = state.cfg) {
+  const out = [];
+  knobPorts(cfg).forEach((p, i) => p && out.push({ dev: `enc${i + 1}`, n: i + 1, knob: true, label: `Knob ${i + 1}` }));
+  buttonPorts(cfg).forEach((p, i) => p && out.push({ dev: `btn${i + 1}`, n: i + 1, knob: false, label: `Button ${i + 1}` }));
+  return out;
+}

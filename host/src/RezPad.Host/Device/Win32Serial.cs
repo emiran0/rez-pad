@@ -23,7 +23,9 @@ internal sealed class Win32Serial : IDisposable
     private const uint PurgeTxClear = 0x0004;
     private const uint PurgeTxAbort = 0x0001;
     private const uint PurgeRxAbort = 0x0002;
+    private const uint SetRts = 3;
     private const uint ClrRts = 4;
+    private const uint SetDtr = 5;
     private const uint ClrDtr = 6;
 
     private readonly SafeFileHandle _handle;
@@ -37,8 +39,11 @@ internal sealed class Win32Serial : IDisposable
         _stream = new FileStream(handle, FileAccess.ReadWrite, bufferSize: 0, isAsync: false);
     }
 
-    /// <summary>Opens the port with DTR and RTS on. Throws UnauthorizedAccessException when busy.</summary>
-    public static Win32Serial Open(string portName)
+    /// <summary>
+    /// Opens the port with DTR and RTS on (controlLines false: both off, for the ESP32-S3 ROM
+    /// loader, where RTS without DTR resets the chip). Throws UnauthorizedAccessException when busy.
+    /// </summary>
+    public static Win32Serial Open(string portName, bool controlLines = true)
     {
         var handle = CreateFile(@"\\.\" + portName, GenericRead | GenericWrite, 0, IntPtr.Zero, OpenExisting, 0,
             IntPtr.Zero);
@@ -62,7 +67,7 @@ internal sealed class Win32Serial : IDisposable
             dcb.Parity = 0;
             dcb.StopBits = 0;
             // fBinary | fDtrControl = ENABLE | fRtsControl = ENABLE; no flow control, no abort on error.
-            dcb.Flags = 1u | (1u << 4) | (1u << 12);
+            dcb.Flags = controlLines ? 1u | (1u << 4) | (1u << 12) : 1u;
             Check(SetCommState(handle, ref dcb), "SetCommState");
 
             // Reads return immediately with whatever is buffered, 0 bytes when nothing is (the caller
@@ -91,6 +96,16 @@ internal sealed class Win32Serial : IDisposable
     public int Read(byte[] buffer) => _stream.Read(buffer, 0, buffer.Length);
 
     public void Write(byte[] data) => _stream.Write(data, 0, data.Length);
+
+    /// <summary>Sets DTR and RTS (the USB-Serial/JTAG peripheral maps them to the chip's EN and BOOT).</summary>
+    public void SetLines(bool dtr, bool rts)
+    {
+        EscapeCommFunction(_handle, dtr ? SetDtr : ClrDtr);
+        EscapeCommFunction(_handle, rts ? SetRts : ClrRts);
+        // usbser.sys sends the line state with the DTR change; repeat DTR so the RTS change goes out
+        // too (esptool does the same on Windows).
+        EscapeCommFunction(_handle, dtr ? SetDtr : ClrDtr);
+    }
 
     /// <summary>COM port names that exist right now (HKLM\HARDWARE\DEVICEMAP\SERIALCOMM).</summary>
     public static HashSet<string> PresentPorts()

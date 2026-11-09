@@ -2,7 +2,9 @@
 // maintenance, image library, data sources). Forms change the working copy through set().
 "use strict";
 
-import { state, on, get, set, change, h, api, postJson, toast } from "./state.js";
+import { state, on, get, set, change, h, api, postJson, toast, controlsInUse } from "./state.js";
+import { numberingCard } from "./numbering.js";
+import { firmwarePanel } from "./firmware.js";
 import { THEMES, ACCENTS } from "./preview.js";
 import { icon } from "./icons.js";
 import { ACTION_NAMES, bindingControl, keysRecorder } from "./bindings.js";
@@ -239,7 +241,6 @@ function integrations() {
 }
 
 function knobs() {
-  const buttons = get("inputs.buttons", 0);
   const turns = [["rotate", "Turn"], ["rotate_pressed", "Press and turn"]];
   const press = (dev, g, label) => field(label, bindingControl(get(["inputs", dev, g]) ?? "none", (v) => set(["inputs", dev, g], v ?? "none")));
   const enc = (dev, title) => h("div", {}, h("h3", { text: title }),
@@ -247,16 +248,12 @@ function knobs() {
     ...ENC_PRESSES.map(([g, label]) => press(dev, g, label)),
     field("Steps per click", choice(["inputs", dev, "counts_per_detent"], [[1, "1"], [2, "2"], [4, "4 (KY-040)"], [8, "8"]], 4)),
     check("Reverse direction", ["inputs", dev, "invert"]));
-  const btn = (i) => h("div", {}, h("h3", { text: `Button ${i}` }), ...ENC_PRESSES.map(([g, label]) => press(`btn${i}`, g, label)));
+  const btn = (dev, title) => h("div", {}, h("h3", { text: title }), ...ENC_PRESSES.map(([g, label]) => press(dev, g, label)));
+  const used = controlsInUse();
   return panel("Knobs and buttons", "What they do on every page; a page can change single gestures in Layout. A press can run an action, send a key shortcut (the device types it itself, also without this app) or run a macro. A double click makes single clicks wait 0.3 s for a second one.",
-    h("div", { class: "knob-grid" },
-      enc("enc1", "Knob 1"),
-      enc("enc2", "Knob 2"),
-      h("div", {}, h("h3", { text: "Buttons" }),
-        field("Buttons fitted", h("select", { onchange: (e) => { set("inputs.buttons", Number(e.target.value)); renderSettings(); } },
-          ...[0, 1, 2, 3, 4].map((n) => h("option", { value: n, text: String(n), selected: n === buttons }))),
-        "Tact switches to GND on GPIO 17, 18, 8 and 13")),
-      ...Array.from({ length: buttons }, (_, k) => btn(k + 1))));
+    numberingCard(renderSettings),
+    used.length ? h("div", { class: "knob-grid" }, ...used.map((c) => (c.knob ? enc(c.dev, c.label) : btn(c.dev, c.label))))
+      : h("p", { class: "hint", text: "No knob or button has a number yet: assign one above." }));
 }
 
 // ---- macros ----
@@ -512,6 +509,7 @@ export function renderDevice() {
   const used = new Set(state.cfg.pages.flatMap((p) => (p.widgets || []).filter((w) => w.type === "image").map((w) => w.asset)));
   $("view-device").replaceChildren(
     panel("Device", null, h("dl", { id: "dev-status", class: "status" })),
+    panel("Firmware", null, firmwarePanel()),
     panel("Maintenance", null,
       h("div", { class: "row" },
         h("button", { type: "button", onclick: compareDevice }, "Compare the device's copy"),

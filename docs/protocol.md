@@ -23,7 +23,15 @@ The native USB port is a composite device (TinyUSB):
 
 The host finds the COM port whose parent composite device has VID/PID 303A:4005 and product `rez-pad` (other TinyUSB CDC+HID devices share that PID).
 
-The host opens the port with DTR and RTS on (TinyUSB only sends while DTR is set) at any baud rate (ignored). The firmware does **not** reboot into the bootloader on esptool's DTR/RTS sequence or a 1200 baud "touch": a normal open/close from .NET produced part of that sequence, so it was disabled. Flash through the USB-UART port, or hold BOOT and tap RESET to flash through the native port.
+The host opens the port with DTR and RTS on (TinyUSB only sends while DTR is set) at any baud rate (ignored). The firmware does **not** reboot into the bootloader on esptool's DTR/RTS sequence or a 1200 baud "touch": a normal open/close from .NET produced part of that sequence, so it was disabled. Flash through the USB-UART port, or hold BOOT and tap RESET to flash through the native port. The host's firmware update (Device page) asks for the download mode with CMD `bootloader` instead.
+
+### Firmware update over the native port
+
+1. Host sends CMD `bootloader`. The firmware replies CMD_RESULT ok, switches the USB PHY to the chip's USB-Serial/JTAG peripheral and restarts with the forced download boot flag (Arduino's `usb_persist_restart(RESTART_BOOTLOADER)`). The board comes back as **303A:1001** (Espressif USB-Serial/JTAG, interface `MI_00` is the serial port) running the ROM loader.
+2. The host opens that port with DTR and RTS off (RTS without DTR resets the chip) and speaks the ROM loader protocol (SLIP-framed, esptool's commands, no stub): SYNC, GET_SECURITY_INFO (chip id must be 9, ESP32-S3), watchdogs off (RTC WDT disabled, super watchdog auto feed, as esptool does over USB-Serial/JTAG), SPI_ATTACH, SPI_SET_PARAMS (16 MB), FLASH_BEGIN (the ROM erases the region), FLASH_DATA in 1 KB blocks, SPI_FLASH_MD5 against the image.
+3. It clears `RTC_CNTL_OPTION1_REG` FORCE_DOWNLOAD_BOOT and pulses RTS (DTR off) to reset; if the board stays in the loader, it tries the RTC watchdog reset. The board starts the new firmware and reconnects as 303A:4005; the host checks that HELLO_ACK `fw_ver` is the image's version.
+
+The image is the full flash image at 0x0 (bootloader, partition table, app; ends before LittleFS, so config and pictures stay) or an app image at 0x10000. The firmware carries its version as the string `rez-pad-fw-version:<version>` so the host can show the version of an image. A board held in download mode (BOOT while plugging in, or a blank chip) is updated from step 2.
 
 ## Framing
 
@@ -172,6 +180,7 @@ Added within v1 (unreleased; older firmware counts it as an unknown type). Binar
 | 0x82 | PONG | empty | Reply to PING |
 | 0x90 | ACTION | JSON `{action, value, id}` | Resolved from input map, see `config-schema.md`. `id` only for `action` `"macro"` (the macro to run) and `"mixer.volume"` / `"mixer.mute"` (the app, see MIXER); added within v1 |
 | 0x91 | ART_REQUEST | JSON `{id}` | Device lost or never received art for current track |
+| 0x92 | INPUT_LEARNED | JSON `{kind, port}` | End of an `input_learn`: `kind` `"knob"` or `"button"` and the physical `port` (1-based) that was turned or pressed, or `{"kind": null, "port": 0}` when the time ran out. Added within v1 |
 | 0xA0 | SENSOR | JSON `{temp_c, hum_pct, press_hpa, trend, delta_3h}` | Every 10 s while connected. Values after offsets and filtering, always metric; a missing reading is `null`. `trend` is `rising`, `falling`, `steady` or `unknown` |
 | 0xC0 | CONFIG_ACK | JSON `{ok, crc32, error, art}` | See "Config transfer". `art` (album art edge of the new layout, 0 = none) added within v1, optional for readers |
 | 0xC1 | CONFIG_DATA_BEGIN | JSON `{size, crc32}` | Reply to CONFIG_GET |
@@ -190,5 +199,5 @@ Added within v1 (unreleased; older firmware counts it as an unknown type). Binar
 - The device replies to every PING with PONG, but only counts the host as connected after a HELLO. If it keeps getting PINGs without a HELLO for 1 s it sends ERROR `need_hello` once.
 - Before HELLO_ACK arrives, the host repeats HELLO every 500 ms (the device may still be booting).
 - TIME_SYNC sets the device's system clock (UTC) and keeps `tz_offset_min` for local time; the host re-sends it every 60 s, which also covers DST changes.
-- CMD implemented so far: `reboot` (replies CMD_RESULT ok, then restarts) and `factory_reset` (deletes the stored config, replies, restarts on the built-in default; the host pushes its config again on reconnect). Others reply `ok: false`.
+- CMD implemented so far: `reboot` (replies CMD_RESULT ok, then restarts), `factory_reset` (deletes the stored config, replies, restarts on the built-in default; the host pushes its config again on reconnect), `input_learn` (args `{ms}`, up to 60000, 0 cancels: the next knob port turned or pressed, or button port pressed, is reported with INPUT_LEARNED instead of acting, ports with and without a number alike; inputs stay quiet for 0.8 s afterwards; cancelled when the host is lost) and `bootloader` (see "Firmware update over the native port"). Others reply `ok: false`.
 - If HELLO_ACK reports a different `proto`, the host shows "Firmware protocol vN, host expects v1: update firmware/host" in the tray and web UI and stops sending anything except HELLO.

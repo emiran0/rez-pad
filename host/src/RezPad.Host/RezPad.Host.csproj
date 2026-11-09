@@ -36,6 +36,10 @@
     <!-- The web editor lives in the repo's web/ folder and is embedded in the exe (single-file publish),
          as RezPad.Host.web.<path with dots> for EmbeddedFileProvider. -->
     <EmbeddedResource Include="..\..\..\web\**\*" LogicalName="RezPad.Host.web.$([System.String]::Copy('%(RecursiveDir)').Replace('\','.'))%(Filename)%(Extension)" />
+    <!-- The firmware image built next to this host (tools/package.ps1 builds it first), for the
+         update on the Device page. Without it the host still runs; it just cannot update the board. -->
+    <EmbeddedResource Include="..\..\..\firmware\.pio\build\rezpad\firmware.factory.bin" LogicalName="RezPad.Host.firmware.bin"
+                      Condition="Exists('..\..\..\firmware\.pio\build\rezpad\firmware.factory.bin')" />
   </ItemGroup>
   <ItemGroup>
     <!-- Latest stable on nuget.org, verified 2026-11-07 (0.9.7 still prerelease). MPL-2.0. Uses the

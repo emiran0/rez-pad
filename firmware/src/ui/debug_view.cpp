@@ -141,21 +141,17 @@ void update(const input::Snapshot& in, const sensors::Reading& r) {
     }
   }
 
-  const auto& cfg = input::config();
+  // By physical port (knob ports 1 and 2; numbering is in the config).
   for (int i = 0; i < 2; ++i) {
-    snprintf(buf, sizeof(buf), "enc%d  count %ld  detents %ld  (%d/click)", i + 1,
-             static_cast<long>(in.rawCount[i]), static_cast<long>(in.detents[i]), cfg.enc[i].countsPerDetent);
+    snprintf(buf, sizeof(buf), "knob port %d  count %ld  detents %ld", i + 1,
+             static_cast<long>(in.rawCount[i]), static_cast<long>(in.detents[i]));
     setField(i == 0 ? kEnc1 : kEnc2, buf);
     snprintf(buf, sizeof(buf), "      switch %s", in.switchDown[i] ? "DOWN" : "up");
     setField(i == 0 ? kEnc1Sw : kEnc2Sw, buf, in.switchDown[i] ? TFT_YELLOW : kFg);
   }
-  if (cfg.buttons == 0) {
-    setField(kBtns, "buttons: none fitted", kDim);
-  } else {
-    snprintf(buf, sizeof(buf), "btn1 %s%s", in.buttonDown[0] ? "DOWN" : "up",
-             cfg.buttons > 1 ? (in.buttonDown[1] ? "   btn2 DOWN" : "   btn2 up") : "");
-    setField(kBtns, buf);
-  }
+  snprintf(buf, sizeof(buf), "button ports  1 %s  2 %s  3 %s  4 %s", in.buttonDown[0] ? "DOWN" : "up",
+           in.buttonDown[1] ? "DOWN" : "up", in.buttonDown[2] ? "DOWN" : "up", in.buttonDown[3] ? "DOWN" : "up");
+  setField(kBtns, buf);
   snprintf(buf, sizeof(buf), "queue drops %lu", static_cast<unsigned long>(in.dropped));
   setField(kDropped, buf, in.dropped ? TFT_RED : kDim);
 

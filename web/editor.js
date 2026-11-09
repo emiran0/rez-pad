@@ -7,7 +7,7 @@ import {
   renderScreen, renderWidget, cardRect, bigEnough, pageGrid, pageTheme, effectiveStyle,
   WIDGETS, THEMES, SCREEN_W, SCREEN_H, CELL_GAP, PAD,
 } from "./preview.js";
-import { state, on, emit, get, change, h, api, toast, openPopover, closePopover } from "./state.js";
+import { state, on, emit, get, change, h, api, toast, openPopover, closePopover, controlsInUse } from "./state.js";
 import { icon } from "./icons.js";
 import { actionSelect, ACTION_NAMES, swatches, themeCards } from "./settings.js";
 import { bindingControl, bindingText } from "./bindings.js";
@@ -73,22 +73,22 @@ function shortName(name) {
   return name.length > 18 ? name.replace(/ \(.*\)$/, "").slice(0, 18) : name;
 }
 
-function newWidget(type, p) {
+// demo: a gallery preview (shows a sample value); a real new widget starts without a data source
+// or machine, so the user picks one in the source browser (it opens right away).
+function newWidget(type, p, demo = false) {
   const w = { type, x: p.x, y: p.y, w: p.w, h: p.h };
-  if (type.startsWith("metric_")) {
-    const used = new Set(state.cfg.pages.flatMap((pg) => (pg.widgets || []).map((x) => x.source)));
-    const src = state.catalog.sources.find((s) => !used.has(s.id) && state.data.sources.get(s.id)?.available) || state.catalog.sources[0];
-    w.source = src?.id || "sys.cpu.load";
+  if (type.startsWith("metric_") && demo) {
+    w.source = ({ metric_value: "sys.ram.used_pct", metric_bar: "sys.disk.c.used_pct", metric_gauge: "sys.cpu.load", metric_graph: "sys.net.down_kbps" })[type];
+    if (!state.data.sources.has(w.source) && !state.catalog.sources.some((x) => x.id === w.source)) w.source = state.catalog.sources[0]?.id || "sys.cpu.load";
     w.label = shortName(state.data.sources.get(w.source)?.name || "");
   }
   if (type === "weather_forecast") w.mode = "daily";
   if (type === "label") w.text = "Hello";
   if (type === "image" && state.assets[0]) w.asset = state.assets[0].id;
-  if (type === "server") {
-    const used = new Set(state.cfg.pages.flatMap((pg) => (pg.widgets || []).map((x) => x.system)));
-    const sys = beszelSystems().find((s) => !used.has(s.slug)) || beszelSystems()[0];
+  if (type === "server" && demo) {
+    const sys = beszelSystems()[0];
     w.system = sys?.slug || "server";
-    if (sys) w.label = sys.name.slice(0, 31);
+    w.label = sys ? sys.name.slice(0, 31) : "Server";
   }
   return w;
 }
@@ -117,6 +117,8 @@ function addWidget(type, at) {
   state.placeAt = null;
   if (type === "image" && !state.assets.length) toast("Now upload an image in the panel on the right.");
   emit("selection");
+  // Metric widgets start empty: open the source browser on the inspector's "Shows" button.
+  if (type.startsWith("metric_")) setTimeout(() => document.querySelector("#inspector .picker")?.click(), 0);
 }
 
 // ---- page rail ----
@@ -156,10 +158,11 @@ function addPage() {
   const name = `Page ${state.cfg.pages.length + 1}`;
   change((cfg) => cfg.pages.splice(state.page + 1, 0, { id: slug(name), name, widgets: [] }));
   selectPage(state.page + 1);
-  $("page-name").select();
+  startRename();
 }
 
 export function selectPage(i) {
+  endRename(true);
   state.page = Math.max(0, Math.min(i, state.cfg.pages.length - 1));
   state.selected = -1;
   state.placeAt = null;
@@ -173,6 +176,7 @@ function renderStageHead() {
   const p = page();
   const name = $("page-name");
   if (document.activeElement !== name) name.value = p.name ?? "";
+  $("page-name-text").textContent = p.name || p.id;
   const { cols, rows } = grid();
   const pal = pageTheme(state.cfg, p);
   const overrides = Object.values(p.inputs_override || {}).reduce((a, o) => a + Object.keys(o || {}).length, 0);
@@ -187,6 +191,63 @@ function renderStageHead() {
       icon("knob", 16), overrides ? `Knobs (${overrides} changed)` : "Knobs"),
     h("button", { type: "button", class: "tool icon-btn", title: "More", "aria-label": "More page actions", onclick: (e) => openPopover(e.currentTarget, morePopover) }, icon("more", 18)),
   );
+}
+
+// Page name: shown as a title with a pencil; click to edit in place. Enter or leaving the field
+// keeps it, Escape goes back to the name before editing. An empty name falls back to the id.
+let renameFrom = null;
+
+function startRename() {
+  const input = $("page-name");
+  renameFrom = { page: state.page, name: page().name ?? "" };
+  input.value = page().name ?? "";
+  $("page-name-show").hidden = true;
+  input.hidden = false;
+  input.focus();
+  input.select();
+}
+
+function endRename(keep) {
+  const input = $("page-name");
+  if (input.hidden || !renameFrom) return;
+  const from = renameFrom;
+  renameFrom = null;
+  const v = input.value.trim();
+  const target = state.cfg.pages[from.page];
+  if (target && (!keep || !v)) {
+    const restore = keep ? target.id : from.name;
+    if ((target.name ?? "") !== restore) change((cfg) => { cfg.pages[from.page].name = restore; }, `p${from.page}.name`);
+  } else if (target && v !== input.value) {
+    change((cfg) => { cfg.pages[from.page].name = v; }, `p${from.page}.name`);
+  }
+  input.hidden = true;
+  $("page-name-show").hidden = false;
+  renderStageHead();
+  renderRail();
+}
+
+function initRename() {
+  const input = $("page-name");
+  $("page-name-show").querySelector(".pencil").append(icon("pencil", 16));
+  $("page-name-show").addEventListener("click", startRename);
+  input.addEventListener("input", () => {
+    if (!renameFrom) return;
+    const i = renameFrom.page;
+    let v = input.value;
+    while (new TextEncoder().encode(v).length > 31) v = v.slice(0, -1);
+    if (v !== input.value) input.value = v;
+    change((cfg) => { cfg.pages[i].name = v; }, `p${i}.name`);
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      endRename(true);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      endRename(false);
+    }
+  });
+  input.addEventListener("blur", () => endRename(true));
 }
 
 // ---- page settings (under the screen) ----
@@ -284,12 +345,8 @@ function knobsPopover(panel) {
   const p = page();
   const i = state.page;
   const ov = p.inputs_override || {};
-  const buttons = get("inputs.buttons", 0);
   const presses = [["click", "Click"], ["double", "Double click"], ["long", "Long press"]];
-  const devices = [
-    ["enc1", "Knob 1", true], ["enc2", "Knob 2", true],
-    ...Array.from({ length: buttons }, (_, k) => [`btn${k + 1}`, `Button ${k + 1}`, false]),
-  ];
+  const devices = controlsInUse().map((c) => [c.dev, c.label, c.knob]);
   const setOverride = (dev, g, v) => {
     change((cfg) => {
       const po = cfg.pages[i];
@@ -412,7 +469,16 @@ function renderScreenNow() {
       card.classList.add("selected");
       const handle = h("div", { class: "handle", title: "Drag to resize" });
       handle.addEventListener("pointerdown", (e) => startResize(e, i));
-      card.append(handle);
+      // Remove right on the card, so the inspector's trash button is not the only way.
+      const del = h("button", {
+        type: "button", class: "card-del", title: "Remove widget (Delete)", "aria-label": "Remove widget",
+        onpointerdown: (e) => e.stopPropagation(),
+        onclick: (e) => {
+          e.stopPropagation();
+          removeSelected();
+        },
+      }, icon("trash", 14));
+      card.append(handle, del);
     }
     card.addEventListener("pointerdown", (e) => startMove(e, i));
   });
@@ -596,7 +662,7 @@ function miniPreview(type) {
   scr.style.setProperty("--d-faint", pal.faint);
   scr.style.setProperty("--d-accent", pal.accent);
   const card = h("div", { class: "card", style: { left: "0", top: "0", width: r.w + "px", height: r.h + "px" } });
-  const wd = newWidget(type, { x: 0, y: 0, w, h: hh });
+  const wd = newWidget(type, { x: 0, y: 0, w, h: hh }, true);
   renderWidget(card, wd, r, state.cfg, pal, state.data, state.catalog);
   scr.append(card);
   mini.append(scr);
@@ -776,8 +842,7 @@ const GESTURE_TEXT = { click: "Click", double: "Double-click", long: "Hold" };
 /** Where "mixer.focus" is mapped for the current page: [{dev, g, text}]. */
 function focusGestures() {
   const p = page();
-  const buttons = get("inputs.buttons", 0);
-  const devs = ["enc1", "enc2", ...Array.from({ length: buttons }, (_, k) => `btn${k + 1}`)];
+  const devs = controlsInUse().map((c) => c.dev);
   const out = [];
   for (const dev of devs) {
     for (const g of ["click", "double", "long"]) {
@@ -828,8 +893,7 @@ function mixerSetup() {
     h("h4", { text: mapped.length ? "How to use it" : "One step left: choose how to focus it" }), steps);
   if (!mapped.length) {
     // Offer the press gestures with what they do now; free ones first.
-    const buttons = get("inputs.buttons", 0);
-    const devs = [["enc1", "knob 1"], ["enc2", "knob 2"], ...Array.from({ length: buttons }, (_, k) => [`btn${k + 1}`, `button ${k + 1}`])];
+    const devs = controlsInUse().map((c) => [c.dev, c.label.toLowerCase()]);
     const options = [];
     for (const [dev, name] of devs) {
       for (const g of ["long", "double", "click"]) {
@@ -864,7 +928,7 @@ function renderProps(box) {
   const content = [];
   if (w.type.startsWith("metric_")) {
     content.push(field("Shows", sourcePicker(w)));
-    content.push(field("Label", textInput(w, "label", w.source, 31)));
+    content.push(field("Label", textInput(w, "label", w.source || "", 31)));
   } else if (w.type === "weather_forecast") {
     content.push(field("Forecast", segmented([["daily", "Days"], ["hourly", "Hours"]], w.mode || "daily", (v) => setWidget({ mode: v }))));
   } else if (w.type === "label") {
@@ -886,7 +950,8 @@ function renderProps(box) {
         const sys = systems.find((s) => s.slug === ev.target.value);
         setWidget({ system: ev.target.value, label: sys ? sys.name.slice(0, 31) : w.label });
       },
-    }, ...(known || !w.system ? [] : [h("option", { value: w.system, text: `${w.system} (not on the hub now)`, selected: true })]),
+    }, ...(w.system ? [] : [h("option", { value: "", text: "Choose a machine...", selected: true, disabled: true })]),
+    ...(known || !w.system ? [] : [h("option", { value: w.system, text: `${w.system} (not on the hub now)`, selected: true })]),
     ...systems.map((s) => h("option", { value: s.slug, text: s.name, selected: s.slug === w.system }))),
     "CPU, memory and disk as bars; load, temperature and network down/up below when the card is tall enough. Single values of a machine (any of them, also its extra disks) are in the data source list of value, bar, gauge and graph widgets."));
     content.push(field("Title", textInput(w, "label", w.system || "", 31)));
@@ -971,13 +1036,7 @@ export function initEditor() {
   $("screen-wrap").prepend(h("div", { class: "screen-frame" }));
   screenEl.addEventListener("keydown", onScreenKey);
   $("page-add").addEventListener("click", addPage);
-  $("page-name").addEventListener("input", (e) => {
-    const v = e.target.value;
-    const i = state.page;
-    change((cfg) => {
-      cfg.pages[i].name = v;
-    }, `p${i}.name`);
-  });
+  initRename();
   new ResizeObserver(fitScreen).observe($("screen-wrap").parentElement);
   window.addEventListener("resize", fitScreen);
   fitScreen();

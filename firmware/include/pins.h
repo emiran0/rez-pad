@@ -24,30 +24,31 @@ constexpr int8_t kTftRst = 14;
 constexpr int8_t kTftBacklight = 21;  // LEDC PWM, active high. Module switches it via its own transistor (Q1).
 constexpr int8_t kTftMiso = -1;
 
-// SD card (optional, later): separate SPI3 bus.
-constexpr int8_t kSdSck = 39;
-constexpr int8_t kSdMosi = 40;
-constexpr int8_t kSdMiso = 41;
-constexpr int8_t kSdCs = 42;
-
 // I2C: AHT20 (0x38) + BMP280 (0x76 or 0x77), 400 kHz.
 constexpr int8_t kI2cSda = 1;
 constexpr int8_t kI2cScl = 2;
 
-// Encoders (KY-040, powered from 3.3 V only).
+// Encoders (KY-040, powered from 3.3 V only): knob ports 1 to 3. Which knob number reads which
+// port is set in the config (inputs.knob_ports, default knob 1 = port 1, knob 2 = port 2).
 constexpr int8_t kEnc1A = 4;   // CLK, PCNT unit 0
 constexpr int8_t kEnc1B = 5;   // DT
 constexpr int8_t kEnc1Sw = 6;  // internal pull-up
 constexpr int8_t kEnc2A = 7;   // CLK, PCNT unit 1
 constexpr int8_t kEnc2B = 15;  // DT
 constexpr int8_t kEnc2Sw = 16; // internal pull-up
+// Knob port 3 (optional third KY-040) on the pins the dropped SD card had. GPIO39..42 are also the
+// pad JTAG pins; JTAG goes through USB on this board, so they are free GPIOs. Not yet verified.
+constexpr int8_t kEnc3A = 39;  // CLK, PCNT unit 2
+constexpr int8_t kEnc3B = 40;  // DT
+constexpr int8_t kEnc3Sw = 41; // internal pull-up
 
-// Optional buttons (0 to 4 fitted, config inputs.buttons): tact switch to GND, internal pull-up.
+// Optional buttons: button ports 1 to 4, tact switch to GND, internal pull-up. Which button
+// number reads which port is set in the config (inputs.button_ports).
 constexpr int8_t kBtn1 = 17;
 constexpr int8_t kBtn2 = 18;
 constexpr int8_t kBtn3 = 8;
 constexpr int8_t kBtn4 = 13;
 
-// Spare: 47.
+// Spare: 42, 47.
 
 }  // namespace pins

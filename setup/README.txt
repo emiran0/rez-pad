@@ -9,8 +9,8 @@ What is in this zip
   Uninstall.cmd      Removes the host app (your settings are kept).
   install.ps1        The script behind both .cmd files (no need to open it).
   firmware\rez-pad-firmware-<version>.bin
-                     The device firmware, as one full flash image. Only needed for a new board
-                     or a firmware update.
+                     The device firmware as one full flash image, for esptool or the web flasher.
+                     Not needed normally: rez-pad.exe has it built in (Device page).
   README.txt         This guide.
   CHANGELOG.txt      What is new in this version.
   LICENSE.txt, THIRD-PARTY-NOTICES.txt
@@ -47,9 +47,50 @@ Windows SmartScreen may still say "Windows protected your PC" for rez-pad.exe be
 not signed: click "More info" > "Run anyway".
 
 
-Step 1: Flash the firmware (new board or firmware update only)
----------------------------------------------------------------
-Skip this step if the board already runs this rez-pad version.
+Step 1: Install the host app
+----------------------------
+1. Double-click Install.cmd. A console window opens and asks a few questions (press Enter for
+   the default shown in capitals).
+2. It copies rez-pad.exe to %LOCALAPPDATA%\Programs\rez-pad, adds a "rez-pad" Start menu
+   entry and an entry in Settings > Apps. No administrator rights needed for this.
+3. "Start with Windows?" (default yes): creates a task that starts rez-pad at every logon
+   with administrator rights. Windows asks for permission once now (UAC), never at logon.
+   CPU temperature and motherboard fans need these rights. Without the task, start rez-pad
+   from the Start menu yourself; GPU, loads, media and weather still work.
+4. If the PawnIO driver is missing, it says so and offers to open https://pawnio.eu/.
+   PawnIO is what CPU temperature and motherboard fans are read through (needs Start with
+   Windows as well). Install it from there if you want those values; it can be done later.
+5. It starts rez-pad and opens the config page in your browser: http://127.0.0.1:47800
+6. Press a key to close the console window.
+
+rez-pad now runs in the tray (notification area; it may be under the "^" arrow). The icon
+has a blue screen when the device is connected and a grey one when it is not. Double-click
+it for the config page; right-click for the menu (status, config page, log, Start with
+Windows, Exit).
+
+
+Step 2: Plug in the board and install the firmware from the config page
+-----------------------------------------------------------------------
+Plug the board's NATIVE port into the PC (directly, see above). Windows installs it by itself,
+no driver needed.
+
+On the config page, open Device (top bar). The Firmware card shows what the board runs and
+the firmware built into this rez-pad:
+  - A new board (or one running something else) shows as "An ESP32 board without rez-pad".
+    Click "Install rez-pad" and confirm. It takes about half a minute.
+  - A board that already runs rez-pad shows its version; "Update the board" appears when this
+    rez-pad has a newer one.
+When it is done the board restarts with the default pages, connects (top bar: "Connected")
+and gets your layout. If the board does not show up at all, hold its BOOT button while you
+plug the native cable in (that starts the chip's built-in update mode), then try again.
+
+The update never touches the storage area with the board's layout and pictures. If it is cut
+off (cable pulled), the board waits in update mode: just start it again.
+
+
+Other ways to flash the firmware (optional)
+-------------------------------------------
+The firmware is also in this zip as one full flash image, for the usual ESP32 tools:
 
 1. Plug a USB-C cable into the board's UART port and into the PC. (The native port may stay
    plugged in or not; it does not matter for flashing.)
@@ -77,47 +118,20 @@ Alternative with Python installed:
 What gets written: bootloader, partition table and the app, starting at address 0x0. The
 storage area with the device's layout and pictures is not touched, so updating keeps them.
 
-
-Step 2: Plug in the device
---------------------------
-Plug the board's NATIVE port into the PC (directly, see above). Windows installs it by itself,
-no driver needed: a COM port ("USB Serial Device"), media keys and a keyboard device, all
-named "rez-pad". The device works on its own already (room climate, media keys on the
-knobs), but shows "No host connected" until step 3.
-
-(You may also do step 3 first; the host app finds the device within a few seconds of it being
-plugged in, whatever the order.)
+Once the rez-pad firmware runs, the native port shows up in Windows as a COM port ("USB
+Serial Device"), media keys and a keyboard device, all named "rez-pad". The device works on
+its own (room climate, media keys on the knobs) and shows "No host connected" while the host
+app is not running.
 
 
-Step 3: Install the host app
-----------------------------
-1. Double-click Install.cmd. A console window opens and asks a few questions (press Enter for
-   the default shown in capitals).
-2. It copies rez-pad.exe to %LOCALAPPDATA%\Programs\rez-pad, adds a "rez-pad" Start menu
-   entry and an entry in Settings > Apps. No administrator rights needed for this.
-3. "Start with Windows?" (default yes): creates a task that starts rez-pad at every logon
-   with administrator rights. Windows asks for permission once now (UAC), never at logon.
-   CPU temperature and motherboard fans need these rights. Without the task, start rez-pad
-   from the Start menu yourself; GPU, loads, media and weather still work.
-4. If the PawnIO driver is missing, it says so and offers to open https://pawnio.eu/.
-   PawnIO is what CPU temperature and motherboard fans are read through (needs Start with
-   Windows as well). Install it from there if you want those values; it can be done later.
-5. It starts rez-pad and opens the config page in your browser: http://127.0.0.1:47800
-6. Press a key to close the console window.
-
-rez-pad now runs in the tray (notification area; it may be under the "^" arrow). The icon
-has a blue screen when the device is connected and a grey one when it is not. Double-click
-it for the config page; right-click for the menu (status, config page, log, Start with
-Windows, Exit).
-
-
-Step 4: Set it up on the config page
+Step 3: Set it up on the config page
 ------------------------------------
 1. Settings > Weather and units: search for your city and pick it, and choose the units.
 2. Settings > Screen: brightness, night dimming (from/to and night brightness), and whether
    the screen turns off while the PC sleeps.
-3. Settings > Knobs and buttons: what turning, clicking and long-pressing each knob does, and
-   how many extra buttons are fitted.
+3. Settings > Knobs and buttons: which physical knob or button is Knob 1, Button 1 and so on
+   (click Assign, then turn or press it on the device), and what turning, clicking and
+   long-pressing each one does.
 4. Layout: pick a page on the left, add widgets from the gallery, drag them around, resize
    them from the corner.
 5. "Save to device" (Ctrl+S). The layout is stored on the rez-pad, so it starts with it even
@@ -128,7 +142,8 @@ Updating
 --------
 Host app: extract the new zip and run its Install.cmd. It closes the running rez-pad,
 replaces it and starts it again. Settings (%APPDATA%\rez-pad) are kept.
-Firmware: step 1 with the new .bin. Install the host and firmware from the same zip.
+Firmware: after updating the host app, open Device on the config page and click "Update the
+board" (the new host has the matching firmware built in).
 
 Removing
 --------
@@ -139,7 +154,7 @@ in %APPDATA%\rez-pad; run "Uninstall.cmd -RemoveSettings" from a console to dele
 Troubleshooting
 ---------------
 - Tray says "Looking for rez-pad...": the native port is not plugged in, or the board runs
-  firmware without rez-pad (do step 1), or the cable is charge-only.
+  firmware without rez-pad (do step 2), or the cable is charge-only.
 - Screen dark: touch a knob (it may be off for the night, the PC sleeps, or it was turned off
   with a knob action).
 - Host log: right-click the tray icon > Open log file.

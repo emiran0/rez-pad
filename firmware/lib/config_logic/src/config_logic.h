@@ -50,6 +50,7 @@ struct Binding {
 };
 
 constexpr int kMaxButtons = 4;
+constexpr int kMaxKnobs = 3;  // knob numbers 1 to 3 (enc1..enc3); physical knob ports 1 to 3
 
 struct EncoderMap {
   Action rotate = Action::kNone;
@@ -62,7 +63,7 @@ struct ButtonMap {
 };
 
 struct Map {
-  EncoderMap enc[2];
+  EncoderMap enc[kMaxKnobs];
   ButtonMap btn[kMaxButtons];
 };
 
@@ -79,7 +80,7 @@ constexpr int kMaxPages = 8;
 constexpr int kMaxWidgets = 16;  // per page
 constexpr int kMaxGrid = 8;      // cols and rows
 constexpr size_t kMaxConfigBytes = 32768;
-constexpr int kMaxSources = 32;  // different data sources over all pages (SYS_STATS keeps 32)
+constexpr int kMaxSources = 128;  // different data sources over all pages (SYS_STATS keeps 128)
 constexpr int kMaxMacros = 32;   // the host runs them; the device only needs their ids
 
 // Screen geometry the sizes are checked against (firmware/src/ui/pages.cpp uses the same numbers).
@@ -167,9 +168,13 @@ struct Config {
   uint8_t macroCount = 0;
   char macroIds[kMaxMacros][24] = {};
   // inputs
-  uint8_t buttons = 0;  // 0 to actions::kMaxButtons fitted
-  uint8_t countsPerDetent[2] = {4, 4};
-  bool invert[2] = {false, false};
+  // Numbering: knob N (enc<N>) reads physical knob port knobPorts[N-1], button N (btn<N>) reads
+  // button port buttonPorts[N-1]; 0 = that number is not used. Ports: docs/hardware.md.
+  uint8_t knobPorts[actions::kMaxKnobs] = {1, 2, 0};
+  uint8_t buttonPorts[actions::kMaxButtons] = {0, 0, 0, 0};
+  uint8_t buttons = 0;  // buttons in use (non-zero buttonPorts), for status and HELLO_ACK
+  uint8_t countsPerDetent[actions::kMaxKnobs] = {4, 4, 4};  // per knob number, like invert
+  bool invert[actions::kMaxKnobs] = {false, false, false};
   actions::Map inputs;
   // pages
   uint8_t pageCount = 0;

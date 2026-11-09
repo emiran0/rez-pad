@@ -469,11 +469,11 @@ bool parseMedia(JsonObjectConst root, Config& cfg, Ctx& c) {
          getInt(m, "seek_step_s", "media", 1, 60, cfg.seekStepS, c);
 }
 
-// Gesture keys of enc1/enc2/btn1..btn4 (used by "inputs" and by a page's "inputs_override").
+// Gesture keys of enc1..enc3/btn1..btn4 (used by "inputs" and by a page's "inputs_override").
 bool parseGestures(JsonObjectConst inputs, const char* path, const Config& cfg, actions::Map& map, Ctx& c) {
-  static const char* const kEnc[] = {"enc1", "enc2"};
+  static const char* const kEnc[] = {"enc1", "enc2", "enc3"};
   static const char* const kBtn[] = {"btn1", "btn2", "btn3", "btn4"};
-  for (int i = 0; i < 2; ++i) {
+  for (int i = 0; i < actions::kMaxKnobs; ++i) {
     JsonObjectConst e;
     if (!getObject(inputs, kEnc[i], path, e, c)) return false;
     if (e.isNull()) continue;
@@ -524,13 +524,51 @@ bool parseMacros(JsonObjectConst root, Config& cfg, Ctx& c) {
   return true;
 }
 
+// "knob_ports" / "button_ports": position = number - 1, value = physical port (1 to n), 0 = that
+// number is not used. Ports in use must differ. Missing keeps the defaults; `set` tells whether it
+// was there. Numbers after the array's end are not used.
+bool getPorts(JsonObjectConst in, const char* key, int n, uint8_t* out, bool& set, Ctx& c) {
+  JsonVariantConst v = in[key];
+  set = false;
+  if (v.isNull()) return true;
+  const Path p("inputs", key);
+  if (!v.is<JsonArrayConst>() || v.as<JsonArrayConst>().size() > static_cast<size_t>(n)) {
+    return c.fail(p.s, "must be an array of up to %d port numbers", n);
+  }
+  uint8_t ports[actions::kMaxButtons > actions::kMaxKnobs ? actions::kMaxButtons : actions::kMaxKnobs] = {};
+  int i = 0;
+  for (JsonVariantConst e : v.as<JsonArrayConst>()) {
+    if (!e.is<long>() || e.as<long>() < 0 || e.as<long>() > n) {
+      return c.fail(p.s, "port numbers are 0 (not used) to %d", n);
+    }
+    ports[i] = static_cast<uint8_t>(e.as<long>());
+    for (int k = 0; k < i; ++k) {
+      if (ports[i] && ports[k] == ports[i]) return c.fail(p.s, "port %u is used twice", ports[i]);
+    }
+    ++i;
+  }
+  for (int k = 0; k < n; ++k) out[k] = ports[k];
+  set = true;
+  return true;
+}
+
 bool parseInputs(JsonObjectConst root, Config& cfg, Ctx& c) {
   JsonObjectConst in;
   if (!getObject(root, "inputs", "", in, c)) return false;
   if (in.isNull()) return true;
-  if (!getInt(in, "buttons", "inputs", 0, actions::kMaxButtons, cfg.buttons, c)) return false;
-  static const char* const kEnc[] = {"enc1", "enc2"};
-  for (int i = 0; i < 2; ++i) {
+  uint8_t legacyButtons = 0;
+  if (!getInt(in, "buttons", "inputs", 0, actions::kMaxButtons, legacyButtons, c)) return false;
+  // "button_ports" replaces the older "buttons" count (which meant ports 1 to n).
+  bool set = false;
+  if (!getPorts(in, "knob_ports", actions::kMaxKnobs, cfg.knobPorts, set, c)) return false;
+  if (!getPorts(in, "button_ports", actions::kMaxButtons, cfg.buttonPorts, set, c)) return false;
+  if (!set) {
+    for (int i = 0; i < actions::kMaxButtons; ++i) cfg.buttonPorts[i] = i < legacyButtons ? i + 1 : 0;
+  }
+  cfg.buttons = 0;
+  for (uint8_t port : cfg.buttonPorts) cfg.buttons += port ? 1 : 0;
+  static const char* const kEnc[] = {"enc1", "enc2", "enc3"};
+  for (int i = 0; i < actions::kMaxKnobs; ++i) {
     JsonObjectConst e;
     if (!getObject(in, kEnc[i], "inputs", e, c)) return false;
     if (e.isNull()) continue;

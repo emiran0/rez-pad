@@ -20,7 +20,7 @@ void onSysStats(const uint8_t* body, size_t len) {
   if (deserializeJson(doc, body, len) != DeserializationError::Ok) return;
   JsonObject v = doc["v"];
   if (v.isNull()) return;
-  ui::Stat parsed[ui::kMaxStats];
+  static ui::Stat parsed[ui::kMaxStats];  // 5 KB: static, not on the link task stack (only caller)
   int n = 0;
   for (JsonPair kv : v) {
     const char* id = kv.key().c_str();

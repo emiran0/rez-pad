@@ -49,23 +49,24 @@ Pin assignments here are mirrored in `firmware/include/pins.h`. Change both or n
 | Display backlight | LED | 21 | LEDC PWM, active high. Module has its own transistor (Q1). |
 | Display MISO | SDO (MISO) | **not connected** | See hardware facts |
 | Touch pins | T_CLK, T_CS, T_DIN, T_DO, T_IRQ | **not connected** | No touch controller |
-| SD card SCK (optional, later) | SD_SCK | 39 | SPI3 (separate bus) |
-| SD card MOSI (optional, later) | SD_MOSI | 40 | |
-| SD card MISO (optional, later) | SD_MISO | 41 | |
-| SD card CS (optional, later) | SD_CS | 42 | |
 | I2C SDA (sensor) | SDA | 1 | 400 kHz. Module usually has pull-ups. |
 | I2C SCL (sensor) | SCL | 2 | |
-| Encoder 1 A | CLK | 4 | PCNT unit 0 |
-| Encoder 1 B | DT | 5 | |
-| Encoder 1 switch | SW | 6 | Internal pull-up (module may not populate one) |
-| Encoder 2 A | CLK | 7 | PCNT unit 1 |
-| Encoder 2 B | DT | 15 | |
-| Encoder 2 switch | SW | 16 | Internal pull-up |
-| Button 1 (optional) | | 17 | Tact switch to GND, internal pull-up |
-| Button 2 (optional) | | 18 | Tact switch to GND, internal pull-up |
-| Button 3 (optional) | | 8 | Tact switch to GND, internal pull-up |
-| Button 4 (optional) | | 13 | Tact switch to GND, internal pull-up |
-| Spare | | 47 | |
+| Knob port 1 A | CLK | 4 | PCNT unit 0 |
+| Knob port 1 B | DT | 5 | |
+| Knob port 1 switch | SW | 6 | Internal pull-up (module may not populate one) |
+| Knob port 2 A | CLK | 7 | PCNT unit 1 |
+| Knob port 2 B | DT | 15 | |
+| Knob port 2 switch | SW | 16 | Internal pull-up |
+| Knob port 3 A (optional) | CLK | 39 | PCNT unit 2. Former SD card pins; also the pad JTAG pins (JTAG runs over USB here). Not yet verified on the board. |
+| Knob port 3 B (optional) | DT | 40 | |
+| Knob port 3 switch (optional) | SW | 41 | Internal pull-up |
+| Button port 1 (optional) | | 17 | Tact switch to GND, internal pull-up |
+| Button port 2 (optional) | | 18 | Tact switch to GND, internal pull-up |
+| Button port 3 (optional) | | 8 | Tact switch to GND, internal pull-up |
+| Button port 4 (optional) | | 13 | Tact switch to GND, internal pull-up |
+| Spare | | 42, 47 | |
+
+Knob and button **numbers** (Knob 1, Button 2, what the config's `enc1`, `btn2` mean) are not tied to ports: `inputs.knob_ports` and `inputs.button_ports` say which port each number reads (Settings > Knobs and buttons > Numbering, where pressing or turning a control assigns it). Default: knob 1 = port 1, knob 2 = port 2, no buttons.
 
 ## Power
 
@@ -87,5 +88,5 @@ Pin assignments here are mirrored in `firmware/include/pins.h`. Change both or n
 | Board 5V pin as an output | **Yes, after bridging `IN-OUT`** (2026-11-07): about 4.8 V on USB, same with one or both cables. As shipped it read 1.6 to 1.7 V (YD-ESP32-S3 style board: 5Vin separated from USB VBUS by a diode unless `IN-OUT` is bridged). Since the bridge, never feed 5 V into that pin from another supply. | Multimeter between 5Vin and GND with the board on USB. |
 | Sensor I2C addresses | AHT20 at 0x38, BMP280 at **0x77** (2026-11-07 I2C scan). | `i2c` console command |
 | Encoder counts per detent (2 or 4) | **4** for enc1 and on enc2's pins (2026-11-07, same encoder moved to GPIO 7/15/16): 10 slow clicks gave 40 PCNT counts; a fast back-and-forth spin returned to exactly 0 (no lost counts). An earlier static pin reading suggested 2, which was wrong. Wiring confirmed. Check enc2 when fitted. | Phase 2 debug view prints raw PCNT counts; turn one detent and read the delta. |
-| Physical buttons | 2 to 4 planned (macro buttons), not wired yet | GPIO 17, 18, 8, 13. Configurable in `inputs.buttons`. |
+| Physical buttons | 2 fitted (2026-11-09), up to 4 | Button ports GPIO 17, 18, 8, 13; numbering in `inputs.button_ports`. |
 | Enclosure / sensor placement | undecided | Affects self-heating offset and display orientation. |

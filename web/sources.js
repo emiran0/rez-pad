@@ -6,9 +6,11 @@
 import { state, h, openPopover, closePopover } from "./state.js";
 
 // This PC's categories, by id prefix.
+// The room sensor sits on the desk, so it is a category of this PC: with no other machine
+// (no Beszel) the browser has a single place and starts at the categories.
 const PC_GROUPS = [
   ["sys.cpu.", "CPU"], ["sys.gpu.", "GPU"], ["sys.ram.", "Memory"], ["sys.net.", "Network"],
-  ["sys.disk.", "Disks"], ["sys.fan.", "Fans"],
+  ["sys.disk.", "Disks"], ["sys.fan.", "Fans"], ["room.", "Room sensor"],
 ];  // also the order the categories are shown in
 
 // A Beszel machine's categories, by metric.
@@ -59,8 +61,6 @@ function sourceTree() {
       const cat = BESZEL_GROUPS.find(([, re]) => re.test(bz[2]))?.[0] || "Other";
       // "Main-PVE-Node CPU" -> "CPU": the machine is already in the path.
       add(p, cat, id, name.startsWith(machine + " ") ? name.slice(machine.length + 1) : name);
-    } else if (id.startsWith("room.")) {
-      add(place("room", "Room sensor", 1), "Room", id, name);
     } else {
       const cat = PC_GROUPS.find(([pre]) => id.startsWith(pre))?.[1] || "Other";
       add(place("pc", "This PC", 0), cat, id, name);
