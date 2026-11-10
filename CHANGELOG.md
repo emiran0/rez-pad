@@ -2,6 +2,18 @@
 
 All notable changes, newest first. Version rules: [docs/versioning.md](docs/versioning.md).
 
+## 0.4.0 (2026-11-10)
+
+Update the board from the Device page after updating the host (new knob actions; the USB protocol is still v1, the config schema still 1).
+
+### New
+- **Switch the Now Playing app from the device**: knob actions "Switch media app" (turn) and "Next media app" (press) move Now Playing to the next app with media; the app that was playing keeps playing.
+- Settings > Media and system data: a **Now Playing card** listing the apps with media on this PC (switch with a click), and the **preferred apps** as an ordered list: drag or arrows to reorder, add apps seen on this PC (also while they are closed) or type a name, "Any other app" as its own row.
+
+### Changed
+- Now Playing **stays on the app you used last**, also when you pause it, so play/pause resumes that app; an app that starts playing takes over. The preferred apps list only decides after a restart, when the app on screen closes, or when several start at once. (Before, pausing the browser handed the screen to the first preferred app, and the next play started that one.)
+- Sliders have a new look: filled track, round thumb, value in a pill.
+
 ## 0.3.1 (2026-11-09)
 
 Host only (the editor); the firmware is the same as 0.3.0 apart from its version number. Update the board from the Device page anyway to keep the versions in step.
