@@ -34,6 +34,8 @@ const Name kNames[] = {
     {Action::kAppVolume, "media.app_volume"},
     {Action::kAppMute, "media.app_mute"},
     {Action::kMixerFocus, "mixer.focus"},
+    {Action::kAppSwitch, "media.app_switch"},
+    {Action::kAppNext, "media.app_next"},
 };
 
 }  // namespace
@@ -58,7 +60,7 @@ bool parse(const char* s, Action& out) {
 
 bool isRotate(Action a) {
   return a == Action::kNavPage || a == Action::kSeek || a == Action::kVolume || a == Action::kDisplayBrightness ||
-         a == Action::kAppVolume;
+         a == Action::kAppVolume || a == Action::kAppSwitch;
 }
 
 namespace {

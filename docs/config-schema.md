@@ -39,7 +39,7 @@ The editor sets the numbering in Settings > Knobs and buttons: "Assign" asks the
 
 `weather`: no location by default (`lat`/`lon` null): the user picks a city on the web page (Open-Meteo geocoding), and the host fetches nothing until then. `refresh_min` 5 to 180. `units`: `temp` `c`/`f`, `wind` `kmh`/`ms`/`mph`, `pressure` `hpa`/`inhg`; weather values are converted by Open-Meteo (pressure by the host), and the device shows its room sensor in the same units.
 
-`media`: `app_priority` orders media sessions by app (matched case-insensitively against the app name or its AppUserModelId, `*` matches any); a playing session always wins over paused ones, then the list decides. `art_size` is the album art edge in px when the device does not ask for one in HELLO_ACK. `volume_step` is percent per detent, `seek_step_s` seconds per detent.
+`media`: `app_priority` orders media sessions by app (matched case-insensitively as part of the app name or its AppUserModelId, `*` matches any). Which app Now Playing shows: the app in charge stays chosen while it has a session, playing or paused (the one that last started playing, or the one picked with `media.app_switch` / `media.app_next` or on the Settings page), so pausing an app keeps it on screen and play resumes it. An app that starts playing takes over. Only without an app in charge (host start, the app closed) does a playing session win over paused ones, then the list decides, then Windows' current session; the list also decides when several start at the same moment. The editor offers the apps seen on this PC (`%APPDATA%\rez-pad\media-apps.json`, host only) and lets you type any name. `art_size` is the album art edge in px when the device does not ask for one in HELLO_ACK. `volume_step` is percent per detent, `seek_step_s` seconds per detent.
 
 ## Widget catalog (firmware implements, web editor offers)
 
@@ -99,9 +99,11 @@ Stable dotted IDs. The host publishes the catalog of what exists on this PC (`GE
 
 ## Actions
 
-`none`, `nav.page` (rotate), `nav.next_page`, `nav.prev_page`, `nav.home`, `media.play_pause`, `media.next`, `media.prev`, `media.seek` (rotate, seconds per detent configurable), `media.volume` (rotate), `media.mute`, `media.app_volume` (rotate), `media.app_mute`, `mixer.focus`, `display.toggle`, `display.brightness` (rotate).
+`none`, `nav.page` (rotate), `nav.next_page`, `nav.prev_page`, `nav.home`, `media.play_pause`, `media.next`, `media.prev`, `media.seek` (rotate, seconds per detent configurable), `media.volume` (rotate), `media.mute`, `media.app_volume` (rotate), `media.app_mute`, `media.app_switch` (rotate), `media.app_next`, `mixer.focus`, `display.toggle`, `display.brightness` (rotate).
 
 `mixer.focus` (press) focuses the `mixer` widget on the current page, or unfocuses it; see "Mixer widget".
+
+`media.app_switch` (each detent) and `media.app_next` move Now Playing to the next app with a media session (order: the preferred apps list, then name); the old app keeps playing, only the screen and the media keys follow. They need the host: offline they do nothing.
 
 `media.app_volume` and `media.app_mute` change only the app that is playing (the Now Playing app, e.g. Spotify or the browser), like its slider in the Windows volume mixer, by `media.volume_step` per detent. The host matches the media session to the app's audio sessions by process (and package for Store apps) and changes all of them. They need the host: offline they do nothing (there is no media key for one app's volume).
 
@@ -193,5 +195,6 @@ Every change is checked by the host (`POST /api/config/validate`, the same valid
 - `POST /api/device/learn?ms=` (waits for the next control turned or pressed: `{kind, port, error}`), `DELETE /api/device/learn` (cancels).
 - `GET /api/firmware` (`bundled` image version, `device` version, `bootloader_port` of a board in download mode, `update_available`, update `status`), `POST /api/firmware/update` (the bundled image, or a `.bin` sent as multipart field `file`; runs in the background, `status` shows the stage and progress).
 - `GET /api/assets` (uploaded images), `POST /api/assets` (multipart field `file`), `GET /api/assets/{id}` (the original), `DELETE /api/assets/{id}` (refused while a widget uses it).
+- `GET /api/media/apps` (apps with a media session now, the Now Playing one marked, and every app seen before), `POST /api/media/apps/choose?id=` (make one the Now Playing app).
 - `GET /api/sources`, `GET /api/media`, `GET /api/media/art?size=` (current album art as JPEG), `GET /api/weather`, `PUT /api/weather`, `GET /api/geocode?q=`, `GET /api/sensor`, `GET /api/hardware`, `GET /api/log`.
 - Bind to `127.0.0.1` only. No remote access.

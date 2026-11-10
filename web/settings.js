@@ -5,6 +5,7 @@
 import { state, on, get, set, change, h, api, postJson, toast, controlsInUse } from "./state.js";
 import { numberingCard } from "./numbering.js";
 import { firmwarePanel } from "./firmware.js";
+import { mediaAppsCard } from "./mediaapps.js";
 import { THEMES, ACCENTS } from "./preview.js";
 import { icon } from "./icons.js";
 import { ACTION_NAMES, bindingControl, keysRecorder } from "./bindings.js";
@@ -74,16 +75,20 @@ function time(path, fallback) {
   return h("input", { type: "time", value: get(path, fallback), oninput: (e) => e.target.value && set(path, e.target.value) });
 }
 
+// A slider with a filled track (--p is the filled share) and the value in a pill.
 function range(path, fallback) {
-  const out = h("output", { text: `${get(path, fallback)} %` });
-  return h("div", { class: "range-row" },
-    h("input", {
-      type: "range", min: 0, max: 100, step: 1, value: get(path, fallback),
-      oninput: (e) => {
-        out.textContent = `${e.target.value} %`;
-        set(path, Number(e.target.value));
-      },
-    }), out);
+  const v = get(path, fallback);
+  const out = h("output", { text: `${v} %` });
+  const input = h("input", {
+    type: "range", min: 0, max: 100, step: 1, value: v,
+    oninput: (e) => {
+      out.textContent = `${e.target.value} %`;
+      e.target.style.setProperty("--p", `${e.target.value}%`);
+      set(path, Number(e.target.value));
+    },
+  });
+  input.style.setProperty("--p", `${v}%`);
+  return h("div", { class: "range-row" }, input, out);
 }
 
 function panel(title, hint, ...children) {
@@ -400,15 +405,9 @@ function sensorMedia() {
         field("Temperature offset (°C)", num("sensor.temp_offset_c", { min: -10, max: 10, step: 0.1 })),
         field("Humidity offset (%)", num("sensor.hum_offset_pct", { min: -20, max: 20, step: 0.5 })),
         field("Pressure trend threshold (hPa / 3 h)", num("sensor.trend_threshold_hpa", { min: 0.1, max: 10, step: 0.1 })))),
+    panel("Now Playing", "Which app the Now Playing widgets show and control.", mediaAppsCard()),
     panel("Media and system data", null,
       h("div", { class: "form-grid" },
-        field("Prefer apps (in order)", h("input", {
-          type: "text", value: get("media.app_priority", ["Spotify", "*"]).join(", "),
-          oninput: (e) => {
-            const list = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
-            set("media.app_priority", list.length ? list : undefined);
-          },
-        }), "Comma separated, * means any app"),
         field("Volume step per click (%)", num("media.volume_step", { min: 1, max: 20 })),
         field("Seek step per click (s)", num("media.seek_step_s", { min: 1, max: 60 })),
         field("System data updates per second", choice("stats.rate_hz", [[0.5, "0.5"], [1, "1"], [2, "2"], [4, "4"]], 1), "More often costs a little more CPU"))),
@@ -424,7 +423,7 @@ const CATEGORIES = [
   { group: "Controls", id: "macros", title: "Macros", icon: "bolt", panels: () => [macros()] },
   { group: "Data", id: "weather", title: "Weather and units", icon: "weather_now", panels: () => [weather()] },
   { group: "Data", id: "room", title: "Room sensor", icon: "room_climate", panels: () => [sensorMedia()[0]] },
-  { group: "Data", id: "data", title: "Media and system data", icon: "chart", panels: () => [sensorMedia()[1]] },
+  { group: "Data", id: "data", title: "Media and system data", icon: "chart", panels: () => { const p = sensorMedia(); return [p[2], p[1]]; } },
   { group: "Data", id: "integrations", title: "Integrations", icon: "plug", panels: () => [integrations()] },
 ];
 

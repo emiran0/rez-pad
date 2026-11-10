@@ -77,12 +77,12 @@ public static class ConfigCatalog
     [
         "none", "nav.page", "nav.next_page", "nav.prev_page", "nav.home", "media.play_pause", "media.next",
         "media.prev", "media.seek", "media.volume", "media.mute", "display.toggle", "display.brightness",
-        "media.app_volume", "media.app_mute", "mixer.focus",
+        "media.app_volume", "media.app_mute", "mixer.focus", "media.app_switch", "media.app_next",
     ];
 
     /// <summary>Actions that take a detent count: allowed on rotate gestures only, the others on presses only.</summary>
     public static readonly IReadOnlySet<string> RotateActions =
-        new HashSet<string> { "nav.page", "media.seek", "media.volume", "display.brightness", "media.app_volume" };
+        new HashSet<string> { "nav.page", "media.seek", "media.volume", "display.brightness", "media.app_volume", "media.app_switch" };
 
     public static bool IsMetric(string type) => type.StartsWith("metric_", StringComparison.Ordinal);
 

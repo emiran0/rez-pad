@@ -103,6 +103,12 @@ void run(Action a, int value) {
       }
       ui::mediaAction(a, value);
       break;
+    case Action::kAppSwitch:
+    case Action::kAppNext:
+      // The host picks among the PC's media apps; offline there is nothing to switch.
+      if (link::hostConnected()) link::sendAction(name(a), value);
+      else Serial.printf("[input] %s needs the host app\n", name(a));
+      break;
     case Action::kAppVolume:
     case Action::kAppMute:
       // Only the host can change one app's volume; there is no media key for it.

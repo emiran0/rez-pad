@@ -29,6 +29,8 @@ enum class Action : uint8_t {
   kAppVolume,          // rotate: the Now Playing app's own volume (host only)
   kAppMute,
   kMixerFocus,  // focus or unfocus the mixer widget on the current page
+  kAppSwitch,   // rotate: Now Playing moves to the next / previous app with media (host only)
+  kAppNext,     // press: Now Playing moves to the next app with media (host only)
 };
 
 const char* name(Action a);

@@ -253,6 +253,16 @@ internal sealed class WebServer(int port, WebServices services)
         });
         app.MapGet("/api/integrations/beszel/raw", () => beszel.Raw is { } raw ? Results.Text(raw, "application/json") : Results.NotFound());
         // What the host sends as NOW_PLAYING and VOLUME right now (debugging aid).
+        // Apps with a media session now (switching order, the Now Playing one marked) and every app
+        // seen with one before (the preferred apps picker).
+        app.MapGet("/api/media/apps", () => Results.Json(new
+        {
+            apps = media.Apps().Select(a => new { id = a.Id, name = a.Name, state = a.State, current = a.Id == media.SessionAppId }),
+            known = media.Known.All.Select(a => new { id = a.Id, name = a.Name }),
+        }, ProtocolJson.Options));
+        app.MapPost("/api/media/apps/choose", (string id) =>
+            media.Choose(id) ? Results.NoContent() : Results.NotFound(new { error = "that app has no media session now" }));
+
         app.MapGet("/api/media", () =>
         {
             var art = media.Art;

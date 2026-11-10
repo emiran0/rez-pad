@@ -19,6 +19,8 @@ export const ACTION_NAMES = {
   "media.mute": "Mute",
   "media.app_volume": "Volume of the playing app",
   "media.app_mute": "Mute the playing app",
+  "media.app_switch": "Switch media app",
+  "media.app_next": "Next media app",
   "mixer.focus": "Focus the volume mixer",
   "display.toggle": "Screen off / on",
   "display.brightness": "Brightness",

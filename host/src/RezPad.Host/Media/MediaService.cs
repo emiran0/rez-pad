@@ -81,6 +81,9 @@ internal sealed class MediaService(Func<MediaOptions> options) : IDisposable
     private int _sessionsDirty = 1;
     private DateTimeOffset? _artDue;
     private (long Pos, DateTimeOffset At)? _seek;
+    private string? _focusId;  // the app in charge (see Select)
+    private readonly Dictionary<string, Status> _lastStatus = [];
+    private bool _looked;
 
     /// <summary>Raised on a worker thread when the track, state or controls change, or after a seek.</summary>
     public event Action<MediaState>? Changed;
@@ -112,6 +115,9 @@ internal sealed class MediaService(Func<MediaOptions> options) : IDisposable
             }
         }
     }
+
+    /// <summary>Apps that ever had a media session here (for the preferred apps picker).</summary>
+    public KnownMediaApps Known { get; } = new();
 
     public void Start() => _ = Task.Run(RunAsync);
 
@@ -285,6 +291,7 @@ internal sealed class MediaService(Func<MediaOptions> options) : IDisposable
         if (Interlocked.Exchange(ref _sessionsDirty, 0) == 1)
         {
             Resubscribe(sessions);
+            Known.Seen(Apps().Select(a => (a.Id, a.Name)));
         }
         var session = Select(sessions, manager.GetCurrentSession());
         var id = session?.SourceAppUserModelId;
@@ -433,28 +440,67 @@ internal sealed class MediaService(Func<MediaOptions> options) : IDisposable
     private void OnTimeline(Session s, TimelinePropertiesChangedEventArgs e) => Poke(art: false);
 
     /// <summary>
-    /// A playing session wins over paused ones; among equals the app priority list decides, then
-    /// Windows' own current session.
+    /// The app in charge ("focus") stays chosen while it exists, playing or paused: the app that
+    /// last started playing, or the one picked with <see cref="SwitchApp"/> / <see cref="Choose"/>.
+    /// So pausing the browser keeps the browser on screen and play/pause resumes it. Without a
+    /// focus (startup, the app closed) a playing session wins over paused ones, then the app
+    /// priority list, then Windows' own current session.
     /// </summary>
     private Session? Select(IReadOnlyList<Session> sessions, Session? current)
     {
-        Session? best = null;
-        var bestScore = int.MaxValue;
+        var open = new List<(Session S, Status Status)>();
         foreach (var s in sessions)
         {
-            Status status;
             try
             {
-                status = s.GetPlaybackInfo().PlaybackStatus;
+                var status = s.GetPlaybackInfo().PlaybackStatus;
+                if (status != Status.Closed)
+                {
+                    open.Add((s, status));
+                }
             }
             catch (COMException)
             {
-                continue;  // closing
+                // closing
             }
-            if (status == Status.Closed)
+        }
+
+        lock (_lock)
+        {
+            // An app that starts playing takes over (several at once: the priority list decides).
+            Session? started = null;
+            foreach (var (s, status) in open)
             {
-                continue;
+                var id = s.SourceAppUserModelId;
+                var was = _lastStatus.TryGetValue(id, out var w) ? w : (Status?)null;
+                // A session that appears already playing counts too, except at the very first look.
+                if (status == Status.Playing && (was is null ? _looked : was != Status.Playing) &&
+                    (started is null || Priority(id) < Priority(started.SourceAppUserModelId)))
+                {
+                    started = s;
+                }
             }
+            _looked = true;
+            _lastStatus.Clear();
+            foreach (var (s, status) in open)
+            {
+                _lastStatus[s.SourceAppUserModelId] = status;
+            }
+            if (started is not null)
+            {
+                _focusId = started.SourceAppUserModelId;
+            }
+            if (_focusId is not null && open.FirstOrDefault(o => o.S.SourceAppUserModelId == _focusId).S is { } focused)
+            {
+                return focused;
+            }
+            _focusId = null;
+        }
+
+        Session? best = null;
+        var bestScore = int.MaxValue;
+        foreach (var (s, status) in open)
+        {
             var score = (status == Status.Playing ? 0 : 1000) + Priority(s.SourceAppUserModelId) * 2 +
                         (current is not null && s.SourceAppUserModelId == current.SourceAppUserModelId ? 0 : 1);
             if (score < bestScore)
@@ -463,7 +509,67 @@ internal sealed class MediaService(Func<MediaOptions> options) : IDisposable
                 bestScore = score;
             }
         }
+        lock (_lock)
+        {
+            _focusId = best?.SourceAppUserModelId;
+        }
         return best;
+    }
+
+    /// <summary>The apps with a media session now, in switching order (priority list, then name).</summary>
+    public IReadOnlyList<(string Id, string Name, string State)> Apps()
+    {
+        var manager = _manager;
+        if (manager is null)
+        {
+            return [];
+        }
+        var list = new List<(string Id, string Name, string State)>();
+        foreach (var s in manager.GetSessions())
+        {
+            try
+            {
+                var st = s.GetPlaybackInfo().PlaybackStatus;
+                if (st != Status.Closed)
+                {
+                    list.Add((s.SourceAppUserModelId, AppName(s.SourceAppUserModelId), st == Status.Playing ? "playing" : "paused"));
+                }
+            }
+            catch (COMException)
+            {
+                // closing
+            }
+        }
+        return [.. list.OrderBy(a => Priority(a.Id)).ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase).ThenBy(a => a.Id)];
+    }
+
+    /// <summary>Moves Now Playing to the next (or previous) app with a media session; playback is not touched.</summary>
+    public void SwitchApp(int steps)
+    {
+        var apps = Apps();
+        if (apps.Count < 2 || steps == 0)
+        {
+            return;
+        }
+        var i = Math.Max(0, apps.ToList().FindIndex(a => a.Id == _sessionId));
+        var next = apps[((i + steps) % apps.Count + apps.Count) % apps.Count];
+        Choose(next.Id);
+    }
+
+    /// <summary>Makes the app with this session id the Now Playing app (until another app starts playing).</summary>
+    public bool Choose(string appId)
+    {
+        if (!Apps().Any(a => a.Id == appId))
+        {
+            return false;
+        }
+        lock (_lock)
+        {
+            _focusId = appId;
+        }
+        Log.Info($"media: switched to {AppName(appId)}");
+        Poke(art: true);
+        return true;
     }
 
     private int Priority(string appId)

@@ -84,6 +84,8 @@ internal sealed class MediaBridge : IDisposable
             case "media.app_mute":
                 SetAppVolume(StepApp(0, mute: true));
                 break;
+            case "media.app_switch": _media.SwitchApp(value); break;
+            case "media.app_next": _media.SwitchApp(1); break;
             default:
                 Log.Info($"action {action} {value} not handled by the host");
                 return;
