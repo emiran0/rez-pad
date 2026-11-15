@@ -2,6 +2,16 @@
 
 All notable changes, newest first. Version rules: [docs/versioning.md](docs/versioning.md).
 
+## 0.5.0 (2026-11-16)
+
+Update the board from the Device page after updating the host (new firmware feature and config key; the USB protocol is still v1, the config schema still 1).
+
+### New
+- **Knob popup**: when a knob changes the PC volume, the playing app's volume, the track position or the screen brightness and the page shows no widget for it, a small card in the middle of the screen shows the live value (icon or album art, name, level or position with a bar). It disappears 3 s after the last turn, stays up while you switch pages (unless the new page shows the value), and never appears for page turns or while the mixer is focused. Turn it off in Settings > Knobs and buttons ("Popup for knob changes").
+
+### Fixed
+- Knobs re-align with their clicks when they come to rest, so a stray count (contact bounce, loose wiring) no longer makes the next turn do nothing.
+
 ## 0.4.0 (2026-11-10)
 
 Update the board from the Device page after updating the host (new knob actions; the USB protocol is still v1, the config schema still 1).
