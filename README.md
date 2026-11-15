@@ -6,15 +6,17 @@ You build the hardware from common modules (no custom PCB, no soldering beyond h
 
 ## Features
 
-- **Now Playing**: title, artist, album art, progress and controls for whatever plays in Windows (Spotify, browsers, any app that shows up in the Windows media overlay). Seek, volume and mute from the knobs.
+- **Now Playing**: title, artist, album art, progress and controls for whatever plays in Windows (Spotify, browsers, any app that shows up in the Windows media overlay). Seek, volume and mute from the knobs. The app you used last stays on screen while paused; switch to another app from a knob, or set preferred apps in the settings.
 - **System**: CPU and GPU load, temperatures, clocks and power, RAM, VRAM, disks, network, fans. Values match Task Manager.
 - **Weather and room**: current weather and forecast from [Open-Meteo](https://open-meteo.com/) (no account or API key), plus live room temperature, humidity, pressure and pressure trend from the device's own sensor.
 - **Volume mixer**: a widget listing the apps in the Windows volume mixer, as rows or vertical faders; focus it with a button, pick an app with one knob and set its volume with the other. The status bar shows what the knobs do while it is focused.
 - **Status bar**: clock, page name, page dots and up to 3 small items of your choice (date, room or outdoor temperature, volume, any system value).
 - **Spectrum**: bars that move with whatever the PC plays (captured on the PC, sent over USB about 30 times a second).
 - **Homelab integrations** (host-side, credentials stay on the PC): Beszel machines as data sources for every system widget and as a server card (CPU, memory, disk, load, temperature, network).
-- **Widget grid editor** at `http://127.0.0.1:47800`: up to 8 pages, each with its own grid (up to 8x8) and colors. Widgets: now playing, album art, track info, media controls, progress, volume, spectrum, metric value / bar / gauge / graph, clock, room climate, weather now, forecast, text label, and images (pictures and animated GIFs). The editor shows a live preview of the device screen.
-- **Knobs and buttons**: turn, press-and-turn, click, double click and long press, each mapped to an action (pages, media, volume, volume of just the playing app, seek, brightness, screen off), a key shortcut the device types itself, or a host macro (keys, text, waits, opening programs). Up to 4 extra buttons.
+- **Widget grid editor** at `http://127.0.0.1:47800`: up to 8 pages, each with its own grid (up to 8x8) and colors. Widgets: now playing, album art, track info, media controls, progress, volume, volume mixer, spectrum, metric value / bar / gauge / graph, server card, clock, room climate, weather now, forecast, text label, and images (pictures and animated GIFs). The editor shows a live preview of the device screen.
+- **Knobs and buttons**: turn, press-and-turn, click, double click and long press, each mapped to an action (pages, media, volume, volume of just the playing app, seek, brightness, screen off), a key shortcut the device types itself, or a host macro (keys, text, waits, opening programs). Up to 3 knobs and 4 extra buttons; choose which physical control is which by turning or pressing it.
+- **Knob popup**: when a knob changes the volume, the playing app's volume, the track position or the brightness and the page has no widget for it, a small card in the middle of the screen shows the new value for 3 seconds (can be turned off).
+- **Firmware updates from the config page**: the app has the matching firmware built in and writes it over the same USB cable; layout, settings and pictures stay.
 - **Works without the app**: the device keeps its layout in flash; without the host it still shows the room climate and the last weather, and the knobs send media keys over USB.
 - **Screen power**: night dimming, off while the PC sleeps, wakes on a knob.
 - No Wi-Fi on the device: nothing to set up, nothing on your network.
@@ -72,10 +74,12 @@ The pin map lives in [`firmware/include/pins.h`](firmware/include/pins.h) and [`
 
 Requirements: Windows 10 or 11, 64-bit. CPU temperature and motherboard fans need the [PawnIO](https://pawnio.eu/) driver and "Start with Windows" (which runs the app with administrator rights); everything else works without them. The app is not code-signed yet, so SmartScreen asks once ("More info" > "Run anyway").
 
+The host has been tested on one PC so far (Ryzen 5 5600X, RTX 3070 Ti, ASUS B450 board, Windows 11). Other CPUs, GPUs and motherboards should work but are untested.
+
 ## Using it
 
 - **Tray icon**: blue screen when the device is connected, grey when not. Double-click for the config page; right-click for status, the log and "Start with Windows".
-- **Config page** (`http://127.0.0.1:47800`): Layout to arrange pages and widgets (click an empty cell or a gallery card to add, drag to move, drag the corner to resize); Settings for theme, screen, knobs and buttons, macros, weather and units, room sensor; Device for status and images. "Save to device" (Ctrl+S) stores everything on the device. Ctrl+Z undoes.
+- **Config page** (`http://127.0.0.1:47800`): Layout to arrange pages and widgets (click an empty cell or a gallery card to add, drag to move, drag the corner to resize); Settings for theme, screen, status bar, knobs and buttons, macros, weather and units, room sensor, media apps and integrations; Device for status, images and firmware updates. "Save to device" (Ctrl+S) stores everything on the device. Ctrl+Z undoes.
 - **Default knobs**: left knob turns pages, press-and-turn seeks, click goes to the first page, long press turns the screen off. Right knob changes the volume, press-and-turn the brightness, click plays/pauses, double click skips, long press mutes.
 
 ## Building from source
@@ -115,7 +119,7 @@ The web editor (`web/`, plain HTML/CSS/JS modules, no build step) is embedded in
 powershell -ExecutionPolicy Bypass -File tools\package.ps1     # -SkipFirmware to skip the PlatformIO build
 ```
 
-Writes `publish\rez-pad-<version>-win-x64.zip` with the self-contained single-file `rez-pad.exe`, the installer (`setup/`), the firmware image and the license files. The version comes from `host/Directory.Build.props`.
+Writes `publish\rez-pad-<version>-win-x64.zip` with the self-contained single-file `rez-pad.exe`, the installer (`setup/`), the firmware image and the license files. The version comes from [`VERSION`](VERSION). Tag the release commit (`vX.Y.Z`) before packaging: only a build at its tag with no local changes shows the plain version (`v0.5.0`); other builds add the commit.
 
 ### Generated files
 
@@ -123,26 +127,6 @@ Writes `publish\rez-pad-<version>-win-x64.zip` with the self-contained single-fi
 - `python tools/gen_config_headers.py`: firmware headers from `docs/default-config.json` and `docs/config-test-vectors.json`.
 - `python tools/gen_fonts.py`: LVGL fonts (needs Node.js).
 - `python tools/gen_weather_icons.py --web web/img/weather` and `python tools/gen_app_icon.py`: icons (need Pillow).
-
-## Project layout and docs
-
-```
-firmware/   ESP32-S3 firmware (PlatformIO, Arduino on ESP-IDF, LVGL 9, LovyanGFX)
-host/       Windows tray app (C# / .NET 10, Kestrel, WinRT media, LibreHardwareMonitor)
-web/        config editor served by the host
-setup/      installer scripts shipped in the release zip
-tools/      generators, packaging, debug console
-docs/       specs and measurements
-```
-
-- [`docs/hardware.md`](docs/hardware.md): parts, pin map, power, hardware checks
-- [`docs/protocol.md`](docs/protocol.md): USB protocol between host and device
-- [`docs/config-schema.md`](docs/config-schema.md): config file, widgets, actions, editor, host API
-- [`docs/measurements.md`](docs/measurements.md): timings and measurements on real hardware
-- [`docs/known-issues.md`](docs/known-issues.md): known limitations
-- [`CLAUDE.md`](CLAUDE.md): architecture overview, roadmap and design decisions
-
-The host has been tested on one PC so far (Ryzen 5 5600X, RTX 3070 Ti, ASUS B450 board, Windows 11). Other CPUs, GPUs and motherboards should work but are untested; see the known issues for what to check.
 
 ## Versions
 
