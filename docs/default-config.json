@@ -4,6 +4,7 @@
     "brightness": 80,
     "night": { "enabled": true, "from": "23:00", "to": "07:30", "brightness": 15 },
     "sleep_on_pc_sleep": true,
+    "knob_popup": true,
     "spi_hz": 40000000
   },
   "grid": { "cols": 4, "rows": 3 },

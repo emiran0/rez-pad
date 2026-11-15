@@ -416,6 +416,7 @@ void mediaAction(actions::Action a, int value) {
 
 void actionFeedback(actions::Action a) {
   using actions::Action;
+  if (!config::active().knobPopup) return;  // turned off in the settings
   const Model& m = model();
   popup::Kind kind = popup::Kind::kNone;
   switch (a) {

@@ -282,6 +282,7 @@ public static class ConfigValidator
                 Int(n, "brightness", "display.night", 0, 100);
             }
             Bool(d, "sleep_on_pc_sleep", "display");
+            Bool(d, "knob_popup", "display");
             Int(d, "spi_hz", "display", 1_000_000, 80_000_000);
         }
 

@@ -399,6 +399,7 @@ bool parseDisplay(JsonObjectConst root, Config& cfg, Ctx& c) {
     if (!getInt(n, "brightness", "display.night", 0, 100, cfg.nightBrightness, c)) return false;
   }
   if (!getBool(d, "sleep_on_pc_sleep", "display", cfg.sleepOnPcSleep, c)) return false;
+  if (!getBool(d, "knob_popup", "display", cfg.knobPopup, c)) return false;
   return getInt(d, "spi_hz", "display", 1000000L, 80000000L, cfg.spiHz, c);
 }
 

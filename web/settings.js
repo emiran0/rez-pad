@@ -258,7 +258,9 @@ function knobs() {
   return panel("Knobs and buttons", "What they do on every page; a page can change single gestures in Layout. A press can run an action, send a key shortcut (the device types it itself, also without this app) or run a macro. A double click makes single clicks wait 0.3 s for a second one.",
     numberingCard(renderSettings),
     used.length ? h("div", { class: "knob-grid" }, ...used.map((c) => (c.knob ? enc(c.dev, c.label) : btn(c.dev, c.label))))
-      : h("p", { class: "hint", text: "No knob or button has a number yet: assign one above." }));
+      : h("p", { class: "hint", text: "No knob or button has a number yet: assign one above." }),
+    check("Popup for knob changes", "display.knob_popup", true),
+    h("p", { class: "hint", text: "When a knob changes the volume, the playing app's volume, the track position or the brightness and the page has no widget showing it, a small card in the middle of the screen shows the new value for 3 seconds." }));
 }
 
 // ---- macros ----

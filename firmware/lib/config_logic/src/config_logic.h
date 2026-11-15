@@ -152,6 +152,7 @@ struct Config {
   uint16_t nightFromMin = 23 * 60, nightToMin = 7 * 60 + 30;  // minutes since midnight
   uint8_t nightBrightness = 15;
   bool sleepOnPcSleep = true;
+  bool knobPopup = true;  // knob popup for values the page does not show (ui/popup.h)
   uint32_t spiHz = 40000000;
   // grid (default for pages without their own)
   uint8_t cols = 4, rows = 3;
