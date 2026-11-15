@@ -21,7 +21,10 @@ def git(*args):
 
 commit = git("rev-parse", "--short=7", "HEAD")
 dirty = bool(git("status", "--porcelain", "--untracked-files=no"))
-full = version + (f"+{commit}" if commit else "") + (".dirty" if dirty else "")
+# A release build (HEAD carries the tag vX.Y.Z of VERSION, nothing changed) is plain "0.5.0"; any
+# other build carries the commit, so a dev build is never mistaken for the release.
+release = not dirty and f"v{version}" in git("tag", "--points-at", "HEAD").split()
+full = version if release else version + (f"+{commit}" if commit else "") + (".dirty" if dirty else "")
 
 parts = [int(p) if p.isdigit() else 0 for p in (version.split("-")[0].split(".") + ["0", "0"])[:3]]
 # USB bcdDevice 0xJJMN: major in the high byte, minor and patch one hex digit each.

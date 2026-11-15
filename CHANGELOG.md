@@ -9,6 +9,9 @@ Update the board from the Device page after updating the host (new firmware feat
 ### New
 - **Knob popup**: when a knob changes the PC volume, the playing app's volume, the track position or the screen brightness and the page shows no widget for it, a small card in the middle of the screen shows the live value (icon or album art, name, level or position with a bar). It disappears 3 s after the last turn, stays up while you switch pages (unless the new page shows the value), and never appears for page turns or while the mixer is focused. Turn it off in Settings > Knobs and buttons ("Popup for knob changes").
 
+### Changed
+- Versions read **v0.5.0** in the config page and the tray icon (release builds no longer show the commit; development builds still do).
+
 ### Fixed
 - Knobs re-align with their clicks when they come to rest, so a stray count (contact bounce, loose wiring) no longer makes the next turn do nothing.
 

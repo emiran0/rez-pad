@@ -157,6 +157,13 @@ export function postJson(path, value) {
 
 // ---- DOM helpers shared by the views ----
 
+// How versions are shown: "v0.5.0" for a release, "v0.5.0+abc1234 (dev)" for a build with local
+// changes (docs/versioning.md). Empty for no version.
+export function fmtVersion(v) {
+  if (!v) return "";
+  return `v${v.replace(/\.dirty$/, " (dev)")}`;
+}
+
 export function h(tag, attrs, ...children) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {

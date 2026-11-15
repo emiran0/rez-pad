@@ -49,7 +49,7 @@ internal sealed class TrayContext : ApplicationContext
         _icon = new NotifyIcon
         {
             Icon = _iconOff,
-            Text = "rez-pad",
+            Text = $"rez-pad {Program.Display(Program.Version)}",
             ContextMenuStrip = menu,
             Visible = true,
         };
@@ -107,14 +107,14 @@ internal sealed class TrayContext : ApplicationContext
     {
         var text = s.State switch
         {
-            DeviceLinkState.Connected => $"Connected ({s.Port}, firmware {s.Device?.FwVer})",
+            DeviceLinkState.Connected => $"Connected ({s.Port}, firmware {Program.Display(s.Device?.FwVer)})",
             DeviceLinkState.Connecting => $"Connecting ({s.Port})...",
             DeviceLinkState.Incompatible => $"Incompatible firmware: {s.Error}",
             _ => "Looking for rez-pad...",
         };
         _statusItem.Text = text;
         _icon.Icon = s.State == DeviceLinkState.Connected ? _iconOn : _iconOff;
-        var tip = $"rez-pad: {text}";
+        var tip = $"rez-pad {Program.Display(Program.Version)}: {text}";
         _icon.Text = tip.Length > 127 ? tip[..127] : tip;
     }
 

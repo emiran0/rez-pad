@@ -17,8 +17,15 @@ internal static class Program
     public const int DefaultPort = 47800;
     private const string ExitEventName = @"Local\RezPad.Host.Exit";
 
+    // "0.5.0" for a release build (built at its vX.Y.Z tag, nothing changed), "0.5.0+abc1234" or
+    // "0.5.0+abc1234.dirty" for a dev build (Directory.Build.props, docs/versioning.md).
     public static string Version { get; } =
-        Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
+        Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+        ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
+
+    /// <summary>How a version is shown to the user: "v0.5.0", or "v0.5.0+abc1234 (dev)" for a build with local changes.</summary>
+    public static string Display(string? version) =>
+        string.IsNullOrEmpty(version) ? "?" : "v" + (version.EndsWith(".dirty", StringComparison.Ordinal) ? version[..^6] + " (dev)" : version);
 
     [STAThread]
     private static int Main(string[] args)

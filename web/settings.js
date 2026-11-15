@@ -2,7 +2,7 @@
 // maintenance, image library, data sources). Forms change the working copy through set().
 "use strict";
 
-import { state, on, get, set, change, h, api, postJson, toast, controlsInUse } from "./state.js";
+import { state, on, get, set, change, h, api, postJson, toast, controlsInUse, fmtVersion } from "./state.js";
 import { numberingCard } from "./numbering.js";
 import { firmwarePanel } from "./firmware.js";
 import { mediaAppsCard } from "./mediaapps.js";
@@ -579,8 +579,8 @@ function renderLive() {
     const s = state.data.status;
     const c = s?.config;
     const rows = [
-      ["Host", s ? `rez-pad ${s.hostVersion}, protocol v${s.protocolVersion}${s.elevated ? ", administrator" : ""}` : "not reachable"],
-      ["Device", linkText(s) + (s?.deviceConnected ? ` on ${s.port}, firmware ${s.firmwareVersion} (protocol v${s.firmwareProtocol}), ${s.serial}` : s?.error && s.linkState === "Incompatible" ? `: ${s.error}` : "")],
+      ["Host", s ? `rez-pad ${fmtVersion(s.hostVersion)}, protocol v${s.protocolVersion}${s.elevated ? ", administrator" : ""}` : "not reachable"],
+      ["Device", linkText(s) + (s?.deviceConnected ? ` on ${s.port}, firmware ${fmtVersion(s.firmwareVersion)} (protocol v${s.firmwareProtocol}), ${s.serial}` : s?.error && s.linkState === "Incompatible" ? `: ${s.error}` : "")],
       ["Config", c ? (c.progress ?? (c.inSync ? "Same on the device" : s.deviceConnected ? "Not on the device yet" : "Device not connected")) : ""],
       ["Last send", c?.lastPush ? (c.lastPush.ok ? `OK in ${c.lastPush.ms} ms${c.lastPush.imagesSent ? `, ${c.lastPush.imagesSent} image(s)` : ""}` : c.lastPush.error) : "none yet"],
       ["Sensors", s?.sensors?.message ?? "All readable"],

@@ -3,7 +3,7 @@
 // installed instead (a newer or older release, or a board in update mode that has no rez-pad yet).
 "use strict";
 
-import { state, h, api, toast, emit } from "./state.js";
+import { state, h, api, toast, emit, fmtVersion } from "./state.js";
 import { icon } from "./icons.js";
 
 let info = null;       // last GET /api/firmware
@@ -28,7 +28,7 @@ export async function pollFirmware() {
   if (info?.status?.active || visible) timer = setTimeout(pollFirmware, info?.status?.active ? 500 : 3000);
 }
 
-const shortVer = (v) => (v || "").replace(/\.dirty$/, " (dev)");
+const shortVer = fmtVersion;
 
 async function start(file) {
   const what = file ? file.name : `rez-pad ${shortVer(info?.bundled?.version) || ""}`;

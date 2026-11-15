@@ -6,6 +6,9 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- One version for host, firmware and installer: the repo's VERSION file (docs/versioning.md). -->
     <Version>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\VERSION').Trim())</Version>
+    <!-- Product version: plain "0.5.0" for a release (HEAD carries the tag v<Version> and nothing is
+         changed), "0.5.0+abc1234[.dirty]" otherwise; set by the RezPadVersion target below. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <!-- Shown in the exe's file details and Task Manager (no signature needed). -->
     <Authors>rez-lab</Authors>
     <Company>rez-lab</Company>
@@ -14,4 +17,26 @@
     <!-- Symbols inside the dlls, so a single-file publish is one file. -->
     <DebugType Condition="'$(Configuration)' == 'Release'">embedded</DebugType>
   </PropertyGroup>
+
+  <Target Name="RezPadVersion" BeforeTargets="GetAssemblyVersion;GenerateAssemblyInfo;GetAssemblyAttributes">
+    <PropertyGroup>
+      <RezPadRoot>$(MSBuildThisFileDirectory)..</RezPadRoot>
+    </PropertyGroup>
+    <Exec Command="git rev-parse --short=7 HEAD" WorkingDirectory="$(RezPadRoot)" ConsoleToMSBuild="true" IgnoreExitCode="true" StandardOutputImportance="low" StandardErrorImportance="low" EchoOff="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="RezPadCommit" />
+    </Exec>
+    <Exec Command="git tag --points-at HEAD" WorkingDirectory="$(RezPadRoot)" ConsoleToMSBuild="true" IgnoreExitCode="true" StandardOutputImportance="low" StandardErrorImportance="low" EchoOff="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="RezPadTags" />
+    </Exec>
+    <Exec Command="git status --porcelain --untracked-files=no" WorkingDirectory="$(RezPadRoot)" ConsoleToMSBuild="true" IgnoreExitCode="true" StandardOutputImportance="low" StandardErrorImportance="low" EchoOff="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="RezPadChanges" />
+    </Exec>
+    <PropertyGroup>
+      <RezPadRelease>false</RezPadRelease>
+      <RezPadRelease Condition="'$(RezPadChanges)' == '' and $([System.String]::Copy(';$(RezPadTags);').Contains(';v$(Version);'))">true</RezPadRelease>
+      <InformationalVersion Condition="'$(RezPadRelease)' == 'true'">$(Version)</InformationalVersion>
+      <InformationalVersion Condition="'$(RezPadRelease)' != 'true' and '$(RezPadCommit)' != ''">$(Version)+$(RezPadCommit)</InformationalVersion>
+      <InformationalVersion Condition="'$(RezPadRelease)' != 'true' and '$(RezPadChanges)' != ''">$(InformationalVersion).dirty</InformationalVersion>
+    </PropertyGroup>
+  </Target>
 </Project>

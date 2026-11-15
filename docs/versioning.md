@@ -4,11 +4,18 @@
 
 Host app, firmware, web editor and installer ship together in one release zip and share one version number. It is stored once, in the repo's [`VERSION`](../VERSION) file:
 
-- the host reads it in `host/Directory.Build.props` (exe file version; the product version adds the git commit, e.g. `0.2.0+913c346`);
-- the firmware gets it from `firmware/scripts/version.py`, which generates `src/version_info.cpp` (not in git) with the version, the commit and `.dirty` for uncommitted changes (e.g. `0.2.0+913c346`), plus the USB `bcdDevice` (0x0020 for 0.2.0); the device reports it in HELLO_ACK `fw_ver` and the console's `info`;
+- the host reads it in `host/Directory.Build.props` (exe file version, and the product version described below);
+- the firmware gets it from `firmware/scripts/version.py`, which generates `src/version_info.cpp` (not in git) with the version described below, plus the USB `bcdDevice` (0x0020 for 0.2.0); the device reports it in HELLO_ACK `fw_ver` and the console's `info`;
 - `tools/package.ps1` names the zip and the firmware image after it.
 
 Never write a version number anywhere else.
+
+### Release builds versus dev builds
+
+- A **release build** is built from the commit that carries the tag `vX.Y.Z` of `VERSION`, with no uncommitted changes. Host and firmware then report the plain version: `0.5.0`.
+- Every **other build** (a commit after the tag, or local changes) reports the version plus the commit: `0.5.0+abc1234`, and `0.5.0+abc1234.dirty` with uncommitted changes.
+- Users see versions with a `v` in front: `v0.5.0` in the config page (Settings, Device > Firmware) and the tray icon's tooltip and menu; a dev build reads `v0.5.0+abc1234`, or `v0.5.0+abc1234 (dev)` with local changes. The web page uses `fmtVersion()` (web/state.js), the host `Program.Display()`.
+- So the tag must exist **before** the release zip is built (step 4 below); a zip built earlier carries the commit and has to be rebuilt.
 
 ## Numbering: MAJOR.MINOR.PATCH ([Semantic Versioning](https://semver.org/))
 
