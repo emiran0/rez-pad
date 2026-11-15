@@ -107,6 +107,10 @@ Stable dotted IDs. The host publishes the catalog of what exists on this PC (`GE
 
 `media.app_volume` and `media.app_mute` change only the app that is playing (the Now Playing app, e.g. Spotify or the browser), like its slider in the Windows volume mixer, by `media.volume_step` per detent. The host matches the media session to the app's audio sessions by process (and package for Store apps) and changes all of them. They need the host: offline they do nothing (there is no media key for one app's volume).
 
+### Knob popup
+
+When a knob runs `media.volume`, `media.mute`, `media.app_volume`, `media.app_mute`, `media.seek` or `display.brightness` and the shown page has no widget for that value, the device shows a small card in the middle of the screen with the live value (icon or album art, name, level or position and a bar) for 3 s after the last change. A `volume` widget with the same `target` covers the volume actions, a `progress`, `media_controls` or `now_playing` with a progress bar covers seek; brightness always shows it. The card stays up across page switches unless the new page shows the value. Host-only actions (app volume, seek) show nothing offline; offline volume shows `--` (the knob still sends media keys). Turns that a focused mixer takes, and every other action, show nothing. Device-only, no config.
+
 ## Integrations
 
 Apps on the user's network the host reads (Settings > Integrations). Their settings and credentials are host-only (`%APPDATA%\rez-pad\integrations.json`, password encrypted with Windows DPAPI); the config only names their data sources.

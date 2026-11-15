@@ -11,7 +11,9 @@ namespace widgets {
 // Album art, or a placeholder tinted by the track.
 class ArtView {
  public:
-  void build(lv_obj_t* parent, int x, int y, int side);
+  // `setsArtSize`: this view asks the host for art of its size (layout widgets do; the knob popup
+  // only shows what the layout already gets).
+  void build(lv_obj_t* parent, int x, int y, int side, bool setsArtSize = true);
   void refresh(const ui::Model& m, uint32_t nowMs);
 
  private:
@@ -44,6 +46,7 @@ class ControlsView {
  public:
   void build(lv_obj_t* parent, int x, int y, int w, int h, bool withButtons);
   void refresh(const ui::Model& m, uint32_t changed, uint32_t nowMs);
+  bool hasBar() const { return bar_ != nullptr; }
 
  private:
   lv_obj_t* prev_ = nullptr;
@@ -81,6 +84,7 @@ class MediaControls : public Widget {
  public:
   MediaControls(const Spec& s, bool withButtons) : Widget(s), withButtons_(withButtons) {}
   void build(lv_obj_t* card, int w, int h) override;
+  uint32_t shows() const override { return controls_.hasBar() ? kShowsSeek : 0; }
   uint32_t interests() const override;
   void refresh(const ui::Model& m, uint32_t changed, uint32_t nowMs) override;
 
@@ -95,6 +99,7 @@ class NowPlayingWidget : public Widget {
  public:
   using Widget::Widget;
   void build(lv_obj_t* card, int w, int h) override;
+  uint32_t shows() const override { return controls_.hasBar() ? kShowsSeek : 0; }
   uint32_t interests() const override;
   void refresh(const ui::Model& m, uint32_t changed, uint32_t nowMs) override;
 
@@ -109,6 +114,7 @@ class VolumeWidget : public Widget {
  public:
   using Widget::Widget;
   void build(lv_obj_t* card, int w, int h) override;
+  uint32_t shows() const override { return spec_.appTarget ? kShowsAppVolume : kShowsVolume; }
   uint32_t interests() const override;
   void refresh(const ui::Model& m, uint32_t changed, uint32_t nowMs) override;
 

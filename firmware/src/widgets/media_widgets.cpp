@@ -35,11 +35,11 @@ lv_obj_t* box(lv_obj_t* parent, int x, int y, int w, int h) {
 
 // ---- ArtView ----
 
-void ArtView::build(lv_obj_t* parent, int x, int y, int side) {
+void ArtView::build(lv_obj_t* parent, int x, int y, int side, bool setsArtSize) {
   side_ = side;
   // The host sends one art size for the whole layout: the biggest any widget wants (decoder
   // buffers hold up to 240 px). Smaller views scale it down.
-  if (side > media::artSize()) media::setArtSize(side > 240 ? 240 : side);
+  if (setsArtSize && side > media::artSize()) media::setArtSize(side > 240 ? 240 : side);
   box_ = box(parent, x, y, side, side);
   lv_obj_set_style_radius(box_, side >= 80 ? 6 : 4, 0);
   lv_obj_set_style_bg_opa(box_, LV_OPA_COVER, 0);

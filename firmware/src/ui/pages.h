@@ -27,6 +27,9 @@ const char* name(int index);
 void show(int index);
 void step(int delta);  // wraps around
 
+// widgets::Shows bits of the shown page's widgets.
+uint32_t currentShows();
+
 // Refreshes widgets on all pages whose interests match `changed`.
 void refresh(const Model& m, uint32_t changed, uint32_t nowMs);
 

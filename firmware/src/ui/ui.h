@@ -25,5 +25,9 @@ void stepPage(int delta);
 // Media actions; in Phase 3 they drive the demo player.
 void mediaAction(actions::Action a, int value);
 
+// After a knob action ran: shows the knob popup (ui/popup.h) when the shown page has no widget
+// for what it changed. Other actions do nothing.
+void actionFeedback(actions::Action a);
+
 }  // namespace ui
 }  // namespace rp

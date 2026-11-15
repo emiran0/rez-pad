@@ -15,6 +15,8 @@
 #include "weather/weather.h"
 #include "model.h"
 #include "pages.h"
+#include "popup.h"
+#include "display/screen.h"
 #include "sensors/sensors.h"
 #include "status_bar.h"
 #include "theme.h"
@@ -174,6 +176,7 @@ void buildPages() {
 void applyConfig(cfg::Config* next) {
   // The widgets are rebuilt: a focused mixer would point at the old one.
   mixer::unfocus(model().mixer);
+  popup::hide();
   const uint32_t t0 = millis();
   const int page = pages::current();
   pages::clear();  // widgets reference the old config's specs: delete them before releasing it
@@ -219,6 +222,7 @@ bool begin() {
 
   status_bar::build(scr);
   buildPages();
+  popup::build();
   setUnits(config::active());
   updatePageIndicator();
 
@@ -295,12 +299,16 @@ void loop(uint32_t nowMs) {
     sendSensor();
   }
 
+  uint32_t changed = 0;
   if (gPending && !lvgl_port::paused()) {
-    const uint32_t changed = gPending;
+    changed = gPending;
     gPending = 0;
     status_bar::refresh(model(), changed);
     pages::refresh(model(), changed, nowMs);
   }
+  // A dark screen (or the debug view) drops the popup; it would be stale when the screen wakes.
+  if (lvgl_port::paused()) popup::hide();
+  else popup::refresh(model(), changed, nowMs);
   lvgl_port::handle();
 }
 
@@ -331,6 +339,7 @@ void unfocusMixer() {
 }
 
 void toggleMixerFocus() {
+  popup::hide();  // the knobs now drive the mixer, which shows its own levels
   Model& m = model();
   if (mixer::toggleFocus(m.mixer, pageMixer(), m.hostConnected, millis())) gPending |= kChangedMixer;
 }
@@ -342,9 +351,27 @@ bool mixerInput(const input::Event& e) {
   return true;
 }
 
+// widgets::Shows bit a popup kind stands for (0: no widget shows it, e.g. brightness).
+uint32_t popupShows(popup::Kind k) {
+  switch (k) {
+    case popup::Kind::kVolume: return widgets::kShowsVolume;
+    case popup::Kind::kAppVolume: return widgets::kShowsAppVolume;
+    case popup::Kind::kSeek: return widgets::kShowsSeek;
+    default: return 0;
+  }
+}
+
+// After a page switch the popup stays for the rest of its time, unless the new page shows the
+// same value in a widget.
+void popupAfterPageChange() {
+  const uint32_t need = popupShows(popup::shown());
+  if (need && (pages::currentShows() & need)) popup::hide();
+}
+
 void showPage(int index) {
   unfocusMixer();
   pages::show(index);
+  popupAfterPageChange();
   updatePageIndicator();
   showMixerHint();
   gPending |= kChangedTick;  // bring the new page's live parts up to date immediately
@@ -353,6 +380,7 @@ void showPage(int index) {
 void stepPage(int delta) {
   unfocusMixer();
   pages::step(delta);
+  popupAfterPageChange();
   updatePageIndicator();
   showMixerHint();
   gPending |= kChangedTick;
@@ -384,6 +412,34 @@ void mediaAction(actions::Action a, int value) {
     m.np.sampledAtMs = now;
     gPending |= kChangedMedia;
   }
+}
+
+void actionFeedback(actions::Action a) {
+  using actions::Action;
+  const Model& m = model();
+  popup::Kind kind = popup::Kind::kNone;
+  switch (a) {
+    case Action::kVolume:
+    case Action::kMute:
+      kind = popup::Kind::kVolume;  // offline too: the keys still go out, the level is unknown
+      break;
+    case Action::kAppVolume:
+    case Action::kAppMute:
+      if (m.hostConnected) kind = popup::Kind::kAppVolume;  // offline these do nothing
+      break;
+    case Action::kSeek:
+      if (m.hostConnected) kind = popup::Kind::kSeek;  // offline seek is ignored
+      break;
+    case Action::kDisplayBrightness:
+      kind = popup::Kind::kBrightness;
+      break;
+    default:
+      return;  // page changes and the rest: nothing to show
+  }
+  if (kind == popup::Kind::kNone) return;
+  const uint32_t need = popupShows(kind);
+  if (need && (pages::currentShows() & need)) return;  // a widget on this page shows it already
+  popup::show(kind, m, millis(), screen::target());
 }
 
 }  // namespace ui

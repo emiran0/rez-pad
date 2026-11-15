@@ -12,6 +12,14 @@
 namespace rp {
 namespace widgets {
 
+// Values a knob action changes that a widget shows (the knob popup appears only when the shown
+// page has none for the action, ui/popup.h).
+enum Shows : uint32_t {
+  kShowsVolume = 1u << 0,     // the PC's master volume
+  kShowsAppVolume = 1u << 1,  // the Now Playing app's volume
+  kShowsSeek = 1u << 2,       // the track position (a progress bar)
+};
+
 // One widget on a page: a "widgets" entry of the config, parsed and validated by lib/config_logic
 // (strings are empty when not set; unit, range and thresholds already have source defaults).
 using Spec = cfg::WidgetSpec;
@@ -27,6 +35,9 @@ class Widget {
 
   // True for widgets drawn edge to edge (no card padding), e.g. images.
   virtual bool fullBleed() const { return false; }
+
+  // Which Shows values are visible in this widget (after build).
+  virtual uint32_t shows() const { return 0; }
 
   // Which ui::Changed bits this widget cares about.
   virtual uint32_t interests() const = 0;

@@ -129,6 +129,7 @@ void run(Action a, int value) {
       screen::adjust(value);
       break;
   }
+  ui::actionFeedback(a);
 }
 
 }  // namespace actions

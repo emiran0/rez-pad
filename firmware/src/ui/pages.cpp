@@ -132,6 +132,13 @@ void show(int index) {
   lv_obj_set_style_bg_color(lv_screen_active(), color::bg(), 0);
 }
 
+uint32_t currentShows() {
+  if (gCurrent < 0 || gCurrent >= gCount) return 0;
+  uint32_t s = 0;
+  for (int i = 0; i < gPages[gCurrent].widgetCount; ++i) s |= gPages[gCurrent].widgets[i]->shows();
+  return s;
+}
+
 void step(int delta) {
   if (gCount == 0) return;
   int next = (gCurrent + delta) % gCount;
