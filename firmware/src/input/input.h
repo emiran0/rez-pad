@@ -76,5 +76,16 @@ struct Snapshot {  // by physical port
 };
 Snapshot snapshot();
 
+// Debug trace of encoder count changes (console `enclog`).
+struct TraceEntry {
+  uint32_t ms;
+  uint8_t port;   // 0-based
+  uint8_t level;  // bit 0 = A, bit 1 = B, bit 2 = re-aligned at rest (count unchanged)
+  int8_t steps;   // detents emitted at this change
+  int32_t count;
+};
+// Copies up to max entries (oldest first) and clears the trace. Returns the number copied.
+int takeTrace(TraceEntry* out, int max);
+
 }  // namespace input
 }  // namespace rp

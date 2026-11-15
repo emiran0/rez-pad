@@ -70,5 +70,19 @@ int DetentAccumulator::update(int32_t count) {
   return static_cast<int>(invert_ ? -steps : steps);
 }
 
+int DetentAccumulator::settle(int32_t count) {
+  const int32_t delta = count - base_;
+  if (cpd_ < 3 || delta == 0 || delta >= cpd_ || delta <= -cpd_) return 0;
+  const int32_t mag = delta < 0 ? -delta : delta;
+  if (mag == 1) {
+    base_ = count;
+    return 0;
+  }
+  if (mag < cpd_ - 1) return 0;
+  base_ = count;
+  const int steps = delta > 0 ? 1 : -1;
+  return invert_ ? -steps : steps;
+}
+
 }  // namespace input
 }  // namespace rp

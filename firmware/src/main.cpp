@@ -375,6 +375,20 @@ void cmdEnc(int, char**, Print& out) {
   out.printf("queue drops %lu, learning %d\n", static_cast<unsigned long>(s.dropped), rp::input::learning());
 }
 
+// Prints and clears the encoder count trace.
+void cmdEncLog(int, char**, Print& out) {
+  static rp::input::TraceEntry t[256];
+  const int n = rp::input::takeTrace(t, 256);
+  for (int i = 0; i < n; ++i) {
+    out.printf("%8lu port %d count %6ld A%d B%d", static_cast<unsigned long>(t[i].ms), t[i].port + 1,
+               static_cast<long>(t[i].count), t[i].level & 1, (t[i].level >> 1) & 1);
+    if (t[i].level & 4) out.print("  re-aligned at rest");
+    if (t[i].steps) out.printf("  STEP %+d", t[i].steps);
+    out.println();
+  }
+  out.printf("%d changes\n", n);
+}
+
 // Settings of knob numbers 1 to 3 (until the next config).
 void cmdCpd(int argc, char** argv, Print& out) {
   long e = 0, n = 0;
@@ -555,6 +569,7 @@ const rp::console::Command kCommands[] = {
     {"stats", "", cmdStats},
     {"config", "", cmdConfig},
     {"enc", "", cmdEnc},
+    {"enclog", "", cmdEncLog},
     {"cpd", "<knob 1-3> <counts per click>", cmdCpd},
     {"encinv", "<knob 1-3> <0|1>", cmdEncInv},
     {"ports", "<knob|button> <port per number...>", cmdPorts},

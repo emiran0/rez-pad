@@ -166,6 +166,44 @@ static void test_detent_fast_spin_no_loss() {
   TEST_ASSERT_EQUAL(1000, total);
 }
 
+// A stray count at rest used to shift every later click by one count, so the next turn was lost.
+static void test_detent_settle_drops_stray_count() {
+  DetentAccumulator d;
+  d.configure(4, false);
+  d.reset(0);
+  TEST_ASSERT_EQUAL(0, d.update(1));  // bounce leaves the count one off while the knob rests
+  TEST_ASSERT_EQUAL(0, d.settle(1));
+  TEST_ASSERT_EQUAL(1, d.update(5));  // the next click steps right away
+  TEST_ASSERT_EQUAL(-1, d.update(1));  // and so does turning back
+}
+
+static void test_detent_settle_completes_short_click() {
+  DetentAccumulator d;
+  d.configure(4, true);
+  d.reset(0);
+  TEST_ASSERT_EQUAL(0, d.update(-3));  // one edge of the click was missed
+  TEST_ASSERT_EQUAL(1, d.settle(-3));  // inverted: -1 count direction is +1
+  TEST_ASSERT_EQUAL(0, d.update(-4));  // the late edge does not step twice
+  TEST_ASSERT_EQUAL(0, d.settle(-4));
+  TEST_ASSERT_EQUAL(1, d.update(-7) + d.settle(-7));
+}
+
+static void test_detent_settle_keeps_half_click_and_whole_clicks() {
+  DetentAccumulator d;
+  d.configure(4, false);
+  d.reset(0);
+  TEST_ASSERT_EQUAL(0, d.update(2));  // held between clicks
+  TEST_ASSERT_EQUAL(0, d.settle(2));
+  TEST_ASSERT_EQUAL(1, d.update(4));  // finishing the click steps once
+  TEST_ASSERT_EQUAL(0, d.settle(4));
+  DetentAccumulator h;
+  h.configure(2, false);
+  h.reset(0);
+  TEST_ASSERT_EQUAL(0, h.update(1));
+  TEST_ASSERT_EQUAL(0, h.settle(1));  // half-step knobs: one count is half a click, left alone
+  TEST_ASSERT_EQUAL(1, h.update(2));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_single_click_waits_for_double_window);
@@ -181,5 +219,8 @@ int main(int, char**) {
   RUN_TEST(test_detent_two_counts);
   RUN_TEST(test_detent_four_counts_and_invert);
   RUN_TEST(test_detent_fast_spin_no_loss);
+  RUN_TEST(test_detent_settle_drops_stray_count);
+  RUN_TEST(test_detent_settle_completes_short_click);
+  RUN_TEST(test_detent_settle_keeps_half_click_and_whole_clicks);
   return UNITY_END();
 }

@@ -55,6 +55,14 @@ class DetentAccumulator {
   // Returns the detents moved since the last call (positive = clockwise, unless inverted).
   int update(int32_t count);
 
+  // Call once the count has stopped changing (the knob rests in a click). A remainder of one count
+  // (a contact bounce or a nudge) is dropped, and a click one count short (a missed edge) is
+  // completed, so the next turn lines up with the clicks again. Half a click is left alone (the
+  // knob may be held between clicks). Returns the detents emitted (0 or +-1).
+  int settle(int32_t count);
+
+  int32_t pending(int32_t count) const { return count - base_; }
+
  private:
   int cpd_ = 2;
   bool invert_ = false;

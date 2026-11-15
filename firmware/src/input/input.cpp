@@ -19,6 +19,7 @@ constexpr uint32_t kGlitchNs = 1000;     // PCNT glitch filter
 constexpr uint64_t kTickUs = 1000;       // switch sampling period
 constexpr UBaseType_t kQueueLen = 32;
 constexpr uint32_t kQuietAfterLearnMs = 800;
+constexpr uint32_t kSettleMs = 150;      // count unchanged this long = the knob rests in a click
 
 struct EncoderHw {
   pcnt_unit_handle_t unit = nullptr;
@@ -52,6 +53,8 @@ volatile bool gSwDown[kMaxKnobs] = {};
 volatile bool gBtnDown[kMaxButtons] = {};
 volatile uint32_t gDropped = 0;
 volatile bool gConfigDirty = false;
+uint32_t gLastCountMs[kMaxKnobs] = {};
+bool gSettled[kMaxKnobs] = {};
 
 // Learn mode (set by startLearn from the link task, run by the tick).
 volatile bool gLearning = false;
@@ -59,6 +62,24 @@ volatile uint32_t gLearnUntil = 0;
 volatile uint32_t gQuietUntil = 0;
 bool gLearnedReady = false;
 Learned gLearned;
+
+constexpr int kTraceLen = 256;
+TraceEntry gTrace[kTraceLen];
+int gTraceHead = 0;   // next write
+int gTraceCount = 0;
+
+void trace(uint32_t now, int p, int32_t count, int steps, bool snapped) {
+  TraceEntry& t = gTrace[gTraceHead];
+  t.ms = now;
+  t.port = static_cast<uint8_t>(p);
+  t.level = static_cast<uint8_t>((gpio_get_level(static_cast<gpio_num_t>(gEnc[p].pinA)) ? 1 : 0) |
+                                 (gpio_get_level(static_cast<gpio_num_t>(gEnc[p].pinB)) ? 2 : 0) |
+                                 (snapped ? 4 : 0));
+  t.steps = static_cast<int8_t>(steps);
+  t.count = count;
+  gTraceHead = (gTraceHead + 1) % kTraceLen;
+  if (gTraceCount < kTraceLen) ++gTraceCount;
+}
 
 bool setupEncoder(EncoderHw& e) {
   pcnt_unit_config_t ucfg = {};
@@ -172,9 +193,25 @@ void tick(void*) {
     int count = 0;
     int steps = 0;
     if (gEnc[p].unit && pcnt_unit_get_count(gEnc[p].unit, &count) == ESP_OK) {
+      const bool changed = count != gRaw[p];
       gRaw[p] = count;
       steps = gDetent[p].update(count);
+      bool snapped = false;
+      if (changed) {
+        gLastCountMs[p] = now;
+        gSettled[p] = false;
+      } else if (!gSettled[p] && now - gLastCountMs[p] >= kSettleMs) {
+        gSettled[p] = true;
+        const int32_t before = gDetent[p].pending(count);
+        steps += gDetent[p].settle(count);
+        snapped = gDetent[p].pending(count) != before;
+      }
       if (steps != 0) gDetentTotal[p] = gDetentTotal[p] + steps;
+      if (changed || snapped) {
+        taskENTER_CRITICAL(&gLock);
+        trace(now, p, count, steps, snapped);
+        taskEXIT_CRITICAL(&gLock);
+      }
     }
     const bool held = gEncSw[p].pressed();
     const bool sw = digitalRead(gEnc[p].pinSw) == LOW;
@@ -319,6 +356,16 @@ Snapshot snapshot() {
   for (int i = 0; i < kMaxButtons; ++i) s.buttonDown[i] = gBtnDown[i];
   s.dropped = gDropped;
   return s;
+}
+
+int takeTrace(TraceEntry* out, int max) {
+  taskENTER_CRITICAL(&gLock);
+  const int n = gTraceCount < max ? gTraceCount : max;
+  const int start = (gTraceHead - gTraceCount + kTraceLen) % kTraceLen;
+  for (int i = 0; i < n; ++i) out[i] = gTrace[(start + i) % kTraceLen];
+  gTraceCount = 0;
+  taskEXIT_CRITICAL(&gLock);
+  return n;
 }
 
 }  // namespace input
