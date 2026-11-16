@@ -2,7 +2,8 @@
 
 This file is the project overview and the rules for working on it. Read it fully before doing any work. Detailed specs live in `docs/`:
 
-- `docs/hardware.md`: inventory, pin map, power, open hardware checks
+- `docs/hardware.md`: inventory, pin map, power, open hardware checks (engineering notes)
+- `HARDWARE.md` (repo root): the builder's guide (parts, wiring, power, tips); the README only lists the parts and links to it
 - `docs/protocol.md`: USB protocol v1 (+ `docs/protocol-test-vectors.json`)
 - `docs/config-schema.md`: config file, widget catalog, sources, actions, web editor, host API
 - `docs/measurements.md`: real measurements from the hardware
@@ -50,7 +51,7 @@ Facts that drive the design (full list, pin map, power and open hardware checks 
 
 ## 3. Pin map
 
-Lives in `firmware/include/pins.h`, mirrored in `docs/hardware.md`. Change both or neither. Status: proposed, not yet verified against the physical board.
+Lives in `firmware/include/pins.h`, mirrored in `docs/hardware.md` and the wiring tables of `HARDWARE.md`. Change all three or none. Status: proposed, not yet verified against the physical board.
 
 
 ## 4. System architecture
@@ -235,6 +236,8 @@ Record real measurements in `docs/measurements.md`.
 ```
 rez-pad/
   CLAUDE.md
+  README.md          overview, features, parts list, install, building
+  HARDWARE.md        builder's guide: parts, wiring, power, tips
   VERSION            the release version (docs/versioning.md)
   CHANGELOG.md
   docs/
@@ -248,7 +251,7 @@ rez-pad/
   firmware/
     platformio.ini
     partitions.csv
-    include/pins.h     single source of truth for pins (mirrors docs/hardware.md)
+    include/pins.h     single source of truth for pins (mirrored in docs/hardware.md and HARDWARE.md)
     src/
       main.cpp
       link/            USB CDC transport, dispatch, heartbeat
@@ -371,7 +374,7 @@ Dropped: SD card on SPI3 (decided with the user 2026-11-08; the 16 MB flash is e
 1. **Never use the em-dash character (U+2014) anywhere**: code, comments, docs, commit messages, UI strings, log messages. Also avoid the en-dash (U+2013). Use commas, colons, parentheses or a plain hyphen instead. This is a hard user preference.
 2. **Verify current versions** of PlatformIO platforms, the Arduino-ESP32 core, LVGL, LovyanGFX, .NET and every library or NuGet package before adding or pinning them. Do not rely on memory.
 3. **Do not guess hardware details.** If something depends on the physical board or module (pin labels, onboard LED pin, display VCC jumper, backlight transistor, encoder detent count), ask the user or add a measurement step.
-4. **Pins live in one place**: `firmware/include/pins.h`, mirrored in `docs/hardware.md`. Change both or neither.
+4. **Pins live in one place**: `firmware/include/pins.h`, mirrored in `docs/hardware.md` and `HARDWARE.md`. Change all three or none.
 5. **Protocol changes** go into `docs/protocol.md` first, are implemented on both sides in the same change, and bump `PROTOCOL_VERSION` if breaking.
 6. **Config schema changes** bump `schema` and include a migration on the host.
 7. Keep the firmware non-blocking. LVGL is only touched from the UI task.
@@ -379,6 +382,7 @@ Dropped: SD card on SPI3 (decided with the user 2026-11-08; the 16 MB flash is e
 9. Windows is the only supported host OS for now. Keep OS-specific code isolated so other hosts could be added later.
 10. Keep commits small and scoped to one phase or feature. End every phase with a short summary and a hardware checklist for the user.
 11. **Versions follow docs/versioning.md**: one version in the `VERSION` file for host, firmware and installer (never written anywhere else); MINOR for a big update (a finished phase or notable feature set), PATCH for fixes only, MAJOR after 1.0 for breaking changes. Bump only when making a release: `VERSION`, a `CHANGELOG.md` entry, a `vX.Y.Z` tag, then `tools/package.ps1` (always tag first, on a clean tree: a release must show a plain `v0.5.0` in the config page and the tray, never the commit; only dev builds carry `+abc1234`).
+12. **User-facing hardware information goes in `HARDWARE.md`** (parts, wiring, power, tips for builders), not the README; the README keeps only the parts list and a link. Engineering details (pin choices, measurements, open checks) stay in `docs/hardware.md`.
 
 ---
 

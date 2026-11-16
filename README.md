@@ -24,47 +24,16 @@ You build the hardware from common modules (no custom PCB, no soldering beyond h
 
 ## Hardware
 
-### Parts
-
 | Part | Notes |
 |---|---|
-| ESP32-S3 **N16R8** dev board (DevKitC-1 style, two USB-C ports) | 16 MB flash and 8 MB PSRAM are required. One port is native USB (the device runs from it), the other a USB-UART bridge (for flashing). |
-| 3.5" SPI TFT, **ILI9488**, 480x320 | The common red module with an SD slot. Touch is not used. |
-| AHT20 + BMP280 combo module | I2C temperature, humidity and pressure. |
+| ESP32-S3 **N16R8** dev board (DevKitC-1 style, two USB-C ports) | 16 MB flash and 8 MB PSRAM are required. |
+| 3.5" SPI TFT, **ILI9488**, 480x320 | Or a 2.0" ST7789V (240x320) on the same pins. |
+| AHT20 + BMP280 combo module | Temperature, humidity and pressure. |
 | 2x KY-040 rotary encoder module | Clickable knobs. |
-| Optional: up to 4 tact switches | Macro buttons, wired from the GPIO to GND. |
-| Alternative: 2.0" SPI TFT, **ST7789V**, 240x320 | Instead of the 3.5" display, on the same pins (SCL 12, SDA 11, RST 14, DC 9, CS 10), VCC on 3V3. No backlight pin, so it cannot be dimmed. See [`docs/hardware.md`](docs/hardware.md). |
+| Optional: up to 4 tact switches | Macro buttons. |
 | Wires, a USB-C data cable | |
 
-### Wiring
-
-| Module pin | ESP32-S3 | Notes |
-|---|---|---|
-| Display VCC | 5Vin | See "Power" below |
-| Display GND | GND | |
-| Display CS | GPIO 10 | |
-| Display RESET | GPIO 14 | |
-| Display DC / RS | GPIO 9 | |
-| Display SDI (MOSI) | GPIO 11 | |
-| Display SCK | GPIO 12 | |
-| Display LED | GPIO 21 | Backlight PWM |
-| Display SDO (MISO) | **not connected** | The ILI9488 does not release this line and would disturb the bus |
-| Display T_CLK, T_CS, T_DIN, T_DO, T_IRQ | **not connected** | |
-| Sensor VCC / GND | 3V3 / GND | |
-| Sensor SDA / SCL | GPIO 1 / GPIO 2 | |
-| Encoder 1 (pages, seek) CLK / DT / SW | GPIO 4 / 5 / 6 | |
-| Encoder 2 (volume, brightness) CLK / DT / SW | GPIO 7 / 15 / 16 | |
-| Encoders + / GND | **3V3** / GND | Never 5 V: the module's pull-ups would put 5 V on the ESP32's pins |
-| Buttons 1 to 4 (optional) | GPIO 17, 18, 8, 13 | Other side of each switch to GND |
-
-The pin map lives in [`firmware/include/pins.h`](firmware/include/pins.h) and [`docs/hardware.md`](docs/hardware.md).
-
-### Power
-
-- The device is powered from the board's **native USB** port.
-- The display runs best from **5 V** (on 3.3 V its onboard regulator starves and the image can stay white after power-up). Many N16R8 boards only connect the 5Vin pin to USB power after the solder pad marked `IN-OUT` is bridged: check with a multimeter (about 4.8 V between 5Vin and GND with USB plugged in). Once bridged, never feed another 5 V supply into that pin.
-- Do not short the display's J1 jumper while its VCC is 5 V.
-- Keep the sensor away from the board and the display backlight (a short cable or a vented corner); a temperature offset in the settings corrects the rest.
+Wiring, power and tips: [**HARDWARE.md**](HARDWARE.md).
 
 ## Install
 

@@ -1,6 +1,6 @@
 # Hardware
 
-Pin assignments here are mirrored in `firmware/include/pins.h`. Change both or neither.
+Engineering notes. The builder's guide (parts, wiring, power, tips) is [`HARDWARE.md`](../HARDWARE.md) in the repo root. Pin assignments here are mirrored in `firmware/include/pins.h` and `HARDWARE.md`: change all three or none.
 
 ## Inventory
 
