@@ -2,6 +2,18 @@
 
 All notable changes, newest first. Version rules: [docs/versioning.md](docs/versioning.md).
 
+## Unreleased (planned 0.6.0)
+
+Not in a release yet: builds from `main` report `0.5.0+<commit>`. Needs the matching firmware and host together (the config gains `display.panel` and `display.orientation`, still schema 1; a 0.5.0 host would reject a config that uses them).
+
+### New
+- **Other screens and orientations**: Settings > Screen picks the display (3.5" ILI9488 or 2.0" ST7789V 240x320, on the same wires) and the orientation (landscape, portrait, or either upside down). One firmware for all; the device restarts into a new screen when the setting is saved. Each screen shape has a default layout, and switching to a screen your pages do not fit loads it (Undo brings your pages back).
+- On narrow screens (portrait, or the 2.0" display) the status bar shows 3 page dots and one item at a time, changing every 4 s, and no hints; the knob popup fits the width.
+- The now playing card puts the album art beside the text on tall cards when that gives bigger art.
+
+### Fixed
+- Texts that should end in "..." never wrap onto extra lines (status bar page name, weather location on small cards).
+
 ## 0.5.0 (2026-11-16)
 
 Update the board from the Device page after updating the host (new firmware feature and config key; the USB protocol is still v1, the config schema still 1).

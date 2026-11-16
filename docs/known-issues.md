@@ -25,6 +25,9 @@ Quick check on a new PC: run the host, then save `http://127.0.0.1:47800/api/sou
 
 ## Firmware
 
+- **2.0" ST7789V has no backlight control**: the module has no backlight pin, so brightness, night dimming, screen off and sleep while the PC sleeps do not change its light. Turning the panel itself off (ST7789 sleep / display off command) would be the way to add screen off. Checked on hardware 2026-11-16 in portrait and landscape (colors, orientation, 75 to 95 ms redraw); the upside-down orientations not yet looked at on it.
+- **The panel is set up only at boot**: a display that loses power or gets reset while the board runs (a module moved or re-plugged on the breadboard) stays blank, frozen or garbled until the board restarts. It cannot be detected (MISO is not connected, nothing reads back). A periodic re-init or a console command could be added if it matters.
+- **Changing the panel or orientation restarts the device** (about 2 s until the host is connected again), because the display driver, LVGL's screen and every page are set up for one screen size at boot.
 - **Full page redraw about 153 ms** (target 120 ms). Measured with `page <n>` on the System and Weather pages at 40 MHz SPI; the page switch still looks instant on the hardware. The flush waits for each strip to go out over SPI before LVGL renders the next one. Fix if it matters: convert RGB565 to RGB666 into a separate DMA buffer and return from the flush right away (see measurements.md, "UI rendering").
 - **Full-screen animations play at about 7 to 10 FPS**: a 480x300 frame takes about 50 ms to decode and about 55 ms to push over the 40 MHz SPI link.
 - **Long animations decode on the fly**: when an animation does not fit the 2 MB pre-decoded budget per widget, the device decodes each JPEG frame when it is due (about 15 ms for a 234x194 frame on the UI task). Several large ones on one page add up.

@@ -1,4 +1,5 @@
-// ILI9488 (320x480, used as 480x320 landscape) on SPI2 via LovyanGFX.
+// The display on SPI2 via LovyanGFX: a 3.5" ILI9488 (320x480) or a 2.0" ST7789V (240x320), in any
+// of four orientations (display.panel and display.orientation, applied at boot).
 #pragma once
 
 #include <Arduino.h>
@@ -10,10 +11,12 @@ namespace rp {
 namespace display {
 
 constexpr uint32_t kDefaultSpiHz = 40000000;
-constexpr uint8_t kDefaultRotation = 1;  // landscape, 480x320
 
-bool begin(uint32_t spiHz = kDefaultSpiHz);
+// panel and orientation: cfg::panelName / cfg::orientationName indexes.
+bool begin(int panel, int orientation, uint32_t spiHz = kDefaultSpiHz);
 lgfx::LGFX_Device& lcd();
+int panel();
+int orientation();
 
 // Requested SPI write clock. The ESP32-S3 SPI clock is 80 MHz / n, so the effective
 // clock is the nearest step at or below the request (60 MHz -> 40 MHz).

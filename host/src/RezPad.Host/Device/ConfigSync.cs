@@ -101,7 +101,8 @@ internal sealed class ConfigSync
             if (ack.Ok)
             {
                 DeviceCrc = ack.Crc32;
-                Log.Info($"config: device applied {bytes.Length} bytes (crc {ack.Crc32:X8}) in {sw.ElapsedMilliseconds} ms");
+                Log.Info($"config: device applied {bytes.Length} bytes (crc {ack.Crc32:X8}) in {sw.ElapsedMilliseconds} ms" +
+                    (ack.Restart ? "; it restarts for the new screen" : ""));
                 Applied?.Invoke(ack);
                 return Finish(new PushResult(true, null, started, sw.ElapsedMilliseconds, imagesSent));
             }

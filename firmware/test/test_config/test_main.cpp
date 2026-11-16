@@ -78,6 +78,39 @@ void test_default_config() {
   TEST_ASSERT_EQUAL_STRING("daily", c.pages[2].widgets[2].mode);
 }
 
+// Every panel in every orientation has a built-in default that is valid on that screen.
+void test_default_layouts_fit_every_screen() {
+  char err[160];
+  for (int p = 0; p < rp::cfg::kPanelCount; ++p) {
+    for (int o = 0; o < rp::cfg::kOrientationCount; ++o) {
+      TEST_ASSERT_TRUE_MESSAGE(rp::cfg::parseDefault(p, o, *gCfg, err, sizeof(err)), err);
+      int w = 0, h = 0;
+      rp::cfg::screenSize(p, o, w, h);
+      TEST_ASSERT_EQUAL(w, gCfg->screenW);
+      TEST_ASSERT_EQUAL(h, gCfg->screenH);
+      TEST_ASSERT_EQUAL(p, gCfg->panel);
+      TEST_ASSERT_EQUAL(o, gCfg->orientation);
+      TEST_ASSERT_EQUAL(3, gCfg->pageCount);
+    }
+  }
+}
+
+void test_screen_sizes() {
+  int w = 0, h = 0;
+  rp::cfg::screenSize(0, 0, w, h);
+  TEST_ASSERT_EQUAL(480, w);
+  TEST_ASSERT_EQUAL(320, h);
+  rp::cfg::screenSize(0, 3, w, h);
+  TEST_ASSERT_EQUAL(320, w);
+  TEST_ASSERT_EQUAL(480, h);
+  rp::cfg::screenSize(1, 1, w, h);
+  TEST_ASSERT_EQUAL(240, w);
+  TEST_ASSERT_EQUAL(320, h);
+  rp::cfg::screenSize(1, 2, w, h);
+  TEST_ASSERT_EQUAL(320, w);
+  TEST_ASSERT_EQUAL(240, h);
+}
+
 void test_source_defaults_fill_style() {
   TEST_ASSERT_TRUE_MESSAGE(parseText(rp::cfg::kDefaultConfigJson), gErr);
   const auto& cpuTemp = gCfg->pages[1].widgets[1];
@@ -257,5 +290,7 @@ int main(int, char**) {
   RUN_TEST(test_bindings);
   RUN_TEST(test_numbering);
   RUN_TEST(test_actions);
+  RUN_TEST(test_default_layouts_fit_every_screen);
+  RUN_TEST(test_screen_sizes);
   return UNITY_END();
 }

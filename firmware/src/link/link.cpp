@@ -110,8 +110,9 @@ void onHello(const Packet& p, uint32_t now) {
   JsonDocument out;
   out["proto"] = proto::kVersion;
   out["fw_ver"] = kFwVersion;
-  out["w"] = 480;
-  out["h"] = 320;
+  // The running screen (display.panel / display.orientation of the config the device booted with).
+  out["w"] = config::active().screenW;
+  out["h"] = config::active().screenH;
   out["psram_free"] = ESP.getFreePsram();
   out["cfg_crc"] = config::storedCrc();  // 0 = nothing stored, running on the built-in default
   out["buttons"] = config::active().buttons;  // read-only use of the UI's config; a byte, no tearing

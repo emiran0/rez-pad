@@ -594,10 +594,11 @@ void setup() {
   const bool linkOk = rp::link::begin();
 
   rp::backlight::begin();  // off while the panel initializes, avoids a white flash
-  const bool lcdOk = rp::display::begin();
-
+  // Panel and orientation come from the config (a change restarts the device, ui::applyConfig).
   const auto& cfg = rp::config::active();
-  if (rp::display::spiHz() != cfg.spiHz) rp::display::setSpiHz(cfg.spiHz);
+  const bool lcdOk = rp::display::begin(cfg.panel, cfg.orientation, cfg.spiHz);
+  Serial.printf("display %s %s, %dx%d\n", rp::cfg::panelName(cfg.panel), rp::cfg::orientationName(cfg.orientation),
+                static_cast<int>(rp::display::lcd().width()), static_cast<int>(rp::display::lcd().height()));
   const bool inputOk = rp::input::begin(rp::settings::inputConfig(cfg));
   const rp::sensors::Config sCfg = rp::settings::sensorConfig(cfg);
 

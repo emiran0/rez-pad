@@ -12,6 +12,42 @@ public class ConfigTests
 
     private static JsonObject Default() => JsonNode.Parse(Doc("default-config.json"))!.AsObject();
 
+    /// <summary>Every panel in every orientation has a default layout that is valid on that screen.</summary>
+    [Fact]
+    public void DefaultLayoutsFitEveryScreen()
+    {
+        var layouts = JsonNode.Parse(Doc("default-layouts.json"))!["layouts"]!.AsObject();
+        foreach (var panel in ConfigCatalog.Panels.Keys)
+        {
+            foreach (var orientation in ConfigCatalog.Orientations)
+            {
+                var root = Default();
+                root["display"]!["panel"] = panel;
+                root["display"]!["orientation"] = orientation;
+                var s = ConfigCatalog.ScreenOf(root);
+                if (s != ConfigCatalog.DefaultScreen)
+                {
+                    var layout = layouts[$"{s.W}x{s.H}"];
+                    Assert.NotNull(layout);
+                    root["grid"] = layout!["grid"]!.DeepClone();
+                    root["pages"] = layout["pages"]!.DeepClone();
+                }
+                Assert.Null(ConfigValidator.Validate(root));
+            }
+        }
+    }
+
+    [Fact]
+    public void ScreenSizes()
+    {
+        Assert.Equal(new ConfigCatalog.Screen(480, 320), ConfigCatalog.ScreenOf("ili9488", "landscape"));
+        Assert.Equal(new ConfigCatalog.Screen(320, 480), ConfigCatalog.ScreenOf("ili9488", "portrait_flipped"));
+        Assert.Equal(new ConfigCatalog.Screen(240, 320), ConfigCatalog.ScreenOf("st7789", "portrait"));
+        Assert.Equal(new ConfigCatalog.Screen(320, 240), ConfigCatalog.ScreenOf("st7789", "landscape_flipped"));
+        Assert.Equal(new ConfigCatalog.Screen(480, 320), ConfigCatalog.ScreenOf((string?)null, null));
+        Assert.Equal(300, ConfigCatalog.ScreenOf("ili9488", "landscape").GridH);
+    }
+
     public static TheoryData<string> CaseNames()
     {
         var data = new TheoryData<string>();

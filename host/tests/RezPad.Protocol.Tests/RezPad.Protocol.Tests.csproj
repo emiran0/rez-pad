@@ -17,5 +17,6 @@
     <!-- Config validation cases and the default config, shared with the firmware tests. -->
     <None Include="..\..\..\docs\config-test-vectors.json" Link="config-test-vectors.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\..\docs\default-config.json" Link="default-config.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\..\docs\default-layouts.json" Link="default-layouts.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

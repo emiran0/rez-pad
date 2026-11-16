@@ -8,6 +8,15 @@ Schema changes bump `schema` and include a migration on the host.
 
 [`default-config.json`](default-config.json) is the built-in default and the reference example. The host embeds that file; `tools/gen_config_headers.py` turns it into `firmware/lib/config_logic/src/default_config.h`, so both sides start from the same bytes. Top-level sections: `schema`, `display`, `grid`, `theme`, `units`, `weather`, `sensor`, `media`, `stats`, `inputs`, `status_bar`, `pages`.
 
+## Screen
+
+`display.panel` is the display module (`ili9488`: 3.5" 320x480, the default; `st7789`: 2.0" ST7789V 240x320) and `display.orientation` how it is mounted (`landscape`, the default, `portrait`, `landscape_flipped`, `portrait_flipped`). Together they give the screen size every widget size is checked against: 480x320, 320x480, 320x240 or 240x320; the grid is the screen below the 20 px status bar. Both keys were added within schema 1: a config without them means the 3.5" display in landscape (the host fills them in from the default).
+
+- The device starts its display from them at boot and keeps the last valid pair in NVS, so a fallback to the built-in default still fits the panel. A pushed config that changes either one is saved and acknowledged (CONFIG_ACK `restart: true`), then the device restarts into it.
+- [`default-layouts.json`](default-layouts.json) has the default grid and pages for the other screen shapes (320x480, 240x320, 320x240), keyed `"<w>x<h>"`: the same pages and ids as the default config, rearranged to fit. The host serves them (`GET /api/config/layout?panel=&orientation=`, Settings > Screen > "Use the default layout for this screen"), the firmware falls back to them (`cfg::parseDefault`), and both sides test that every panel and orientation has a valid default.
+- Pages made for another shape stay as they are; the ones that do not fit fail validation with the usual widget error, shown in the editor.
+- Narrow screens (below 400 px wide): the status bar shows 3 page dots and at most one item, and the page name only where it has 40 px; the knob popup is the screen width less 16 px with a 48 px icon.
+
 ## Validation
 
 Implemented twice, tested against the same cases ([`config-test-vectors.json`](config-test-vectors.json)): `host/src/RezPad.Protocol/Config.cs` (`ConfigValidator`) and `firmware/lib/config_logic` (`cfg::parse`). Both report the first problem as `"<path>: <reason>"`, e.g. `pages[0].widgets[1]: overlaps another widget`.
@@ -18,7 +27,7 @@ Implemented twice, tested against the same cases ([`config-test-vectors.json`](c
 - Pages may set their own `grid` (`{cols, rows}`, 1 to 8) and `theme` (`{name, accent}`, each optional); otherwise the global ones apply.
 - Widgets: known type, `x`/`y`/`w`/`h` inside the page's grid, big enough for the type (see "Widget catalog"), no overlap. `metric_*` need a `source`, `label` needs `text`, `image` needs `asset` (and `fit` is `cover` or `contain`), `weather_forecast` `mode` is `daily` (default) or `hourly`, `decimals` 0 to 3, and `min` must be below `max` after source defaults.
 - Actions: known names; `nav.page`, `media.seek`, `media.volume`, `display.brightness` take a rotation and are only allowed on `rotate`/`rotate_pressed`; all others only on presses (`click`, `double`, `long`).
-- Ranges: `display.brightness` and `night.brightness` 0 to 100, `night.from`/`to` `"HH:MM"`, `spi_hz` 1 to 80 MHz, `grid` 1 to 8, `theme.name` one of `dark`, `midnight`, `black`, `graphite`, `theme.accent` `"#RRGGBB"`, `sensor.temp_offset_c` -10 to 10, `hum_offset_pct` -20 to 20, `trend_threshold_hpa` 0.1 to 10, `media.volume_step` 1 to 20, `seek_step_s` 1 to 60, `inputs.buttons` 0 to 4, `inputs.knob_ports` and `button_ports` (see below), `counts_per_detent` 1 to 8.
+- Ranges: `display.panel` one of `ili9488`, `st7789`, `display.orientation` one of `landscape`, `portrait`, `landscape_flipped`, `portrait_flipped` (see "Screen"), `display.brightness` and `night.brightness` 0 to 100, `night.from`/`to` `"HH:MM"`, `spi_hz` 1 to 80 MHz, `grid` 1 to 8, `theme.name` one of `dark`, `midnight`, `black`, `graphite`, `theme.accent` `"#RRGGBB"`, `sensor.temp_offset_c` -10 to 10, `hum_offset_pct` -20 to 20, `trend_threshold_hpa` 0.1 to 10, `media.volume_step` 1 to 20, `seek_step_s` 1 to 60, `inputs.buttons` 0 to 4, `inputs.knob_ports` and `button_ports` (see below), `counts_per_detent` 1 to 8.
 - Host only (the device ignores these sections): `weather.lat` -90 to 90 and `lon` -180 to 180 (both or neither), `refresh_min` 5 to 180, `media.art_size` 32 to 480, `media.app_priority` up to 16 names, `stats.rate_hz` 0.2 to 4.
 
 Style fields a metric widget leaves out come from its source: temperatures `°C` 20 to 100 (warn 75, crit 90), loads `%` (80/95), `used_pct`/`vram_pct` `%` (85/95, disks 90/97), other `_pct` `%`, `_kbps` `kB/s` 0 to 10000, `_mhz` `MHz`, `_w` `W`, `_gb` `GB`, `rpm`. `"unit": ""` means no unit.

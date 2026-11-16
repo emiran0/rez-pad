@@ -61,13 +61,13 @@ void build(lv_obj_t* parent, const cfg::Config& cfg) {
     page.spec = &cfg.pages[p];
     page.widgetCount = 0;
     // Each page has its own grid and palette; widgets read the current palette while building.
-    const int cellW = kScreenW / page.spec->cols;
-    const int cellH = kGridH / page.spec->rows;
+    const int cellW = screenW() / page.spec->cols;
+    const int cellH = gridH() / page.spec->rows;
     page.pal = makePalette(page.spec->theme, page.spec->accent);
     setPalette(page.pal);
     page.root = lv_obj_create(parent);
     lv_obj_remove_style_all(page.root);
-    lv_obj_set_size(page.root, kScreenW, kGridH);
+    lv_obj_set_size(page.root, screenW(), gridH());
     lv_obj_set_pos(page.root, 0, 0);
     lv_obj_set_scrollable(page.root, false);
     lv_obj_set_hidden(page.root, true);

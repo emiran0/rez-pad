@@ -286,6 +286,13 @@ internal sealed class WebServer(int port, WebServices services)
             return Results.Text(root.ToJsonString(), "application/json");
         });
         app.MapGet("/api/config/default", () => Results.Text(ConfigService.Default().ToJsonString(), "application/json"));
+        // The default grid and pages for a screen (docs/default-layouts.json): {grid, pages}.
+        app.MapGet("/api/config/layout", (string? panel, string? orientation) =>
+        {
+            var layout = ConfigService.DefaultLayout(ConfigCatalog.ScreenOf(panel, orientation));
+            return layout is null ? Results.NotFound(new { error = "no default layout for this screen" })
+                : Results.Text(layout.ToJsonString(), "application/json");
+        });
         // What the editor may offer: widget types and sizes, actions, limits, and the style defaults
         // of every data source on this PC (one source of truth: RezPad.Protocol.ConfigCatalog).
         app.MapGet("/api/catalog", () => Results.Json(new
@@ -302,8 +309,9 @@ internal sealed class WebServer(int port, WebServices services)
             // Any size is allowed whose content area (card minus padding) is at least min_w x min_h px.
             geometry = new
             {
-                screen_w = ConfigCatalog.ScreenW,
-                grid_h = ConfigCatalog.GridH,
+                status_h = ConfigCatalog.StatusH,
+                panels = ConfigCatalog.Panels.Select(kv => new { name = kv.Key, w = kv.Value.W, h = kv.Value.H }),
+                orientations = ConfigCatalog.Orientations,
                 gap = ConfigCatalog.CellGap,
                 pad = ConfigCatalog.CardPad,
             },

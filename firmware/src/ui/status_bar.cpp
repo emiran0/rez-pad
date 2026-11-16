@@ -1,5 +1,6 @@
 #include "status_bar.h"
 
+#include <Arduino.h>
 #include <math.h>
 #include <string.h>
 #include <time.h>
@@ -14,10 +15,17 @@ namespace status_bar {
 namespace {
 
 constexpr int kMaxDots = 8;
-constexpr int kWindow = 5;        // dots shown at once; more pages slide the window
 constexpr int kDotSpacing = 12;
-constexpr int kNameW = 140;       // page name, cut with "..." before the dots
 constexpr int kItemsRight = 26;   // items end left of the host icon
+constexpr int kNameX = 56;        // page name starts right of the clock
+constexpr int kNameMinW = 40;     // narrower than this: no page name
+constexpr int kWideScreen = 400;  // from this width: 5 dots and up to 3 items
+
+// Layout for the screen width (set by build()): dots shown at once (more pages slide the window),
+// status items shown, page name width.
+int gWindow = 5;
+int gMaxItems = cfg::kMaxStatusItems;
+int gNameW = 140;
 
 lv_obj_t* gBar = nullptr;
 lv_obj_t* gClock = nullptr;
@@ -29,7 +37,12 @@ lv_obj_t* gHint = nullptr;  // replaces clock, page name and dots while shown (e
 lv_obj_t* gItemRow = nullptr;
 lv_obj_t* gItems[cfg::kMaxStatusItems] = {};
 cfg::StatusItem gItemCfg[cfg::kMaxStatusItems];
-int gItemCount = 0;
+int gCfgCount = 0;   // items in the config
+int gItemCount = 0;  // labels shown (fewer on narrow screens, which then cycle through the items)
+int gCycle = 0;      // first item shown while cycling
+uint32_t gCycleAt = 0;
+constexpr uint32_t kCycleMs = 4000;
+bool gWide = true;
 bool gItemsDirty = true;
 bool gHintOn = false;
 
@@ -99,9 +112,17 @@ void itemText(const cfg::StatusItem& it, const Model& m, char* out, size_t n) {
 }  // namespace
 
 void build(lv_obj_t* parent) {
+  const int w = screenW();
+  const bool wide = w >= kWideScreen;
+  gWide = wide;
+  gWindow = wide ? 5 : 3;
+  gMaxItems = wide ? cfg::kMaxStatusItems : 1;
+  // From the clock to just before the dots (centered on the bar, which has 8 px padding).
+  gNameW = w / 2 - 8 - (gWindow - 1) * kDotSpacing / 2 - 10 - kNameX;
+
   gBar = lv_obj_create(parent);
   lv_obj_remove_style_all(gBar);
-  lv_obj_set_size(gBar, kScreenW, kStatusH);
+  lv_obj_set_size(gBar, w, kStatusH);
   lv_obj_set_pos(gBar, 0, 0);
   lv_obj_set_style_bg_color(gBar, color::status(), 0);
   lv_obj_set_style_bg_opa(gBar, LV_OPA_COVER, 0);
@@ -111,8 +132,10 @@ void build(lv_obj_t* parent) {
   gClock = widgets::makeLabel(gBar, font::small(), color::text(), "--:--");
   lv_obj_align(gClock, LV_ALIGN_LEFT_MID, 0, 0);
 
-  gPageName = widgets::makeEllipsis(gBar, font::small(), color::dim(), kNameW);
-  lv_obj_align(gPageName, LV_ALIGN_LEFT_MID, 56, 0);
+  gPageName = widgets::makeEllipsis(gBar, font::small(), color::dim(), gNameW > kNameMinW ? gNameW : kNameMinW);
+  lv_obj_set_height(gPageName, lv_font_get_line_height(font::small()));  // one line, cut with "..."
+  lv_obj_align(gPageName, LV_ALIGN_LEFT_MID, kNameX, 0);
+  lv_obj_set_hidden(gPageName, gNameW < kNameMinW);
 
   for (int i = 0; i < kMaxDots; ++i) {
     gDots[i] = lv_obj_create(gBar);
@@ -133,12 +156,15 @@ void build(lv_obj_t* parent) {
   lv_obj_set_flex_align(gItemRow, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_column(gItemRow, 12, 0);
   lv_obj_align(gItemRow, LV_ALIGN_RIGHT_MID, -kItemsRight, 0);
+  // Never over the dots (LVGL clips what does not fit).
+  lv_obj_set_style_max_width(gItemRow, w - 16 - kItemsRight - (w / 2 - 8 + (gWindow - 1) * kDotSpacing / 2 + 10), 0);
   for (int i = 0; i < cfg::kMaxStatusItems; ++i) {
     gItems[i] = widgets::makeLabel(gItemRow, font::small(), color::text(), "");
     lv_obj_set_hidden(gItems[i], true);
   }
 
-  gHint = widgets::makeEllipsis(gBar, font::small(), color::accent(), kScreenW - 16 - kItemsRight);
+  gHint = widgets::makeEllipsis(gBar, font::small(), color::accent(), w - 16 - kItemsRight);
+  lv_obj_set_height(gHint, lv_font_get_line_height(font::small()));
   lv_obj_align(gHint, LV_ALIGN_LEFT_MID, 0, 0);
   lv_obj_set_hidden(gHint, true);
 
@@ -151,9 +177,12 @@ void build(lv_obj_t* parent) {
 }
 
 void setItems(const cfg::Config& c) {
-  gItemCount = c.statusCount;
+  gCfgCount = c.statusCount;
+  gItemCount = c.statusCount < gMaxItems ? c.statusCount : gMaxItems;
+  gCycle = 0;
+  gCycleAt = millis();
   for (int i = 0; i < cfg::kMaxStatusItems; ++i) {
-    if (i < gItemCount) gItemCfg[i] = c.status[i];
+    if (i < gCfgCount) gItemCfg[i] = c.status[i];
     lv_obj_set_hidden(gItems[i], i >= gItemCount || gHintOn);
   }
   gItemsDirty = true;
@@ -167,9 +196,10 @@ void setWarning(const char* text) {
 }
 
 void setHint(const char* text) {
-  gHintOn = text && text[0];
+  // A narrow bar has no room for a hint next to anything; it shows none.
+  gHintOn = gWide && text && text[0];
   lv_obj_set_hidden(gHint, !gHintOn);
-  lv_obj_set_hidden(gPageName, gHintOn);
+  lv_obj_set_hidden(gPageName, gHintOn || gNameW < kNameMinW);
   lv_obj_set_hidden(gClock, gHintOn);
   for (int i = 0; i < gItemCount; ++i) lv_obj_set_hidden(gItems[i], gHintOn);
   if (gHintOn) {
@@ -189,11 +219,11 @@ void setPage(int index, int count, const char* name) {
   if (count > kMaxDots) count = kMaxDots;
   // At most kWindow dots, sliding so the current page stays inside; a smaller dot at an end means
   // there are more pages that way.
-  const int shown = count < kWindow ? count : kWindow;
+  const int shown = count < gWindow ? count : gWindow;
   int first = index - shown / 2;
   if (first > count - shown) first = count - shown;
   if (first < 0) first = 0;
-  const int x0 = kScreenW / 2 - 8 - (shown - 1) * kDotSpacing / 2;  // bar has 8 px left padding
+  const int x0 = screenW() / 2 - 8 - (shown - 1) * kDotSpacing / 2;  // bar has 8 px left padding
   for (int i = 0; i < kMaxDots; ++i) {
     const int slot = i - first;
     if (i >= count || slot < 0 || slot >= shown) {
@@ -219,11 +249,18 @@ void refresh(const Model& m, uint32_t changed) {
     lv_obj_set_style_text_color(gHost, m.hostConnected ? color::ok() : color::faint(), 0);
   }
   const uint32_t itemBits = kChangedClock | kChangedRoom | kChangedWeather | kChangedVolume | kChangedStats | kChangedHost;
+  // More items than room (narrow screens): the shown ones move on every 4 s.
+  const bool cycling = gItemCount > 0 && gCfgCount > gItemCount;
+  if (cycling && millis() - gCycleAt >= kCycleMs) {
+    gCycleAt = millis();
+    gCycle = (gCycle + 1) % gCfgCount;
+    gItemsDirty = true;
+  }
   if (gItemCount > 0 && (gItemsDirty || (changed & itemBits))) {
     gItemsDirty = false;
     for (int i = 0; i < gItemCount; ++i) {
       char buf[32];
-      itemText(gItemCfg[i], m, buf, sizeof(buf));
+      itemText(gItemCfg[cycling ? (i + gCycle) % gCfgCount : i], m, buf, sizeof(buf));
       widgets::setText(gItems[i], buf);
     }
   }

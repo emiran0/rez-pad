@@ -39,12 +39,14 @@ inline const lv_font_t* large() { return &rp_font_28; }
 inline const lv_font_t* huge() { return &rp_font_48; }  // ASCII + degree sign only
 }  // namespace font
 
-// Screen layout: 20 px status bar, grid below it.
-constexpr int kScreenW = 480;
-constexpr int kScreenH = 320;
+// Screen layout: 20 px status bar, grid below it. The size is the running panel's (display.panel
+// and display.orientation, applied at boot), set once by ui::begin().
+void setScreenSize(int w, int h);
+int screenW();
+int screenH();
 constexpr int kStatusH = 20;
 constexpr int kGridY = kStatusH;
-constexpr int kGridH = kScreenH - kStatusH;
+inline int gridH() { return screenH() - kStatusH; }
 constexpr int kCellGap = 4;  // space between cards
 
 }  // namespace ui

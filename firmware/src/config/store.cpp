@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <LittleFS.h>
+#include <Preferences.h>
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <new>
@@ -56,17 +57,47 @@ size_t readFile(const char* path, uint8_t** out) {
   return n;
 }
 
+// The screen the device was last set up for (display.panel and display.orientation of the last
+// valid config), kept in NVS so a fallback to the built-in default still fits the panel.
+uint8_t gProfilePanel = 0;
+uint8_t gProfileOrientation = 0;
+
+void loadProfile() {
+  Preferences p;
+  if (!p.begin("display", true)) return;  // nothing stored yet: ILI9488 landscape
+  gProfilePanel = p.getUChar("panel", 0);
+  gProfileOrientation = p.getUChar("orient", 0);
+  p.end();
+  if (gProfilePanel >= cfg::kPanelCount) gProfilePanel = 0;
+  if (gProfileOrientation >= cfg::kOrientationCount) gProfileOrientation = 0;
+}
+
 void useDefault(cfg::Config* c) {
   char err[128];
-  if (!cfg::parse(cfg::kDefaultConfigJson, strlen(cfg::kDefaultConfigJson), *c, err, sizeof(err))) {
-    // Cannot happen (the native tests parse the same text); keep going with struct defaults.
-    Serial.printf("[config] built-in default invalid: %s\n", err);
+  if (!cfg::parseDefault(gProfilePanel, gProfileOrientation, *c, err, sizeof(err))) {
+    // Cannot happen (the native tests parse every layout); fall back to 480x320.
+    Serial.printf("[config] built-in default for %s %s invalid: %s\n", cfg::panelName(gProfilePanel),
+                  cfg::orientationName(gProfileOrientation), err);
+    if (!cfg::parseDefault(0, 0, *c, err, sizeof(err))) Serial.printf("[config] built-in default invalid: %s\n", err);
   }
 }
 
 }  // namespace
 
+void rememberProfile(uint8_t panel, uint8_t orientation) {
+  if (panel == gProfilePanel && orientation == gProfileOrientation) return;
+  Preferences p;
+  if (!p.begin("display", false)) return;
+  p.putUChar("panel", panel);
+  p.putUChar("orient", orientation);
+  p.end();
+  gProfilePanel = panel;
+  gProfileOrientation = orientation;
+  Serial.printf("[config] screen is now %s %s\n", cfg::panelName(panel), cfg::orientationName(orientation));
+}
+
 void begin() {
+  loadProfile();
   gActive = allocate();
   if (!gActive) {
     // Out of PSRAM: nothing sensible left to do, but do not crash in active().
@@ -98,6 +129,7 @@ void begin() {
   if (ok) {
     Serial.printf("[config] loaded %s (%u bytes, crc %08lX, %u pages)\n", kPath, static_cast<unsigned>(n),
                   static_cast<unsigned long>(gStoredCrc), gActive->pageCount);
+    rememberProfile(gActive->panel, gActive->orientation);
     return;
   }
   // Invalid stored config (should not happen: it was validated before saving). Keep the file and

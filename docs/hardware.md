@@ -11,7 +11,7 @@ Pin assignments here are mirrored in `firmware/include/pins.h`. Change both or n
 | **AHT20 + BMP280** combo module | I2C. AHT20 = temp/humidity (0x38). BMP280 = pressure/temp (0x76 or 0x77, detected at runtime). |
 | **2x rotary encoder modules** (KY-040 style) | Pins: CLK, DT, SW, +, GND. Clickable knob. |
 | Raspberry Pi Pico 2 W | Backup MCU. Not used in the main build. |
-| 2.0" ST7789V 240x320 TFT | Bench/test display, or a future "mini" variant. Not used in the main build. |
+| 2.0" ST7789V 240x320 TFT | Pins GND, VCC, SCL, SDA, RST, DC, CS (no backlight pin). Supported as `display.panel` `st7789` (see "Second display"). Checked on the board 2026-11-16 (portrait). |
 | Raspberry Pi Zero 2 W | Not used. |
 | Optional: up to 4 tact switches (macro buttons) | Not yet purchased. Wired from the GPIO to GND, no resistor (internal pull-up, 20 ms debounce in firmware). Firmware works with 0 to 4 (configurable). |
 
@@ -65,6 +65,24 @@ Pin assignments here are mirrored in `firmware/include/pins.h`. Change both or n
 | Button port 3 (optional) | | 8 | Tact switch to GND, internal pull-up |
 | Button port 4 (optional) | | 13 | Tact switch to GND, internal pull-up |
 | Spare | | 42, 47 | |
+
+### Second display: 2.0" ST7789V (240x320)
+
+Same SPI bus and pins as the 3.5" display, so either module plugs into the same wires (only one at a time). Choose it in Settings > Screen (`display.panel` `st7789`); until then the device drives the pins as an ILI9488 and the 2.0" screen stays blank.
+
+| ST7789V module pin | ESP32-S3 GPIO | Notes |
+|---|---|---|
+| GND | GND | |
+| VCC | **3V3** | Works for every version of the module. Some have a regulator and accept 5 V, others are 3.3 V only. On 5 V the module checked 2026-11-16 froze about a second after boot; on 3V3 it ran cleanly. |
+| SCL | 12 | SPI clock (same as the 3.5" display's SCK) |
+| SDA | 11 | SPI data in (MOSI), same as SDI |
+| RST | 14 | |
+| DC | 9 | |
+| CS | 10 | |
+
+The module has no backlight pin: its light is always on, so brightness, night dimming, screen off and sleep while the PC sleeps do not dim it (GPIO 21 stays unused). Colors are inverted by default (usual for these IPS modules, and right on the module checked 2026-11-16); console `lcdinv 0|1` flips it at runtime if another module's colors look wrong. Redraw times: `docs/measurements.md`, "Screen sizes".
+
+Breadboard notes from bring-up: move the module or its wires only with USB unplugged. A panel that loses contact while the board runs is not set up again until the next boot (blank, frozen on its last image, or garbled). A loose CS, SDA or SCL makes the image freeze while the board keeps running normally (console `perf` still shows about 30 frames/s); unsoldered header pins are the usual cause.
 
 Knob and button **numbers** (Knob 1, Button 2, what the config's `enc1`, `btn2` mean) are not tied to ports: `inputs.knob_ports` and `inputs.button_ports` say which port each number reads (Settings > Knobs and buttons > Numbering, where pressing or turning a control assigns it). Default: knob 1 = port 1, knob 2 = port 2, no buttons.
 

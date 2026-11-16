@@ -6,7 +6,7 @@ import { state, on, get, set, change, h, api, postJson, toast, controlsInUse, fm
 import { numberingCard } from "./numbering.js";
 import { firmwarePanel } from "./firmware.js";
 import { mediaAppsCard } from "./mediaapps.js";
-import { THEMES, ACCENTS } from "./preview.js";
+import { THEMES, ACCENTS, PANELS, ORIENTATIONS, screenOf } from "./preview.js";
 import { icon } from "./icons.js";
 import { ACTION_NAMES, bindingControl, keysRecorder } from "./bindings.js";
 import { sourceButton } from "./sources.js";
@@ -105,8 +105,67 @@ function appearance() {
     h("div", { class: "field" }, h("span", { text: "Accent color" }), swatches(get("theme.accent", "#4FC3F7"), (c) => { set("theme.accent", c); renderSettings(); })));
 }
 
+// display.panel and display.orientation, and the default layout for the chosen screen.
+function screenShape() {
+  const panelName = get("display.panel", "ili9488");
+  const sz = screenOf(state.cfg);
+  const layoutFor = (panelV, orient) =>
+    api(`/api/config/layout?panel=${encodeURIComponent(panelV)}&orientation=${encodeURIComponent(orient)}`);
+  const useDefault = async () => {
+    if (!confirm(`Replace all pages with the default layout for a ${sz.w} × ${sz.h} screen? Your current pages are removed (Undo brings them back).`)) return;
+    const r = await layoutFor(get("display.panel", "ili9488"), get("display.orientation", "landscape"));
+    if (!r.ok) {
+      toast(r.body?.error || "No default layout for this screen", true);
+      return;
+    }
+    change((c) => {
+      c.grid = r.body.grid;
+      c.pages = r.body.pages;
+    });
+    state.page = 0;
+    toast("Default layout loaded. Save to send it to the device.");
+    renderSettings();
+  };
+  // A new display or orientation: keep the pages if they fit the new screen, otherwise switch to
+  // that screen's default layout in the same step (Undo brings both back).
+  const onShape = (key) => async (v) => {
+    const next = JSON.parse(JSON.stringify(state.cfg));
+    next.display ??= {};
+    next.display[key] = v;
+    const check = await postJson("/api/config/validate", next).catch(() => null);
+    const misfit = /^pages\[/.test(check?.body?.error || "");
+    const layout = misfit ? await layoutFor(next.display.panel ?? "ili9488", next.display.orientation ?? "landscape") : null;
+    change((c) => {
+      c.display ??= {};
+      c.display[key] = v;
+      if (layout?.ok) {
+        c.grid = layout.body.grid;
+        c.pages = layout.body.pages;
+      }
+    });
+    if (layout?.ok) {
+      state.page = 0;
+      toast("Your pages did not fit this screen, so it got its default layout (Undo brings them back).");
+    }
+    renderSettings();
+  };
+  const select = (path, options, fallback) => {
+    const cur = get(path, fallback);
+    return h("select", { onchange: (e) => onShape(path.split(".")[1])(options[e.target.selectedIndex][0]) },
+      ...options.map(([v, label]) => h("option", { value: v, text: label, selected: v === cur })));
+  };
+  return h("div", {},
+    h("div", { class: "form-grid" },
+      field("Display", select("display.panel", Object.entries(PANELS).map(([k, p]) => [k, p.label]), "ili9488")),
+      field("Orientation", select("display.orientation", ORIENTATIONS, "landscape"), `${sz.w} × ${sz.h} px`)),
+    h("p", { style: { margin: "0 0 10px", color: "var(--muted)", fontSize: "12.5px" }, text: "The device restarts into the new display or orientation when you save. Pages that do not fit the new screen show an error in Layout; the default layout for this screen fits." +
+      (panelName === "st7789" ? " The 2.0\" module has no backlight pin, so brightness, night dimming and screen off do not change its light." : "") }),
+    h("div", { class: "setup-row" }, h("button", { type: "button", class: "ghost", onclick: useDefault }, "Use the default layout for this screen")));
+}
+
 function screen() {
   return panel("Screen", null,
+    screenShape(),
     h("div", { class: "form-grid" },
       field("Brightness", range("display.brightness", 80)),
       field("SPI clock", choice("display.spi_hz", [[20000000, "20 MHz"], [26666667, "26.7 MHz"], [40000000, "40 MHz (tested)"], [80000000, "80 MHz (not tested)"]], 40000000),
@@ -164,7 +223,7 @@ function statusBar() {
       field(`Item ${i + 1}`, type), src ? field("Value", src) : h("span"), field("Short label", label),
       h("button", { type: "button", class: "ghost", title: "Remove", onclick: () => update((list) => list.splice(i, 1)) }, icon("trash", 16)));
   });
-  return panel("Status bar", "Up to 3 small items on the right of the status bar, on every page. The page dots show at most 5 pages at a time and slide with the current page.",
+  return panel("Status bar", "Up to 3 small items on the right of the status bar, on every page. The page dots show at most 5 pages at a time and slide with the current page. On screens narrower than 400 px (portrait, or the 2.0\" display) one item shows at a time, changing every 4 s, and 3 dots show.",
     ...rows,
     rows.length ? null : h("p", { class: "empty-note", text: "No items yet: the bar shows the clock, the page name, the page dots and the USB icon." }),
     items.length < 3 ? h("button", { type: "button", class: "ghost", onclick: () => update((list) => list.push({ type: "date" })) }, icon("plus", 16), "Add an item") : null);

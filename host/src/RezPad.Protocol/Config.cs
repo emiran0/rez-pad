@@ -28,11 +28,41 @@ public static class ConfigCatalog
     public const int MaxMacros = 32;
     public const int MaxMacroSteps = 32;
 
-    // Screen geometry the sizes are checked against (firmware/src/ui/pages.cpp uses the same numbers).
-    public const int ScreenW = 480;
-    public const int GridH = 300;
+    // Screen geometry (firmware/src/ui/pages.cpp uses the same numbers). The screen size comes from
+    // display.panel and display.orientation; the grid is the screen below the status bar.
+    public const int StatusH = 20;
     public const int CellGap = 4;
     public const int CardPad = 7;
+
+    /// <summary>A screen in px; the widget grid is the area below the status bar.</summary>
+    public readonly record struct Screen(int W, int H)
+    {
+        public int GridH => H - StatusH;
+    }
+
+    /// <summary>display.panel values with their native (portrait) size, in the firmware's order.</summary>
+    public static readonly IReadOnlyDictionary<string, (int W, int H)> Panels = new Dictionary<string, (int, int)>
+    {
+        ["ili9488"] = (320, 480),
+        ["st7789"] = (240, 320),
+    };
+
+    /// <summary>display.orientation values, in the firmware's order.</summary>
+    public static readonly IReadOnlyList<string> Orientations = ["landscape", "portrait", "landscape_flipped", "portrait_flipped"];
+
+    public static readonly Screen DefaultScreen = new(480, 320);
+
+    /// <summary>Screen size for a panel and orientation (unknown values fall back to the defaults).</summary>
+    public static Screen ScreenOf(string? panel, string? orientation)
+    {
+        var (w, h) = Panels.TryGetValue(panel ?? "ili9488", out var s) ? s : Panels["ili9488"];
+        var landscape = orientation is null or "landscape" or "landscape_flipped" || !Orientations.Contains(orientation);
+        return landscape ? new Screen(h, w) : new Screen(w, h);
+    }
+
+    /// <summary>The screen a config is for (its display.panel and display.orientation).</summary>
+    public static Screen ScreenOf(JsonNode? root) =>
+        ScreenOf((string?)(root?["display"]?["panel"] as JsonValue), (string?)(root?["display"]?["orientation"] as JsonValue));
 
     /// <summary>
     /// Smallest content area (card minus padding) in px each widget type can draw in. Any size whose
@@ -64,14 +94,14 @@ public static class ConfigCatalog
     /// <summary>Theme presets, in the firmware's order.</summary>
     public static readonly IReadOnlyList<string> Themes = ["dark", "midnight", "black", "graphite"];
 
-    public static int CardW(int w, int cols) => w * (ScreenW / cols) - CellGap;
+    public static int CardW(int w, int cols, Screen s) => w * (s.W / cols) - CellGap;
 
-    public static int CardH(int h, int rows) => h * (GridH / rows) - CellGap;
+    public static int CardH(int h, int rows, Screen s) => h * (s.GridH / rows) - CellGap;
 
     /// <summary>Whether a w x h widget of this type fits its minimum content size on a cols x rows grid.</summary>
-    public static bool SizeAllowed(string type, int w, int h, int cols, int rows) =>
+    public static bool SizeAllowed(string type, int w, int h, int cols, int rows, Screen s) =>
         WidgetMin.TryGetValue(type, out var min) &&
-        CardW(w, cols) - 2 * CardPad >= min.W && CardH(h, rows) - 2 * CardPad >= min.H;
+        CardW(w, cols, s) - 2 * CardPad >= min.W && CardH(h, rows, s) - 2 * CardPad >= min.H;
 
     public static readonly IReadOnlyList<string> Actions =
     [
@@ -283,9 +313,12 @@ public static class ConfigValidator
             }
             Bool(d, "sleep_on_pc_sleep", "display");
             Bool(d, "knob_popup", "display");
+            Choice(d, "panel", "display", [.. ConfigCatalog.Panels.Keys]);
+            Choice(d, "orientation", "display", [.. ConfigCatalog.Orientations]);
             Int(d, "spi_hz", "display", 1_000_000, 80_000_000);
         }
 
+        var screen = ConfigCatalog.ScreenOf(o);
         var cols = 4;
         var rows = 3;
         if (Obj(o, "grid", "") is { } g)
@@ -387,7 +420,7 @@ public static class ConfigValidator
         var ids = new List<string>();
         for (var i = 0; i < pages.Count; i++)
         {
-            Page(pages[i], $"pages[{i}]", cols, rows, ids, macroIds);
+            Page(pages[i], $"pages[{i}]", cols, rows, screen, ids, macroIds);
         }
         if (ConfigCatalog.ReferencedSources(o).Count > ConfigCatalog.MaxSources)
         {
@@ -433,7 +466,8 @@ public static class ConfigValidator
         }
     }
 
-    private static void Page(JsonNode? node, string path, int cols, int rows, List<string> ids, List<string> macroIds)
+    private static void Page(JsonNode? node, string path, int cols, int rows, ConfigCatalog.Screen screen, List<string> ids,
+        List<string> macroIds)
     {
         if (node is not JsonObject p)
         {
@@ -473,7 +507,7 @@ public static class ConfigValidator
             var used = new bool[ConfigCatalog.MaxGrid, ConfigCatalog.MaxGrid];
             for (var i = 0; i < widgets.Count; i++)
             {
-                Widget(widgets[i], $"{path}.widgets[{i}]", cols, rows, used);
+                Widget(widgets[i], $"{path}.widgets[{i}]", cols, rows, screen, used);
             }
         }
 
@@ -483,7 +517,7 @@ public static class ConfigValidator
         }
     }
 
-    private static void Widget(JsonNode? node, string path, int cols, int rows, bool[,] used)
+    private static void Widget(JsonNode? node, string path, int cols, int rows, ConfigCatalog.Screen screen, bool[,] used)
     {
         if (node is not JsonObject w)
         {
@@ -506,11 +540,11 @@ public static class ConfigValidator
         {
             throw Fail(path, $"outside the {cols}x{rows} grid");
         }
-        if (!ConfigCatalog.SizeAllowed(type, wv, hv, cols, rows))
+        if (!ConfigCatalog.SizeAllowed(type, wv, hv, cols, rows, screen))
         {
             var need = ConfigCatalog.WidgetMin[type];
-            var cw = ConfigCatalog.CardW(wv, cols) - 2 * ConfigCatalog.CardPad;
-            var ch = ConfigCatalog.CardH(hv, rows) - 2 * ConfigCatalog.CardPad;
+            var cw = ConfigCatalog.CardW(wv, cols, screen) - 2 * ConfigCatalog.CardPad;
+            var ch = ConfigCatalog.CardH(hv, rows, screen) - 2 * ConfigCatalog.CardPad;
             throw Fail(path, $"{wv}x{hv} is too small for {type} on a {cols}x{rows} grid (needs {need.W}x{need.H} px, has {cw}x{ch})");
         }
         for (var cy = cy0; cy < cy0 + hv; cy++)
@@ -944,7 +978,7 @@ public static class ConfigValidator
 public sealed record ConfigBeginMsg(int Size, uint Crc32);
 
 /// <summary>CONFIG_ACK body. <c>Art</c>: album art edge the new layout wants (0 = none), added within v1.</summary>
-public sealed record ConfigAckMsg(bool Ok, uint Crc32, string? Error, int? Art = null);
+public sealed record ConfigAckMsg(bool Ok, uint Crc32, string? Error, int? Art = null, bool Restart = false);
 
 /// <summary>CONFIG_DATA_BEGIN body (reply to CONFIG_GET).</summary>
 public sealed record ConfigDataBeginMsg(int Size, uint Crc32);

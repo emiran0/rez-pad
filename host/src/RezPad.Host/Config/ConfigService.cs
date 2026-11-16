@@ -88,6 +88,21 @@ internal sealed class ConfigService
         }
     }
 
+    /// <summary>
+    /// The default grid and pages for a screen: the default config's for 480x320, otherwise
+    /// docs/default-layouts.json's. Null when there is none for that size.
+    /// </summary>
+    public static JsonObject? DefaultLayout(ConfigCatalog.Screen screen)
+    {
+        if (screen == ConfigCatalog.DefaultScreen)
+        {
+            var def = Default();
+            return new JsonObject { ["grid"] = def["grid"]?.DeepClone(), ["pages"] = def["pages"]?.DeepClone() };
+        }
+        var all = JsonNode.Parse(typeof(ConfigService).Assembly.GetManifestResourceStream("RezPad.Host.default-layouts.json")!);
+        return all?["layouts"]?[$"{screen.W}x{screen.H}"]?.DeepClone() as JsonObject;
+    }
+
     public static JsonObject Default() =>
         JsonNode.Parse(typeof(ConfigService).Assembly.GetManifestResourceStream("RezPad.Host.default-config.json")!)!
             .AsObject();

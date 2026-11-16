@@ -41,6 +41,9 @@ void setActive(cfg::Config* c);  // releases the previous one
 // Reads the stored file (or the built-in default) for CONFIG_GET. Returns the length, 0 on error.
 size_t readStored(uint8_t* buf, size_t cap);
 
+// Remembers the screen (display.panel / display.orientation) in NVS for the built-in default.
+void rememberProfile(uint8_t panel, uint8_t orientation);
+
 // Deletes /config.json (CMD factory_reset); the default applies after a reboot.
 bool erase();
 

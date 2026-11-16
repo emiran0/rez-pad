@@ -111,7 +111,7 @@ void collectGarbage(const cfg::Config& c) {
     for (int i = 0; i < page.widgetCount; ++i) {
       const cfg::WidgetSpec& w = page.widgets[i];
       if (strcmp(w.type, "image") != 0) continue;
-      if (nameFor(w, cfg::cardW(w.w, page.cols) - 2, cfg::cardH(w.h, page.rows) - 2, bg, used[count], proto::kAssetNameMax)) {
+      if (nameFor(w, cfg::cardW(w.w, page.cols, c.screenW) - 2, cfg::cardH(w.h, page.rows, c.gridH()) - 2, bg, used[count], proto::kAssetNameMax)) {
         ++count;
       }
     }

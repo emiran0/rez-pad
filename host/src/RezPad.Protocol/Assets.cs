@@ -91,6 +91,7 @@ public static class AssetFormat
     public static IReadOnlyList<Placement> Placements(JsonNode? root)
     {
         var list = new List<Placement>();
+        var screen = ConfigCatalog.ScreenOf(root);
         var cols = (int?)root?["grid"]?["cols"] ?? 4;
         var rows = (int?)root?["grid"]?["rows"] ?? 3;
         var theme = (string?)root?["theme"]?["name"] ?? "dark";
@@ -111,8 +112,8 @@ public static class AssetFormat
                     continue;
                 }
                 list.Add(new Placement(asset,
-                    ConfigCatalog.CardW((int)w!["w"]!, pc) - 2,
-                    ConfigCatalog.CardH((int)w["h"]!, pr) - 2,
+                    ConfigCatalog.CardW((int)w!["w"]!, pc, screen) - 2,
+                    ConfigCatalog.CardH((int)w["h"]!, pr, screen) - 2,
                     (string?)w["fit"] == "contain", bg, $"pages[{p}].widgets[{i}]"));
             }
         }

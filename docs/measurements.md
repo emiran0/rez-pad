@@ -242,3 +242,20 @@ Before, the host halved an animation's frames until they fit 2 MB decoded per wi
 | 600x600, 120 frames at 90 ms (2x2, 234x194) | 15 frames, about 1.4 FPS | 120 frames, 448 KB file, decoded per frame: 11.0 FPS (`perf`), SPI busy 30 % |
 | 279x279, 54 frames at 50/60 ms (1x2, 114x194) | 27 frames, 9 to 10 FPS | 54 frames, 394 KB, decoded per frame: 18.0 FPS, SPI busy 24 % |
 | PSRAM free with both on screen | | 6642 KB of 8192 KB |
+
+## Screen sizes and the 2.0" ST7789V (2026-11-16)
+
+`page <n>` redraw times on the default layouts (UART console), same firmware for every screen:
+
+| Screen | SPI | Redraw |
+|---|---|---|
+| 3.5" ILI9488, 320x480 portrait | 40 MHz | 143 to 164 ms (same as landscape: same pixel count, 3 bytes per pixel) |
+| 2.0" ST7789V, 240x320 portrait | 40 MHz | 73 to 86 ms |
+| 2.0" ST7789V, 240x320 portrait | 80 MHz | 59 to 74 ms (`spi 80`, short check; image looked right, not a long-term stability test) |
+| 2.0" ST7789V, 240x320 portrait, 20 page switches | 40 MHz | 74 to 88 ms, 81 ms on average, no glitches (VCC on 3V3) |
+| 2.0" ST7789V, 320x240 landscape, 12 page switches | 40 MHz | 75 to 94 ms, 85 ms on average |
+
+- The ST7789V takes RGB565 (2 bytes per pixel) and has 60 % of the pixels: about a third of the ILI9488's SPI data per frame. At 80 MHz LVGL's rendering is the larger share, so doubling the clock saves only about 14 ms. Default stays 40 MHz.
+- Colors with `invert = true` (the driver default for this panel) were right on the user's module; orientation and edges correct in portrait.
+- Changing panel or orientation restarts the device; the host was connected again about 2 s after the CONFIG_ACK.
+- `bench` cannot run while the UI is up on this build (not enough internal DMA RAM next to LVGL's draw buffers); `page <n>` and `spi <MHz>` measure instead.

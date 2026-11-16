@@ -5,6 +5,8 @@
     "night": { "enabled": true, "from": "23:00", "to": "07:30", "brightness": 15 },
     "sleep_on_pc_sleep": true,
     "knob_popup": true,
+    "panel": "ili9488",
+    "orientation": "landscape",
     "spi_hz": 40000000
   },
   "grid": { "cols": 4, "rows": 3 },

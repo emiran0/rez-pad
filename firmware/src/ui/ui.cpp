@@ -16,6 +16,7 @@
 #include "model.h"
 #include "pages.h"
 #include "popup.h"
+#include "display/display.h"
 #include "display/screen.h"
 #include "sensors/sensors.h"
 #include "status_bar.h"
@@ -174,6 +175,20 @@ void buildPages() {
 // A new config from the host (validated and saved by the link task): rebuild everything, apply
 // the settings, then confirm with CONFIG_ACK (docs/protocol.md).
 void applyConfig(cfg::Config* next) {
+  // A different panel or orientation needs a fresh start: the display driver, LVGL's screen and
+  // every page depend on it. The config is already saved; the device boots into it.
+  if (next->panel != display::panel() || next->orientation != display::orientation()) {
+    config::rememberProfile(next->panel, next->orientation);
+    char ack[96];
+    snprintf(ack, sizeof(ack), "{\"ok\":true,\"crc32\":%lu,\"error\":\"\",\"restart\":true}",
+             static_cast<unsigned long>(config::storedCrc()));
+    link::send(proto::kConfigAck, ack);
+    Serial.printf("[ui] screen changes to %s %s: restarting\n", cfg::panelName(next->panel),
+                  cfg::orientationName(next->orientation));
+    config::release(next);
+    delay(500);  // let the link task send the ACK
+    esp_restart();
+  }
   // The widgets are rebuilt: a focused mixer would point at the old one.
   mixer::unfocus(model().mixer);
   popup::hide();
@@ -212,12 +227,13 @@ void rebuildPages() {
 
 bool begin() {
   if (!lvgl_port::begin()) return false;
+  setScreenSize(display::lcd().width(), display::lcd().height());
   lv_obj_t* scr = lv_screen_active();
 
   gGrid = lv_obj_create(scr);
   lv_obj_remove_style_all(gGrid);
   lv_obj_set_pos(gGrid, 0, kGridY);
-  lv_obj_set_size(gGrid, kScreenW, kGridH);
+  lv_obj_set_size(gGrid, screenW(), gridH());
   lv_obj_set_scrollable(gGrid, false);
 
   status_bar::build(scr);

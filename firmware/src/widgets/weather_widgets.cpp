@@ -100,10 +100,15 @@ void WeatherNow::build(lv_obj_t* card, int w, int h) {
   } else {
     const int x = iconPx_ + 8;
     lv_obj_align(icon_, LV_ALIGN_LEFT_MID, 0, 0);
-    loc_ = makeEllipsis(card, ui::font::small(), ui::color::accent(), w - x - 70);
+    // The location and the age ("2 h ago") share the top line; on a small card the age goes and
+    // the location gets the line (it would be cut to a few letters).
+    const bool withAge = w - x - 70 >= 60;
+    loc_ = makeEllipsis(card, ui::font::small(), ui::color::accent(), withAge ? w - x - 70 : w - x);
     lv_obj_align(loc_, LV_ALIGN_TOP_LEFT, x, 0);
-    age_ = makeLabel(card, ui::font::small(), ui::color::dim(), "");
-    lv_obj_align(age_, LV_ALIGN_TOP_RIGHT, 0, 0);
+    if (withAge) {
+      age_ = makeLabel(card, ui::font::small(), ui::color::dim(), "");
+      lv_obj_align(age_, LV_ALIGN_TOP_RIGHT, 0, 0);
+    }
     temp_ = makeLabel(card, ui::font::large(), ui::color::text(), "--");
     lv_obj_align(temp_, LV_ALIGN_LEFT_MID, x, 2);
     cond_ = makeEllipsis(card, ui::font::small(), ui::color::dim(), w - x);

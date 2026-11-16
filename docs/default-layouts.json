@@ -1,0 +1,119 @@
+{
+  "about": "Default layouts (grid and pages) for screen shapes other than the 480x320 of docs/default-config.json, keyed by screen width x height. The host offers them when the screen changes ('Use the default layout'), the firmware uses them when it falls back to its built-in default on such a screen. Same pages and ids as the default config, rearranged to fit. tools/gen_config_headers.py turns this file into a firmware header; both sides test that every layout is valid on its screen.",
+  "layouts": {
+    "320x480": {
+      "grid": { "cols": 2, "rows": 4 },
+      "pages": [
+        {
+          "id": "now_playing",
+          "name": "Now Playing",
+          "widgets": [
+            { "type": "album_art", "x": 0, "y": 0, "w": 2, "h": 2 },
+            { "type": "track_info", "x": 0, "y": 2, "w": 2, "h": 1 },
+            { "type": "media_controls", "x": 0, "y": 3, "w": 1, "h": 1 },
+            { "type": "volume", "x": 1, "y": 3, "w": 1, "h": 1 }
+          ]
+        },
+        {
+          "id": "system",
+          "name": "System",
+          "grid": { "cols": 2, "rows": 5 },
+          "widgets": [
+            { "type": "metric_gauge", "x": 0, "y": 0, "w": 1, "h": 1, "source": "sys.cpu.load", "label": "CPU" },
+            { "type": "metric_gauge", "x": 1, "y": 0, "w": 1, "h": 1, "source": "sys.cpu.temp", "label": "CPU temp" },
+            { "type": "metric_gauge", "x": 0, "y": 1, "w": 1, "h": 1, "source": "sys.gpu.load", "label": "GPU" },
+            { "type": "metric_gauge", "x": 1, "y": 1, "w": 1, "h": 1, "source": "sys.gpu.temp", "label": "GPU temp" },
+            { "type": "metric_graph", "x": 0, "y": 2, "w": 2, "h": 1, "source": "sys.cpu.load", "label": "CPU history" },
+            { "type": "metric_bar", "x": 0, "y": 3, "w": 2, "h": 1, "source": "sys.ram.used_pct", "label": "RAM" },
+            { "type": "metric_value", "x": 0, "y": 4, "w": 1, "h": 1, "source": "sys.net.down_kbps", "label": "Down" },
+            { "type": "metric_value", "x": 1, "y": 4, "w": 1, "h": 1, "source": "sys.net.up_kbps", "label": "Up" }
+          ]
+        },
+        {
+          "id": "weather_room",
+          "name": "Weather & Room",
+          "widgets": [
+            { "type": "weather_now", "x": 0, "y": 0, "w": 2, "h": 2 },
+            { "type": "room_climate", "x": 0, "y": 2, "w": 2, "h": 1 },
+            { "type": "weather_forecast", "x": 0, "y": 3, "w": 2, "h": 1, "mode": "daily" }
+          ]
+        }
+      ]
+    },
+    "240x320": {
+      "grid": { "cols": 2, "rows": 3 },
+      "pages": [
+        {
+          "id": "now_playing",
+          "name": "Now Playing",
+          "widgets": [
+            { "type": "now_playing", "x": 0, "y": 0, "w": 2, "h": 2 },
+            { "type": "volume", "x": 0, "y": 2, "w": 1, "h": 1 },
+            { "type": "clock", "x": 1, "y": 2, "w": 1, "h": 1 }
+          ]
+        },
+        {
+          "id": "system",
+          "name": "System",
+          "grid": { "cols": 2, "rows": 4 },
+          "widgets": [
+            { "type": "metric_gauge", "x": 0, "y": 0, "w": 1, "h": 1, "source": "sys.cpu.load", "label": "CPU" },
+            { "type": "metric_gauge", "x": 1, "y": 0, "w": 1, "h": 1, "source": "sys.cpu.temp", "label": "CPU temp" },
+            { "type": "metric_gauge", "x": 0, "y": 1, "w": 1, "h": 1, "source": "sys.gpu.load", "label": "GPU" },
+            { "type": "metric_gauge", "x": 1, "y": 1, "w": 1, "h": 1, "source": "sys.gpu.temp", "label": "GPU temp" },
+            { "type": "metric_graph", "x": 0, "y": 2, "w": 2, "h": 1, "source": "sys.cpu.load", "label": "CPU history" },
+            { "type": "metric_bar", "x": 0, "y": 3, "w": 1, "h": 1, "source": "sys.ram.used_pct", "label": "RAM" },
+            { "type": "metric_value", "x": 1, "y": 3, "w": 1, "h": 1, "source": "sys.net.down_kbps", "label": "Down" }
+          ]
+        },
+        {
+          "id": "weather_room",
+          "name": "Weather & Room",
+          "widgets": [
+            { "type": "weather_now", "x": 0, "y": 0, "w": 2, "h": 1 },
+            { "type": "room_climate", "x": 0, "y": 1, "w": 2, "h": 1 },
+            { "type": "weather_forecast", "x": 0, "y": 2, "w": 2, "h": 1, "mode": "daily" }
+          ]
+        }
+      ]
+    },
+    "320x240": {
+      "grid": { "cols": 3, "rows": 2 },
+      "pages": [
+        {
+          "id": "now_playing",
+          "name": "Now Playing",
+          "widgets": [
+            { "type": "album_art", "x": 0, "y": 0, "w": 1, "h": 1 },
+            { "type": "track_info", "x": 1, "y": 0, "w": 2, "h": 1 },
+            { "type": "media_controls", "x": 0, "y": 1, "w": 2, "h": 1 },
+            { "type": "volume", "x": 2, "y": 1, "w": 1, "h": 1 }
+          ]
+        },
+        {
+          "id": "system",
+          "name": "System",
+          "grid": { "cols": 4, "rows": 2 },
+          "widgets": [
+            { "type": "metric_gauge", "x": 0, "y": 0, "w": 1, "h": 1, "source": "sys.cpu.load", "label": "CPU" },
+            { "type": "metric_gauge", "x": 1, "y": 0, "w": 1, "h": 1, "source": "sys.cpu.temp", "label": "CPU temp" },
+            { "type": "metric_gauge", "x": 2, "y": 0, "w": 1, "h": 1, "source": "sys.gpu.load", "label": "GPU" },
+            { "type": "metric_gauge", "x": 3, "y": 0, "w": 1, "h": 1, "source": "sys.gpu.temp", "label": "GPU temp" },
+            { "type": "metric_graph", "x": 0, "y": 1, "w": 2, "h": 1, "source": "sys.cpu.load", "label": "CPU history" },
+            { "type": "metric_bar", "x": 2, "y": 1, "w": 2, "h": 1, "source": "sys.ram.used_pct", "label": "RAM" }
+          ]
+        },
+        {
+          "id": "weather_room",
+          "name": "Weather & Room",
+          "grid": { "cols": 2, "rows": 2 },
+          "widgets": [
+            { "type": "weather_now", "x": 0, "y": 0, "w": 1, "h": 1 },
+            { "type": "room_climate", "x": 1, "y": 0, "w": 1, "h": 1 },
+            { "type": "weather_forecast", "x": 0, "y": 1, "w": 2, "h": 1, "mode": "daily" }
+          ]
+        }
+      ]
+    }
+  }
+}

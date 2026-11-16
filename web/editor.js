@@ -5,7 +5,7 @@
 
 import {
   renderScreen, renderWidget, cardRect, bigEnough, pageGrid, pageTheme, effectiveStyle,
-  WIDGETS, THEMES, SCREEN_W, SCREEN_H, CELL_GAP, PAD,
+  WIDGETS, THEMES, CELL_GAP, PAD, useScreen, screenW, gridH,
 } from "./preview.js";
 import { state, on, emit, get, change, h, api, toast, openPopover, closePopover, controlsInUse } from "./state.js";
 import { icon } from "./icons.js";
@@ -23,7 +23,10 @@ let gridEl = null;
 // ---- geometry ----
 
 const page = () => state.cfg.pages[state.page];
-const grid = () => pageGrid(state.cfg, page());
+const grid = () => {
+  useScreen(state.cfg);  // the geometry helpers below use the config's screen
+  return pageGrid(state.cfg, page());
+};
 
 function fits(x, y, w, hh, skip = [-1]) {
   const { cols, rows } = grid();
@@ -126,7 +129,8 @@ function addWidget(type, at) {
 function renderRail() {
   const list = $("page-list");
   list.replaceChildren(...state.cfg.pages.map((p, i) => {
-    const thumb = h("div", { class: "thumb" });
+    const sz = useScreen(state.cfg);
+    const thumb = h("div", { class: "thumb", style: { width: Math.round(sz.w * 0.35) + "px", height: Math.round(sz.h * 0.35) + "px" } });
     const scr = h("div", { class: "screen" });
     thumb.append(scr);
     renderScreen(scr, state.cfg, i, state.data, state.catalog);
@@ -289,7 +293,7 @@ function gridPopover(panel) {
     const bad = (p.widgets || []).filter((w, i) => !fits(w.x, w.y, w.w, w.h, [i]) || !big(w.type, w.w, w.h)).length;
     fillPanel(panel,
       h("h4", {}, icon("grid", 16), "Grid of this page"),
-      h("p", { class: "hint", text: `Each cell is ${Math.floor(SCREEN_W / cols) - 4} × ${Math.floor(300 / rows) - 4} px. More cells make smaller widgets possible.` }),
+      h("p", { class: "hint", text: `Each cell is ${Math.floor(screenW() / cols) - 4} × ${Math.floor(gridH() / rows) - 4} px. More cells make smaller widgets possible.` }),
       stepper("Columns", cols, 1, 8, (v) => set("cols", v)),
       stepper("Rows", rows, 1, 8, (v) => set("rows", v)),
       bad ? h("p", { class: "hint", style: { color: "var(--crit)" }, text: `${bad} widget${bad > 1 ? "s" : ""} no longer fit (marked red): move, resize or remove them.` }) : null,
@@ -959,7 +963,7 @@ function renderProps(box) {
     content.push(field("Shows", segmented([["master", "PC volume"], ["app", "Playing app"]], w.target || "master", (v) => setWidget({ target: v === "master" ? undefined : v })),
       "Playing app: the Now Playing app's own slider in the Windows volume mixer. Turn it with the knob action \"Volume of the playing app\"."));
   } else if (w.type === "spectrum") {
-    const auto = Math.min(Math.max(Math.floor((w.w * Math.floor(SCREEN_W / grid().cols) - CELL_GAP - 2 * PAD) / 10), 4), 32);
+    const auto = Math.min(Math.max(Math.floor((w.w * Math.floor(screenW() / grid().cols) - CELL_GAP - 2 * PAD) / 10), 4), 32);
     content.push(field("Bars", numberInput(w, "bars", `${auto} (automatic), 4 to 32`), "What the PC plays, in 32 bands from 50 Hz to 16 kHz. Moves once the layout is saved to the device."));
   } else if (w.type === "image") {
     content.push(field("Picture", imagePicker(w), "PNG, JPEG, GIF (animated too) or BMP. Converted to this card's exact size."));
@@ -1012,17 +1016,19 @@ function fitScreen() {
   // As wide as the stage allows, but the whole screen stays visible in the window (big
   // monitors), up to 3x; the frame hugs the screen and is centered.
   const room = wrap.parentElement.clientWidth - 48;  // stage padding
-  const byWidth = (room - 2 * FRAME) / SCREEN_W;
-  const byHeight = (window.innerHeight - 230) / SCREEN_H;
+  const sz = state.cfg ? useScreen(state.cfg) : { w: 480, h: 320 };
+  const byWidth = (room - 2 * FRAME) / sz.w;
+  const byHeight = (window.innerHeight - 230) / sz.h;
   const scale = Math.max(0.5, Math.min(3, byWidth, Math.max(byHeight, 1)));
   wrap.style.setProperty("--scale", scale);
-  wrap.style.width = SCREEN_W * scale + 2 * FRAME + "px";
-  wrap.style.height = SCREEN_H * scale + 2 * FRAME + "px";
+  wrap.style.width = sz.w * scale + 2 * FRAME + "px";
+  wrap.style.height = sz.h * scale + 2 * FRAME + "px";
 }
 
 export function renderAll() {
   if (!state.cfg) return;
   if (state.page >= state.cfg.pages.length) state.page = state.cfg.pages.length - 1;
+  fitScreen();  // the screen size may have changed (Settings > Screen)
   renderRail();
   renderStageHead();
   renderScreenNow();

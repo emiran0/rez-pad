@@ -9,54 +9,70 @@ namespace display {
 
 namespace {
 
+// One device with both supported panels on the same SPI bus and pins; begin() picks one before
+// init (display.panel). Only one is ever wired.
 class Lgfx : public lgfx::LGFX_Device {
  public:
   Lgfx() {
-    {
-      auto cfg = bus_.config();
-      cfg.spi_host = SPI2_HOST;
-      cfg.spi_mode = 0;
-      cfg.freq_write = kDefaultSpiHz;
-      cfg.freq_read = 16000000;  // unused: MISO is not connected
-      cfg.spi_3wire = false;
-      cfg.use_lock = true;
-      cfg.dma_channel = SPI_DMA_CH_AUTO;
-      cfg.pin_sclk = pins::kTftSck;
-      cfg.pin_mosi = pins::kTftMosi;
-      cfg.pin_miso = pins::kTftMiso;  // -1: ILI9488 SDO does not tri-state
-      cfg.pin_dc = pins::kTftDc;
-      bus_.config(cfg);
-      panel_.setBus(&bus_);
-    }
-    {
-      auto cfg = panel_.config();
-      cfg.pin_cs = pins::kTftCs;
-      cfg.pin_rst = pins::kTftRst;
-      cfg.pin_busy = -1;
-      cfg.panel_width = 320;
-      cfg.panel_height = 480;
-      cfg.offset_x = 0;
-      cfg.offset_y = 0;
-      cfg.offset_rotation = 0;
-      cfg.readable = false;
-      cfg.invert = false;
-      cfg.rgb_order = false;
-      cfg.dlen_16bit = false;
-      cfg.bus_shared = false;
-      panel_.config(cfg);
-    }
-    setPanel(&panel_);
+    auto cfg = bus_.config();
+    cfg.spi_host = SPI2_HOST;
+    cfg.spi_mode = 0;
+    cfg.freq_write = kDefaultSpiHz;
+    cfg.freq_read = 16000000;  // unused: MISO is not connected
+    cfg.spi_3wire = false;
+    cfg.use_lock = true;
+    cfg.dma_channel = SPI_DMA_CH_AUTO;
+    cfg.pin_sclk = pins::kTftSck;
+    cfg.pin_mosi = pins::kTftMosi;
+    cfg.pin_miso = pins::kTftMiso;  // -1: the ILI9488's SDO does not tri-state
+    cfg.pin_dc = pins::kTftDc;
+    bus_.config(cfg);
+    // ILI9488, 3.5" 320x480: RGB666 over SPI (LovyanGFX converts from RGB565).
+    configure(ili9488_, 320, 480, false);
+    // ST7789V, 2.0" 240x320 IPS: these modules need inverted colors (not yet verified on hardware;
+    // console `lcdinv` flips it at runtime).
+    configure(st7789_, 240, 320, true);
+  }
+
+  // panel: cfg::panelName index (0 ILI9488, 1 ST7789).
+  void selectPanel(int panel) {
+    if (panel == 1) setPanel(&st7789_);
+    else setPanel(&ili9488_);
   }
 
   void setWriteClock(uint32_t hz) { bus_.setClock(hz); }
 
  private:
-  lgfx::Panel_ILI9488 panel_;
+  void configure(lgfx::Panel_Device& p, int w, int h, bool invert) {
+    p.setBus(&bus_);
+    auto cfg = p.config();
+    cfg.pin_cs = pins::kTftCs;
+    cfg.pin_rst = pins::kTftRst;
+    cfg.pin_busy = -1;
+    cfg.panel_width = w;
+    cfg.panel_height = h;
+    cfg.memory_width = w;
+    cfg.memory_height = h;
+    cfg.offset_x = 0;
+    cfg.offset_y = 0;
+    cfg.offset_rotation = 0;
+    cfg.readable = false;
+    cfg.invert = invert;
+    cfg.rgb_order = false;
+    cfg.dlen_16bit = false;
+    cfg.bus_shared = false;
+    p.config(cfg);
+  }
+
+  lgfx::Panel_ILI9488 ili9488_;
+  lgfx::Panel_ST7789 st7789_;
   lgfx::Bus_SPI bus_;
 };
 
 Lgfx gLcd;
 uint32_t gSpiHz = kDefaultSpiHz;
+int gPanel = 0;
+int gOrientation = 0;
 
 constexpr uint32_t kSpiSourceHz = 80000000;  // APB clock feeding SPI2 on the ESP32-S3
 
@@ -74,17 +90,33 @@ void fillPattern(uint16_t* buf, int w, int h, uint32_t seed) {
 
 }  // namespace
 
-bool begin(uint32_t spiHz) {
+// display.orientation index -> LovyanGFX rotation (both panels are portrait natively).
+uint8_t rotationFor(int orientation) {
+  switch (orientation) {
+    case 1: return 0;  // portrait
+    case 2: return 3;  // landscape, upside down
+    case 3: return 2;  // portrait, upside down
+    default: return 1;  // landscape
+  }
+}
+
+bool begin(int panel, int orientation, uint32_t spiHz) {
   gSpiHz = spiHz;
+  gPanel = panel;
+  gOrientation = orientation;
+  gLcd.selectPanel(panel);
   gLcd.setWriteClock(spiHz);
   const bool ok = gLcd.init();
-  gLcd.setRotation(kDefaultRotation);
+  gLcd.setRotation(rotationFor(orientation));
   gLcd.setColorDepth(16);  // RGB565 in, LovyanGFX converts to the panel's RGB666
   gLcd.fillScreen(TFT_BLACK);
   return ok;
 }
 
 lgfx::LGFX_Device& lcd() { return gLcd; }
+
+int panel() { return gPanel; }
+int orientation() { return gOrientation; }
 
 void setSpiHz(uint32_t hz) {
   gSpiHz = hz;
@@ -188,7 +220,8 @@ void runBenchmark(const uint32_t* hzList, size_t count, Print& out) {
   constexpr int kRuns = 5;
 
   uint16_t* region = allocDma(kRegion * kRegion);
-  uint16_t* strip = allocDma(480 * kStripH);
+  const int stripW = gLcd.width();
+  uint16_t* strip = allocDma(stripW * kStripH);
   if (!region || !strip) {
     out.println("bench: not enough internal DMA RAM");
     heap_caps_free(region);
@@ -196,7 +229,7 @@ void runBenchmark(const uint32_t* hzList, size_t count, Print& out) {
     return;
   }
   fillPattern(region, kRegion, kRegion, 1);
-  fillPattern(strip, 480, kStripH, 2);
+  fillPattern(strip, stripW, kStripH, 2);
 
   auto& d = gLcd;
   const uint32_t savedHz = gSpiHz;

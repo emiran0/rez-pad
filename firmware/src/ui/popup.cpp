@@ -15,15 +15,16 @@ namespace popup {
 
 namespace {
 
-// 280 x 100 card in the middle of the screen: icon or album art on the left, then the name and
-// value, a bar, and a line of detail (times for seek).
-constexpr int kW = 280;
+// A 280 x 100 card in the middle of the screen (narrower screens: the width less 16 px, and a
+// 48 px icon): icon or album art on the left, then the name and value, a bar, and a line of detail
+// (times for seek). Set by build() from the screen width.
 constexpr int kH = 100;
-constexpr int kIcon = 64;
 constexpr int kPad = 14;
-constexpr int kColX = kPad + kIcon + 14;
-constexpr int kColW = kW - kColX - kPad;
 constexpr int kValueW = 56;
+int gW = 280;
+int gIcon = 64;
+int gColX = kPad + 64 + 14;
+int gColW = 280 - gColX - kPad;
 
 lv_obj_t* gRoot = nullptr;
 lv_obj_t* gIconBox = nullptr;
@@ -172,8 +173,8 @@ void setWidth(lv_obj_t* obj, int w) {
 
 // The name and the detail line take the whole row when nothing sits on their right.
 void fitWidths() {
-  setWidth(gTitle, empty(gValue) ? kColW : kColW - kValueW - 4);
-  setWidth(gLeft, empty(gRight) ? kColW : kColW - 54);
+  setWidth(gTitle, empty(gValue) ? gColW : gColW - kValueW - 4);
+  setWidth(gLeft, empty(gRight) ? gColW : gColW - 54);
 }
 
 void fill(const Model& m, uint32_t nowMs) {
@@ -210,14 +211,18 @@ uint32_t interests(Kind k) {
 
 void build() {
   if (gRoot) return;
-  gRoot = plainBox(lv_layer_top(), 0, 0, kW, kH);
+  gW = screenW() - 16 < 280 ? screenW() - 16 : 280;
+  gIcon = gW < 280 ? 48 : 64;
+  gColX = kPad + gIcon + (gW < 280 ? 10 : 14);
+  gColW = gW - gColX - kPad;
+  gRoot = plainBox(lv_layer_top(), 0, 0, gW, kH);
   lv_obj_center(gRoot);
   lv_obj_set_style_bg_opa(gRoot, LV_OPA_COVER, 0);
   lv_obj_set_style_border_width(gRoot, 2, 0);
   lv_obj_set_style_radius(gRoot, 12, 0);
 
-  const int iconY = (kH - kIcon) / 2;
-  gIconBox = plainBox(gRoot, kPad, iconY - 2, kIcon, kIcon);
+  const int iconY = (kH - gIcon) / 2;
+  gIconBox = plainBox(gRoot, kPad, iconY - 2, gIcon, gIcon);
   lv_obj_set_style_bg_opa(gIconBox, LV_OPA_COVER, 0);
   lv_obj_set_style_radius(gIconBox, 10, 0);
   gSymbol = widgets::makeLabel(gIconBox, font::large(), color::text(), LV_SYMBOL_VOLUME_MAX);
@@ -227,28 +232,28 @@ void build() {
   lv_obj_center(gSun);
   lv_obj_set_hidden(gSun, true);
 
-  gArtBox = plainBox(gRoot, kPad, iconY - 2, kIcon, kIcon);
-  gArt.build(gArtBox, 0, 0, kIcon, false);
+  gArtBox = plainBox(gRoot, kPad, iconY - 2, gIcon, gIcon);
+  gArt.build(gArtBox, 0, 0, gIcon, false);
 
-  gTitle = widgets::makeEllipsis(gRoot, font::body(), color::text(), kColW - kValueW - 4);
-  lv_obj_set_pos(gTitle, kColX, 12);
+  gTitle = widgets::makeEllipsis(gRoot, font::body(), color::text(), gColW - kValueW - 4);
+  lv_obj_set_pos(gTitle, gColX, 12);
   gValue = widgets::makeLabel(gRoot, font::body(), color::accent(), "");
   lv_obj_set_width(gValue, kValueW);
   lv_obj_set_style_text_align(gValue, LV_TEXT_ALIGN_RIGHT, 0);
-  lv_obj_set_pos(gValue, kColX + kColW - kValueW, 12);
+  lv_obj_set_pos(gValue, gColX + gColW - kValueW, 12);
 
   gBar = lv_bar_create(gRoot);
-  lv_obj_set_pos(gBar, kColX, 46);
-  lv_obj_set_size(gBar, kColW, 10);
+  lv_obj_set_pos(gBar, gColX, 46);
+  lv_obj_set_size(gBar, gColW, 10);
   lv_obj_set_style_anim_duration(gBar, 0, 0);
   lv_bar_set_range(gBar, 0, 100);
 
-  gLeft = widgets::makeEllipsis(gRoot, font::small(), color::dim(), kColW - 50);
-  lv_obj_set_pos(gLeft, kColX, 66);
+  gLeft = widgets::makeEllipsis(gRoot, font::small(), color::dim(), gColW - 50);
+  lv_obj_set_pos(gLeft, gColX, 66);
   gRight = widgets::makeLabel(gRoot, font::small(), color::dim(), "");
   lv_obj_set_width(gRight, 50);
   lv_obj_set_style_text_align(gRight, LV_TEXT_ALIGN_RIGHT, 0);
-  lv_obj_set_pos(gRight, kColX + kColW - 50, 66);
+  lv_obj_set_pos(gRight, gColX + gColW - 50, 66);
 
   // One line each: without a fixed height LVGL wraps long text (DOTS only cuts what overflows the
   // height), and wrapped lines run into the bar and each other.

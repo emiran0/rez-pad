@@ -176,13 +176,13 @@ Added within v1 (unreleased; older firmware counts it as an unknown type). Binar
 
 | Type | Name | Body | Notes |
 |---|---|---|---|
-| 0x81 | HELLO_ACK | JSON `{proto, fw_ver, w, h, psram_free, cfg_crc, buttons, serial, art}` | Reply to HELLO. `serial` is the USB serial number; `art` is the album art edge in px the device's layout wants (omitted when the layout has no `album_art`). Both added within v1, optional for readers |
+| 0x81 | HELLO_ACK | JSON `{proto, fw_ver, w, h, psram_free, cfg_crc, buttons, serial, art}` | Reply to HELLO. `w`/`h` are the running screen in px (from `display.panel` and `display.orientation`: 480x320, 320x480, 320x240 or 240x320). `serial` is the USB serial number; `art` is the album art edge in px the device's layout wants (omitted when the layout has no `album_art`). Both added within v1, optional for readers |
 | 0x82 | PONG | empty | Reply to PING |
 | 0x90 | ACTION | JSON `{action, value, id}` | Resolved from input map, see `config-schema.md`. `id` only for `action` `"macro"` (the macro to run) and `"mixer.volume"` / `"mixer.mute"` (the app, see MIXER); added within v1 |
 | 0x91 | ART_REQUEST | JSON `{id}` | Device lost or never received art for current track |
 | 0x92 | INPUT_LEARNED | JSON `{kind, port}` | End of an `input_learn`: `kind` `"knob"` or `"button"` and the physical `port` (1-based) that was turned or pressed, or `{"kind": null, "port": 0}` when the time ran out. Added within v1 |
 | 0xA0 | SENSOR | JSON `{temp_c, hum_pct, press_hpa, trend, delta_3h}` | Every 10 s while connected. Values after offsets and filtering, always metric; a missing reading is `null`. `trend` is `rising`, `falling`, `steady` or `unknown` |
-| 0xC0 | CONFIG_ACK | JSON `{ok, crc32, error, art}` | See "Config transfer". `art` (album art edge of the new layout, 0 = none) added within v1, optional for readers |
+| 0xC0 | CONFIG_ACK | JSON `{ok, crc32, error, art, restart}` | See "Config transfer". `art` (album art edge of the new layout, 0 = none) and `restart` (true: the config changes the panel or orientation, the device restarts into it right after this reply) added within v1, optional for readers |
 | 0xC1 | CONFIG_DATA_BEGIN | JSON `{size, crc32}` | Reply to CONFIG_GET |
 | 0xC2 | CONFIG_DATA_CHUNK | binary `[offset u32][data]` | |
 | 0xC3 | CONFIG_DATA_END | empty | |

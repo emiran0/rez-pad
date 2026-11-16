@@ -85,19 +85,30 @@ constexpr size_t kMaxConfigBytes = 32768;
 constexpr int kMaxSources = 128;  // different data sources over all pages (SYS_STATS keeps 128)
 constexpr int kMaxMacros = 32;   // the host runs them; the device only needs their ids
 
-// Screen geometry the sizes are checked against (firmware/src/ui/pages.cpp uses the same numbers).
-constexpr int kScreenW = 480;
-constexpr int kGridH = 300;  // below the 20 px status bar
+// Screen geometry (firmware/src/ui/pages.cpp uses the same numbers). The screen size comes from
+// display.panel and display.orientation; the grid is the screen below the status bar.
+constexpr int kStatusH = 20;
 constexpr int kCellGap = 4;  // between cards
 constexpr int kCardPad = 7;  // inside a card
+
+// Display panels (display.panel) with their native size (portrait), in this order.
+constexpr int kPanelCount = 2;
+const char* panelName(int index);  // "ili9488", "st7789"
+void panelSize(int index, int& w, int& h);  // native width and height (portrait)
+// display.orientation, in this order: landscape, portrait, landscape_flipped, portrait_flipped.
+constexpr int kOrientationCount = 4;
+const char* orientationName(int index);
+inline bool isLandscape(int orientation) { return orientation == 0 || orientation == 2; }
+// Screen size in px for a panel in an orientation.
+void screenSize(int panel, int orientation, int& w, int& h);
 
 // Theme presets (docs/config-schema.md, "Themes"), in this order.
 constexpr int kThemeCount = 4;
 const char* themeName(int index);  // "dark", "midnight", "black", "graphite"
 
-// Card size in px for a widget of w x h cells on a cols x rows grid.
-inline int cardW(int w, int cols) { return w * (kScreenW / cols) - kCellGap; }
-inline int cardH(int h, int rows) { return h * (kGridH / rows) - kCellGap; }
+// Card size in px for a widget of w x h cells on a cols x rows grid of a screenW x gridH area.
+inline int cardW(int w, int cols, int screenW) { return w * (screenW / cols) - kCellGap; }
+inline int cardH(int h, int rows, int gridH) { return h * (gridH / rows) - kCellGap; }
 
 enum class Fit : uint8_t { kCover, kContain };
 
@@ -153,6 +164,10 @@ struct Config {
   uint8_t nightBrightness = 15;
   bool sleepOnPcSleep = true;
   bool knobPopup = true;  // knob popup for values the page does not show (ui/popup.h)
+  uint8_t panel = 0;        // display.panel (panelName index)
+  uint8_t orientation = 0;  // display.orientation (orientationName index)
+  int16_t screenW = 480, screenH = 320;  // from panel and orientation
+  int gridH() const { return screenH - kStatusH; }
   uint32_t spiHz = 40000000;
   // grid (default for pages without their own)
   uint8_t cols = 4, rows = 3;
@@ -187,6 +202,11 @@ struct Config {
 // Parses and validates `json`. On failure returns false and writes "<path>: <reason>" to `err`
 // (path like "pages[1].widgets[2].source", matching the host's validator); `out` is then undefined.
 bool parse(const char* json, size_t len, Config& out, char* err, size_t errLen);
+
+// The built-in default config for a panel and orientation: docs/default-config.json with that
+// display, and for screens other than 480x320 the grid and pages of docs/default-layouts.json.
+// Parsed and validated like any config (false only if a layout is missing or does not fit).
+bool parseDefault(int panel, int orientation, Config& out, char* err, size_t errLen);
 
 // Widget types (docs/config-schema.md, "Widget catalog"). A widget may have any size whose
 // content area (card minus padding) is at least the type's minimum.

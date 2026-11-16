@@ -28,5 +28,16 @@ const Palette& palette() { return gCurrent; }
 
 void setPalette(const Palette& p) { gCurrent = p; }
 
+namespace {
+int gScreenW = 480, gScreenH = 320;
+}  // namespace
+
+void setScreenSize(int w, int h) {
+  gScreenW = w;
+  gScreenH = h;
+}
+int screenW() { return gScreenW; }
+int screenH() { return gScreenH; }
+
 }  // namespace ui
 }  // namespace rp

@@ -1,14 +1,39 @@
-// Device-look rendering of the 480x320 screen: status bar, grid cards and every widget type,
+// Device-look rendering of the screen (480x320 or any panel and orientation of display.panel /
+// display.orientation): status bar, grid cards and every widget type,
 // following the same layout rules as the firmware (firmware/src/widgets/*.cpp, ui/pages.cpp) so the
 // preview matches the device at any size. Fed with the host's live data. Pure DOM, no state.
 "use strict";
 
-export const SCREEN_W = 480;
-export const SCREEN_H = 320;
 export const STATUS_H = 20;
-export const GRID_H = SCREEN_H - STATUS_H;
 export const CELL_GAP = 4;
 export const PAD = 7;
+
+// display.panel values with their native (portrait) size, as RezPad.Protocol.ConfigCatalog.Panels.
+export const PANELS = {
+  ili9488: { w: 320, h: 480, label: "3.5\" ILI9488 (480 × 320)" },
+  st7789: { w: 240, h: 320, label: "2.0\" ST7789V (320 × 240)" },
+};
+export const ORIENTATIONS = [
+  ["landscape", "Landscape"], ["portrait", "Portrait"],
+  ["landscape_flipped", "Landscape, upside down"], ["portrait_flipped", "Portrait, upside down"],
+];
+
+/** Screen size in px for a config (display.panel and display.orientation). */
+export function screenOf(cfg) {
+  const p = PANELS[cfg?.display?.panel] || PANELS.ili9488;
+  const o = cfg?.display?.orientation || "landscape";
+  return o === "portrait" || o === "portrait_flipped" ? { w: p.w, h: p.h } : { w: p.h, h: p.w };
+}
+
+// The screen the geometry helpers below work with: set by useScreen() (renderScreen does it).
+let cur = { w: 480, h: 320 };
+export function useScreen(cfg) {
+  cur = screenOf(cfg);
+  return cur;
+}
+export const screenW = () => cur.w;
+export const screenH = () => cur.h;
+export const gridH = () => cur.h - STATUS_H;
 
 const DEG = "°";
 
@@ -65,8 +90,8 @@ export function pageTheme(cfg, page) {
 
 // Card rectangle in screen px, the same arithmetic as firmware/src/ui/pages.cpp.
 export function cardRect(w, cols, rows) {
-  const cellW = Math.floor(SCREEN_W / cols);
-  const cellH = Math.floor(GRID_H / rows);
+  const cellW = Math.floor(cur.w / cols);
+  const cellH = Math.floor(gridH() / rows);
   return { x: w.x * cellW + CELL_GAP / 2, y: w.y * cellH + CELL_GAP / 2, w: w.w * cellW - CELL_GAP, h: w.h * cellH - CELL_GAP };
 }
 
@@ -74,7 +99,7 @@ export function cardRect(w, cols, rows) {
 export function bigEnough(catalog, type, w, h, cols, rows) {
   const t = catalog.widgets.find((x) => x.type === type);
   if (!t) return false;
-  return w * Math.floor(SCREEN_W / cols) - CELL_GAP - 2 * PAD >= t.min_w && h * Math.floor(GRID_H / rows) - CELL_GAP - 2 * PAD >= t.min_h;
+  return w * Math.floor(cur.w / cols) - CELL_GAP - 2 * PAD >= t.min_w && h * Math.floor(gridH() / rows) - CELL_GAP - 2 * PAD >= t.min_h;
 }
 
 // ---- DOM helpers ----
@@ -320,14 +345,25 @@ const RENDER = {
       textView(box, x, 0, cw, h - ctrlH - 4, ctx);
       controlsView(box, x, h - ctrlH, cw, ctrlH, ctx, true);
     } else {
+      // Like firmware NowPlayingWidget::build: stacked (art on top) or side by side (art top left,
+      // text beside it, controls below), whichever gives the bigger art.
       const ctrlH = h >= 200 ? 64 : 44;
       const textH = h >= 200 ? 46 : 40;
-      const side = Math.min(h - ctrlH - textH - 8, w);
-      const hasArt = side >= 40;
-      const top = hasArt ? side + 6 : 0;
-      if (hasArt) artView(box, (w - side) / 2, 0, side, ctx);
-      textView(box, 0, top, w, h - top - ctrlH - 2, ctx, true);
-      controlsView(box, 0, h - ctrlH, w, ctrlH, ctx, true);
+      const stacked = Math.min(h - ctrlH - textH - 8, w);
+      const topH = h - ctrlH - 4;
+      let beside = Math.min(Math.floor(w / 2), topH);
+      if (w - beside - 8 < 80) beside = 0;
+      if (beside >= 40 && beside * 115 > stacked * 100) {
+        artView(box, 0, 0, beside, ctx);
+        textView(box, beside + 8, 0, w - beside - 8, topH, ctx);
+        controlsView(box, 0, h - ctrlH, w, ctrlH, ctx, true);
+      } else {
+        const hasArt = stacked >= 40;
+        const top = hasArt ? stacked + 6 : 0;
+        if (hasArt) artView(box, (w - stacked) / 2, 0, stacked, ctx);
+        textView(box, 0, top, w, h - top - ctrlH - 2, ctx, true);
+        controlsView(box, 0, h - ctrlH, w, ctrlH, ctx, true);
+      }
     }
   },
 
@@ -508,8 +544,10 @@ const RENDER = {
     } else {
       const x = iconPx + 8;
       if (now) align(box, icon(now.code, now.is_day, iconPx), "LEFT_MID");
-      align(box, ellipsis(14, "accent", wx?.loc ?? "Weather", w - x - 70), "TOP_LEFT", x, 0);
-      align(box, txt(14, "dim", ageText), "TOP_RIGHT");
+      // Like the firmware: on a small card the age goes and the location gets the top line.
+      const withAge = w - x - 70 >= 60;
+      align(box, ellipsis(14, "accent", wx?.loc ?? "Weather", withAge ? w - x - 70 : w - x), "TOP_LEFT", x, 0);
+      if (withAge) align(box, txt(14, "dim", ageText), "TOP_RIGHT");
       align(box, txt(28, "", temp), "LEFT_MID", x, 2);
       align(box, ellipsis(14, "dim", cond, w - x), "BOTTOM_LEFT", x, 0);
     }
@@ -801,7 +839,7 @@ export function renderWidget(card, wd, rect, cfg, pal, data, catalog) {
 }
 
 /**
- * Renders a whole page into `screen` (a 480x320 element). Returns the grid element and the card
+ * Renders a whole page into `screen` (an element of the config's screen size). Returns the grid element and the card
  * elements in widget order.
  */
 /** Texts of the status bar items (config status_bar.items), like the firmware draws them. */
@@ -859,7 +897,8 @@ export function renderScreen(screen, cfg, pageIndex, data, catalog) {
   const pages = cfg.pages || [];
   const page = pages[pageIndex];
   const pal = pageTheme(cfg, page);
-  Object.assign(screen.style, { background: pal.bg, color: pal.text });
+  const sz = useScreen(cfg);
+  Object.assign(screen.style, { background: pal.bg, color: pal.text, width: sz.w + "px", height: sz.h + "px" });
   screen.style.setProperty("--d-text", pal.text);
   screen.style.setProperty("--d-dim", pal.dim);
   screen.style.setProperty("--d-faint", pal.faint);
@@ -869,11 +908,16 @@ export function renderScreen(screen, cfg, pageIndex, data, catalog) {
   bar.style.background = pal.status;
   const now = new Date();
   align(bar, txt(14, "", data.connected ? `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}` : "--:--"), "LEFT_MID", 8);
-  align(bar, ellipsis(14, "dim", page ? page.name || page.id : "", 140), "LEFT_MID", 64);
-  // Like firmware/src/ui/status_bar.cpp: at most 5 dots, a window sliding with the current page;
-  // a smaller dot at an end means more pages that way.
+  // Like firmware/src/ui/status_bar.cpp: below 400 px of width 3 dots and one item, and the page
+  // name only where it has 40 px.
+  const wide = sz.w >= 400;
+  const windowDots = wide ? 5 : 3;
+  const nameW = sz.w / 2 - 8 - (windowDots - 1) * 6 - 10 - 56;
+  if (nameW >= 40) align(bar, ellipsis(14, "dim", page ? page.name || page.id : "", nameW), "LEFT_MID", 64);
+  // At most windowDots dots, a window sliding with the current page; a smaller dot at an end means
+  // more pages that way.
   const count = Math.min(pages.length, 8);
-  const shown = Math.min(count, 5);
+  const shown = Math.min(count, windowDots);
   const first = Math.max(0, Math.min(pageIndex - Math.floor(shown / 2), count - shown));
   const dots = el("div", "dots");
   for (let s = 0; s < shown; s++) {
@@ -885,7 +929,9 @@ export function renderScreen(screen, cfg, pageIndex, data, catalog) {
     dots.append(d);
   }
   align(bar, dots, "CENTER");
-  const items = statusItems(cfg, data);
+  // Narrow screens show one item at a time, changing every 4 s (firmware: kCycleMs).
+  const all = statusItems(cfg, data);
+  const items = wide || all.length < 2 ? all : [all[Math.floor(Date.now() / 4000) % all.length]];
   if (items.length) {
     const row = el("div", "status-items");
     for (const t of items) row.append(txt(14, "", t));

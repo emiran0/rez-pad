@@ -29,10 +29,12 @@ inline lv_obj_t* makeMarquee(lv_obj_t* parent, const lv_font_t* font, lv_color_t
   return l;
 }
 
-// Single-line label that ends with "..." when too long (secondary text, no animation cost).
+// Single-line label that ends with "..." when too long (secondary text, no animation cost). The
+// height is one line: LVGL's DOTS mode only cuts what overflows the height, so without it long text
+// wraps onto more lines instead (a caller that wants two lines sets its own height afterwards).
 inline lv_obj_t* makeEllipsis(lv_obj_t* parent, const lv_font_t* font, lv_color_t color, int width) {
   lv_obj_t* l = makeLabel(parent, font, color);
-  lv_obj_set_width(l, width);
+  lv_obj_set_size(l, width > 1 ? width : 1, lv_font_get_line_height(font));
   lv_label_set_long_mode(l, LV_LABEL_LONG_MODE_DOTS);
   return l;
 }

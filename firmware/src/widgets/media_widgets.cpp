@@ -240,16 +240,28 @@ void NowPlayingWidget::build(lv_obj_t* card, int w, int h) {
     text_.build(card, x, 0, cw, h - ctrlH - 4);
     controls_.build(card, x, h - ctrlH, cw, ctrlH, true);
   } else {
-    // Tall: art on top, centered, then text and controls.
     const int ctrlH = h >= 200 ? 64 : 44;
     const int textH = h >= 200 ? 46 : 40;
-    int side = h - ctrlH - textH - 8;
-    if (side > w) side = w;
-    hasArt_ = side >= 40;
-    const int top = hasArt_ ? side + 6 : 0;
-    if (hasArt_) art_.build(card, (w - side) / 2, 0, side);
-    text_.build(card, 0, top, w, h - top - ctrlH - 2, true);
-    controls_.build(card, 0, h - ctrlH, w, ctrlH, true);
+    // Stacked: art on top, centered, then text and controls (tall cards with room for big art).
+    int stacked = h - ctrlH - textH - 8;
+    if (stacked > w) stacked = w;
+    // Side by side: art top left, text to its right, controls below across the card. Wins when the
+    // stacked art would be small next to empty space (square-ish cards, narrow portrait screens).
+    const int topH = h - ctrlH - 4;
+    int beside = w / 2 < topH ? w / 2 : topH;
+    if (w - beside - 8 < 80) beside = 0;  // the text needs 80 px
+    if (beside >= 40 && beside * 115 > stacked * 100) {
+      hasArt_ = true;
+      art_.build(card, 0, 0, beside);
+      text_.build(card, beside + 8, 0, w - beside - 8, topH);
+      controls_.build(card, 0, h - ctrlH, w, ctrlH, true);
+    } else {
+      hasArt_ = stacked >= 40;
+      const int top = hasArt_ ? stacked + 6 : 0;
+      if (hasArt_) art_.build(card, (w - stacked) / 2, 0, stacked);
+      text_.build(card, 0, top, w, h - top - ctrlH - 2, true);
+      controls_.build(card, 0, h - ctrlH, w, ctrlH, true);
+    }
   }
 }
 

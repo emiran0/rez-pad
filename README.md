@@ -19,6 +19,7 @@ You build the hardware from common modules (no custom PCB, no soldering beyond h
 - **Firmware updates from the config page**: the app has the matching firmware built in and writes it over the same USB cable; layout, settings and pictures stay.
 - **Works without the app**: the device keeps its layout in flash; without the host it still shows the room climate and the last weather, and the knobs send media keys over USB.
 - **Screen power**: night dimming, off while the PC sleeps, wakes on a knob.
+- **Other screens and orientations** (not in a release yet): the 3.5" display in portrait or landscape, or a 2.0" ST7789V (240x320) on the same wires, chosen in Settings > Screen; each screen shape has its own default layout.
 - No Wi-Fi on the device: nothing to set up, nothing on your network.
 
 ## Hardware
@@ -32,6 +33,7 @@ You build the hardware from common modules (no custom PCB, no soldering beyond h
 | AHT20 + BMP280 combo module | I2C temperature, humidity and pressure. |
 | 2x KY-040 rotary encoder module | Clickable knobs. |
 | Optional: up to 4 tact switches | Macro buttons, wired from the GPIO to GND. |
+| Alternative: 2.0" SPI TFT, **ST7789V**, 240x320 | Instead of the 3.5" display, on the same pins (SCL 12, SDA 11, RST 14, DC 9, CS 10), VCC on 3V3. No backlight pin, so it cannot be dimmed. See [`docs/hardware.md`](docs/hardware.md). |
 | Wires, a USB-C data cable | |
 
 ### Wiring

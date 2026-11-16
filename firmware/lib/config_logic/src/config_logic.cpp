@@ -1,5 +1,7 @@
 #include "config_logic.h"
 
+#include "default_config.h"
+
 #include <ArduinoJson.h>
 #include <new>
 #include <stdarg.h>
@@ -183,6 +185,10 @@ const TypeInfo kTypes[] = {
 };
 
 const char* const kThemes[kThemeCount] = {"dark", "midnight", "black", "graphite"};
+const char* const kPanels[kPanelCount] = {"ili9488", "st7789"};
+const int kPanelW[kPanelCount] = {320, 240};
+const int kPanelH[kPanelCount] = {480, 320};
+const char* const kOrientations[kOrientationCount] = {"landscape", "portrait", "landscape_flipped", "portrait_flipped"};
 
 const TypeInfo* findType(const char* type) {
   for (const auto& t : kTypes) {
@@ -400,6 +406,12 @@ bool parseDisplay(JsonObjectConst root, Config& cfg, Ctx& c) {
   }
   if (!getBool(d, "sleep_on_pc_sleep", "display", cfg.sleepOnPcSleep, c)) return false;
   if (!getBool(d, "knob_popup", "display", cfg.knobPopup, c)) return false;
+  if (!getChoice(d, "panel", "display", kPanels, kPanelCount, cfg.panel, c)) return false;
+  if (!getChoice(d, "orientation", "display", kOrientations, kOrientationCount, cfg.orientation, c)) return false;
+  int sw = 0, sh = 0;
+  screenSize(cfg.panel, cfg.orientation, sw, sh);
+  cfg.screenW = static_cast<int16_t>(sw);
+  cfg.screenH = static_cast<int16_t>(sh);
   return getInt(d, "spi_hz", "display", 1000000L, 80000000L, cfg.spiHz, c);
 }
 
@@ -582,8 +594,8 @@ bool parseInputs(JsonObjectConst root, Config& cfg, Ctx& c) {
   return parseGestures(in, "inputs", cfg, cfg.inputs, c);
 }
 
-bool parseWidget(JsonVariantConst v, const char* path, const Page& page, bool used[kMaxGrid][kMaxGrid],
-                 WidgetSpec& w, Ctx& c) {
+bool parseWidget(JsonVariantConst v, const char* path, const Page& page, int screenW, int gridH,
+                 bool used[kMaxGrid][kMaxGrid], WidgetSpec& w, Ctx& c) {
   if (!v.is<JsonObjectConst>()) return c.fail(path, "must be an object");
   JsonObjectConst o = v.as<JsonObjectConst>();
   bool set = false;
@@ -600,8 +612,8 @@ bool parseWidget(JsonVariantConst v, const char* path, const Page& page, bool us
   if (x + ww > page.cols || y + hh > page.rows) {
     return c.fail(path, "outside the %ux%u grid", page.cols, page.rows);
   }
-  const int contentW = cardW(ww, page.cols) - 2 * kCardPad;
-  const int contentH = cardH(hh, page.rows) - 2 * kCardPad;
+  const int contentW = cardW(ww, page.cols, screenW) - 2 * kCardPad;
+  const int contentH = cardH(hh, page.rows, gridH) - 2 * kCardPad;
   if (contentW < info->minW || contentH < info->minH) {
     return c.fail(path, "%ldx%ld is too small for %s on a %ux%u grid (needs %ux%u px, has %dx%d)", ww, hh, w.type,
                   page.cols, page.rows, info->minW, info->minH, contentW, contentH);
@@ -744,7 +756,7 @@ bool parsePage(JsonVariantConst v, int index, Config& cfg, Ctx& c) {
     for (JsonVariantConst w : arr) {
       char wpath[40];
       snprintf(wpath, sizeof(wpath), "%s.widgets[%d]", path, i);
-      if (!parseWidget(w, wpath, page, used, page.widgets[i], c)) return false;
+      if (!parseWidget(w, wpath, page, cfg.screenW, cfg.gridH(), used, page.widgets[i], c)) return false;
       ++i;
     }
     page.widgetCount = static_cast<uint8_t>(i);
@@ -862,6 +874,26 @@ bool minContent(const char* type, int& w, int& h) {
 
 const char* themeName(int index) { return index >= 0 && index < kThemeCount ? kThemes[index] : "dark"; }
 
+const char* panelName(int index) { return index >= 0 && index < kPanelCount ? kPanels[index] : kPanels[0]; }
+
+void panelSize(int index, int& w, int& h) {
+  if (index < 0 || index >= kPanelCount) index = 0;
+  w = kPanelW[index];
+  h = kPanelH[index];
+}
+
+const char* orientationName(int index) {
+  return index >= 0 && index < kOrientationCount ? kOrientations[index] : kOrientations[0];
+}
+
+void screenSize(int panel, int orientation, int& w, int& h) {
+  int pw = 0, ph = 0;
+  panelSize(panel, pw, ph);
+  const bool landscape = isLandscape(orientation);
+  w = landscape ? ph : pw;
+  h = landscape ? pw : ph;
+}
+
 SourceStyle sourceDefaults(const char* s) {
   static const char kDeg[] = "\xC2\xB0" "C";
   if (!s || !s[0]) return {"", 0, 100, NAN, NAN};
@@ -899,6 +931,46 @@ bool parse(const char* json, size_t len, Config& out, char* err, size_t errLen) 
          parseUnits(root, out, c) && parseSensor(root, out, c) && parseMedia(root, out, c) &&
          parseMacros(root, out, c) && parseInputs(root, out, c) && parseStatusBar(root, out, c) &&
          parsePages(root, out, c);
+}
+
+bool parseDefault(int panel, int orientation, Config& out, char* err, size_t errLen) {
+  if (panel < 0 || panel >= kPanelCount) panel = 0;
+  if (orientation < 0 || orientation >= kOrientationCount) orientation = 0;
+  JsonDocument doc;
+  if (deserializeJson(doc, kDefaultConfigJson)) {
+    snprintf(err, errLen, "config: built-in default is not valid JSON");
+    return false;
+  }
+  doc["display"]["panel"] = panelName(panel);
+  doc["display"]["orientation"] = orientationName(orientation);
+  int w = 0, h = 0;
+  screenSize(panel, orientation, w, h);
+  JsonDocument layouts;  // outlives doc's copies below
+  if (!(w == 480 && h == 320)) {
+    if (deserializeJson(layouts, kDefaultLayoutsJson)) {
+      snprintf(err, errLen, "config: built-in layouts are not valid JSON");
+      return false;
+    }
+    char key[16];
+    snprintf(key, sizeof(key), "%dx%d", w, h);
+    JsonObjectConst layout = layouts[key];
+    if (layout.isNull()) {
+      snprintf(err, errLen, "config: no built-in layout for a %s screen", key);
+      return false;
+    }
+    doc["grid"] = layout["grid"];
+    doc["pages"] = layout["pages"];
+  }
+  const size_t len = measureJson(doc);
+  char* text = static_cast<char*>(malloc(len + 1));
+  if (!text) {
+    snprintf(err, errLen, "config: out of memory");
+    return false;
+  }
+  serializeJson(doc, text, len + 1);
+  const bool ok = parse(text, len, out, err, errLen);
+  free(text);
+  return ok;
 }
 
 }  // namespace cfg
